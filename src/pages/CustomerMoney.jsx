@@ -4,7 +4,7 @@
 // لكل مفهوم» 2026-07-03) — نفس أرقام /zoho-data ومتابعة العملاء.
 // كل بطاقة عميل فيها 📞 اتصال و💬 واتساب مباشرين + فواتيره بنقرة.
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Download, Phone, MessageCircle, ChevronDown, ChevronLeft, HandCoins,
   TrendingUp, PhoneCall, Scale, Megaphone, ListChecks } from 'lucide-react';
@@ -47,6 +47,7 @@ const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
 const fmtK = (n) => { const a = Math.abs(n); return a >= 1000 ? (n / 1000).toFixed(1) + 'ك' : String(Math.round(n)); };
 const fmtDate = (d) => { if (!d) return ''; try { return new Date(d).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short' }); } catch { return String(d).slice(0, 10); } };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const LamhaFinancialAccountReview = lazy(() => import('../components/LamhaFinancialAccountReview.jsx'));
 
 const BUCKETS = CUSTOMER_CAMPAIGN_BUCKETS;
 
@@ -118,6 +119,7 @@ export default function CustomerMoney({ isActive = true }) {
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [settlementsOpen, setSettlementsOpen] = useState(true);
   const [bulkOpen, setBulkOpen] = useState(false);   // مودال «طبّق للكل»
+  const [lamhaPolicyOpen, setLamhaPolicyOpen] = useState(false);
   const dashboardRefreshInFlightRef = useRef(false);
   const lastDashboardRefreshAtRef = useRef(0);
   const resetCredits = () => {
@@ -641,10 +643,16 @@ export default function CustomerMoney({ isActive = true }) {
     navigate(`${pathname}?${params.toString()}`);
   };
   const scrollToAging = () => document.querySelector('.aging-operations')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const guideCollectionCampaign = () => {
+    const target = document.getElementById('collection-campaign-segments');
+    target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    window.setTimeout(() => target?.focus({ preventScroll: true }), 250);
+    toast('اختر شريحة، ثم حدّد النتائج، وبعدها اضغط «Draft حملة» لمراجعة الجمهور دون إرسال مباشر.', 'info');
+  };
 
   const campaignSegmentsPanel = (
     <Card style={{ padding: '16px 18px', marginBottom: 12 }}>
-      <div id="collection-campaign-segments" style={{ scrollMarginTop: 90 }}>
+      <div id="collection-campaign-segments" tabIndex={-1} aria-label="اختيار شريحة حملة التحصيل" style={{ scrollMarginTop: 90, outline: 'none' }}>
         <div style={{ marginBottom: 9 }}>
           <strong style={{ display: 'block', fontSize: 13, color: 'var(--text)' }}>فلتر شرائح السداد</strong>
           <span style={{ display: 'block', marginTop: 3, fontSize: 11.5, color: 'var(--muted)' }}>
@@ -739,7 +747,8 @@ export default function CustomerMoney({ isActive = true }) {
         </div>
         <div className="customer-finance-command__actions" role="toolbar" aria-label="إجراءات سريعة">
           <Btn variant="accent" onClick={scrollToAging} icon={<HandCoins size={15}/>}>ابدأ التحصيل</Btn>
-          {can('campaigns.send') ? <Btn variant="ghost" onClick={() => document.getElementById('collection-campaign-segments')?.scrollIntoView({ behavior: 'smooth' })} icon={<Megaphone size={15}/>}>جهّز حملة تحصيل</Btn> : null}
+          {can('campaigns.send') ? <Btn variant="ghost" onClick={guideCollectionCampaign} icon={<Megaphone size={15}/>}>جهّز حملة تحصيل</Btn> : null}
+          {isAdmin ? <Btn variant="ghost" onClick={() => setLamhaPolicyOpen(true)} icon={<ListChecks size={15}/>}>ضبط حسابات لمحة</Btn> : null}
           <details className="customer-finance-command__more-actions">
             <summary>إجراءات أخرى</summary>
             <div className="customer-finance-command__more-actions-body">
@@ -1148,6 +1157,9 @@ export default function CustomerMoney({ isActive = true }) {
           onClose={() => setBulkOpen(false)}
           onDone={() => { setBulkOpen(false); resetCredits(); refresh(); }}/>
       )}
+      {lamhaPolicyOpen ? <Suspense fallback={<WorkspaceLoadingState label="جارٍ فتح مراجعة حسابات لمحة…"/>}>
+        <LamhaFinancialAccountReview onClose={() => setLamhaPolicyOpen(false)}/>
+      </Suspense> : null}
       {applyTarget && (
         <ApplyCreditsModal target={applyTarget} onGrant={grantWriteAccess}
           onClose={() => setApplyTarget(null)}

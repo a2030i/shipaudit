@@ -1,0 +1,41 @@
+-- Deployment template only. Do not commit secret values.
+-- Supabase Cron uses UTC: 21:00 UTC = 00:00 Asia/Riyadh.
+-- Required Vault secrets:
+--   project_url                         e.g. https://<project-ref>.supabase.co
+--   lamha_financial_guard_cron_secret  independent sandbox/production value
+
+select cron.schedule(
+  'lamha-directory-daily-0000-riyadh',
+  '0 21 * * *',
+  $job$
+    select net.http_post(
+      url := (select decrypted_secret from vault.decrypted_secrets where name = 'project_url')
+        || '/functions/v1/lamha-financial-guard',
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'X-Cron-Key', (select decrypted_secret from vault.decrypted_secrets where name = 'lamha_financial_guard_cron_secret')
+      ),
+      body := '{"action":"sync-directory"}'::jsonb,
+      timeout_milliseconds := 120000
+    );
+  $job$
+);
+
+-- The policy worker runs in small, idempotent batches after directory sync.
+-- Small batches keep every Lamha request inside the shared 30 rpm token budget.
+select cron.schedule(
+  'lamha-financial-guard-0005-0255-riyadh',
+  '5-55/10 21-23 * * *',
+  $job$
+    select net.http_post(
+      url := (select decrypted_secret from vault.decrypted_secrets where name = 'project_url')
+        || '/functions/v1/lamha-financial-guard',
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'X-Cron-Key', (select decrypted_secret from vault.decrypted_secrets where name = 'lamha_financial_guard_cron_secret')
+      ),
+      body := '{"action":"policy"}'::jsonb,
+      timeout_milliseconds := 120000
+    );
+  $job$
+);

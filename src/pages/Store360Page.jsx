@@ -46,6 +46,7 @@ const DATE = (value, withTime = false) => {
 };
 const AGE_LABEL = (days) => !days ? 'لا يوجد' : days <= 15 ? '0–15 يوم' : days <= 30 ? '16–30 يوم' : days <= 60 ? '31–60 يوم' : days <= 90 ? '61–90 يوم' : '+90 يوم';
 const AGING_LABELS = { inv1_15: '1–15 يوم', inv16_30: '16–30 يوم', inv31_60: '31–60 يوم', inv61_90: '61–90 يوم', inv90p: '+90 يوم', opening: 'رصيد افتتاحي' };
+const EMPTY_LAMHA_STATUS = { state: 'idle', value: null, canCreateShipments: null, error: null };
 
 function selectedAgingAmount(finance, keys = []) {
   const values = {
@@ -61,6 +62,39 @@ function selectedAgingAmount(finance, keys = []) {
 
 function safeReturnTo(value, fallback = '/customers') {
   return value?.startsWith('/') && !value.startsWith('//') ? value : fallback;
+}
+
+function useLamhaAccountStatus(isAdmin, storeId) {
+  const [status, setStatus] = useState(EMPTY_LAMHA_STATUS);
+  const [refreshKey, setRefreshKey] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    const id = Number(storeId);
+    if (!isAdmin || !Number.isSafeInteger(id) || id <= 0) {
+      setStatus({ ...EMPTY_LAMHA_STATUS, state: isAdmin ? 'unavailable' : 'restricted' });
+      return undefined;
+    }
+    setStatus({ ...EMPTY_LAMHA_STATUS, state: 'loading' });
+    loadLamhaStoreStatus(id)
+      .then(result => {
+        if (!cancelled) setStatus({ state: 'available', value: result.store?.status || null, canCreateShipments: result.store?.canCreateShipments ?? null, error: null });
+      })
+      .catch(error => {
+        if (!cancelled) setStatus({ state: 'error', value: null, canCreateShipments: null, error: error.message });
+      });
+    return () => { cancelled = true; };
+  }, [isAdmin, storeId, refreshKey]);
+  const refresh = useCallback(() => setRefreshKey(value => value + 1), []);
+  return [status, setStatus, refresh];
+}
+
+function lamhaAccountLabel(status) {
+  if (status.state === 'loading' || status.state === 'idle') return 'حساب لمحة: جارٍ التحقق…';
+  if (status.state === 'restricted') return 'حساب لمحة: يتطلب صلاحية مدير';
+  if (status.state === 'error') return 'حساب لمحة: تعذر الفحص';
+  if (status.canCreateShipments === true) return 'حساب لمحة: نشط';
+  if (status.canCreateShipments === false) return 'حساب لمحة: غير نشط';
+  return 'حساب لمحة: غير متاح من القراءة';
 }
 
 function SourceState({ value, compact = false }) {
@@ -194,11 +228,10 @@ function StoreStatusConfirmModal({ store, canCreateShipments, activate, busy, on
   </Modal>;
 }
 
-function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onReloadWork }) {
+function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onReloadWork, lamhaStatus, setLamhaStatus, refreshLamhaStatus }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [modal, setModal] = useState(null);
   const [waOpen, setWaOpen] = useState(false);
-  const [lamhaStatus, setLamhaStatus] = useState({ state: 'idle', value: null, canCreateShipments: null, error: null });
   const [statusBusy, setStatusBusy] = useState(false);
   const closeMobileActions = useCallback(() => setMobileOpen(false), []);
   const store = core.store;
@@ -212,16 +245,6 @@ function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onRelo
   const agingAmount = selectedAgingAmount(core.financial, agingKeys);
   const agingLabel = agingKeys.map(key => AGING_LABELS[key]).filter(Boolean).join(' + ');
   const validStoreId = Number.isSafeInteger(Number(store.storeId)) && Number(store.storeId) > 0;
-  useEffect(() => {
-    let cancelled = false;
-    if (!isAdmin || !validStoreId) return undefined;
-    setLamhaStatus({ state: 'loading', value: null, canCreateShipments: null, error: null });
-    loadLamhaStoreStatus(store.storeId)
-      .then(result => { if (!cancelled) setLamhaStatus({ state: 'available', value: result.store?.status || null, canCreateShipments: result.store?.canCreateShipments ?? null, error: null }); })
-      .catch(error => { if (!cancelled) setLamhaStatus({ state: 'error', value: null, canCreateShipments: null, error: error.message }); });
-    return () => { cancelled = true; };
-  }, [isAdmin, store.storeId, validStoreId]);
-
   const runStoreStatusAction = async (activate) => {
     setStatusBusy(true);
     try {
@@ -270,22 +293,25 @@ function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onRelo
           <em>{shipmentAccessLabel}</em>
         </span>
         <span className="s360-lamha-status__actions">
-          <button
-            type="button"
-            className="s360-lamha-status__action is-start"
-            onClick={!statusReason && lamhaStatus.canCreateShipments !== true ? () => setModal('store-activate') : undefined}
-            disabled={Boolean(statusReason) || lamhaStatus.canCreateShipments === true}
-            title={statusReason || (lamhaStatus.canCreateShipments === true ? 'المتجر يعمل بالفعل' : 'تشغيل المتجر في لمحة')}
-            aria-label={`تشغيل المتجر ${store.storeName} في لمحة`}
-          >تشغيل</button>
-          <button
+          {lamhaStatus.canCreateShipments === true ? <button
             type="button"
             className="s360-lamha-status__action is-stop"
-            onClick={!statusReason && lamhaStatus.canCreateShipments !== false ? () => setModal('store-deactivate') : undefined}
-            disabled={Boolean(statusReason) || lamhaStatus.canCreateShipments === false}
-            title={statusReason || (lamhaStatus.canCreateShipments === false ? 'المتجر متوقف بالفعل' : 'إيقاف المتجر في لمحة')}
+            onClick={() => setModal('store-deactivate')}
             aria-label={`إيقاف المتجر ${store.storeName} في لمحة`}
-          >إيقاف</button>
+          >إيقاف الحساب</button> : null}
+          {lamhaStatus.canCreateShipments === false ? <button
+            type="button"
+            className="s360-lamha-status__action is-start"
+            onClick={() => setModal('store-activate')}
+            aria-label={`تشغيل المتجر ${store.storeName} في لمحة`}
+          >تشغيل الحساب</button> : null}
+          {lamhaStatus.canCreateShipments == null ? <button
+            type="button"
+            className="s360-lamha-status__action"
+            onClick={lamhaStatus.state === 'loading' || !isAdmin || !validStoreId ? undefined : refreshLamhaStatus}
+            disabled={lamhaStatus.state === 'loading' || !isAdmin || !validStoreId}
+            aria-label={`إعادة فحص حالة حساب ${store.storeName} في لمحة`}
+          >{lamhaStatus.state === 'loading' ? 'جارٍ الفحص…' : 'إعادة فحص الحالة'}</button> : null}
         </span>
       </div>
       <div className="s360-actions-desktop">{actions.map(item => <ActionButton key={item.label} {...item}/>)}</div>
@@ -494,6 +520,7 @@ export default function Store360Page({ identity }) {
   const [viewData, setViewData] = useState({});
   const [viewLoading, setViewLoading] = useState({});
   const [shipmentPage, setShipmentPage] = useState(0);
+  const [lamhaStatus, setLamhaStatus, refreshLamhaStatus] = useLamhaAccountStatus(isAdmin, core?.store?.storeId);
   const currentUrl = `${location.pathname}${location.search}`;
 
   const loadCore = useCallback(async () => {
@@ -567,10 +594,10 @@ export default function Store360Page({ identity }) {
         <span className={`s360-health ${hasUnavailable ? 'is-warning' : ''}`}>{hasUnavailable ? 'بعض المصادر غير متاحة' : 'المصادر الأساسية متاحة'}</span>
         <small>آخر تحديث: {DATE(latestUpdate, true)}</small>
       </div>
-      <div className="s360-meta-chips"><span>{store.status || 'حالة غير متاحة'}</span><span>{store.billingType || 'نوع الفوترة غير متاح'}</span><span>{store.integrationType || 'التكامل غير متاح'}</span><span>{workLoading ? 'المسؤول…' : work?.owner || 'بلا مسؤول'}</span></div>
+      <div className="s360-meta-chips"><span className={`s360-account-chip ${lamhaStatus.canCreateShipments === true ? 'is-active' : lamhaStatus.canCreateShipments === false ? 'is-inactive' : 'is-unknown'}`}>{lamhaAccountLabel(lamhaStatus)}</span><span>{store.billingType || 'نوع الفوترة غير متاح'}</span><span>{store.integrationType || 'التكامل غير متاح'}</span><span>{workLoading ? 'المسؤول…' : work?.owner || 'بلا مسؤول'}</span></div>
     </header>
 
-    <ActionCenter core={core} work={work} can={can} isAdmin={isAdmin} changeView={changeView} currentUrl={currentUrl} onReloadWork={loadWork}/>
+    <ActionCenter core={core} work={work} can={can} isAdmin={isAdmin} changeView={changeView} currentUrl={currentUrl} onReloadWork={loadWork} lamhaStatus={lamhaStatus} setLamhaStatus={setLamhaStatus} refreshLamhaStatus={refreshLamhaStatus}/>
 
     <div className="s360-kpi-row">
       <KpiCard label="المستحق" value={finance ? `${MONEY(finance.outstanding)} ر.س` : financeMissingLabel} detail={financeDocumentDetail} source={core.sources.finance} tone="danger" onClick={() => changeView('finance')}/>

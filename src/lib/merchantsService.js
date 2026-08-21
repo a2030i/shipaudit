@@ -631,12 +631,19 @@ async function loadLatestReceivablesLite() {
 }
 
 export async function loadCustomerMerchantLinks() {
-  const { data, error } = await supabase
-    .from('customer_merchant_links')
-    .select('customer_name, store_id, confidence, match_method');
-  if (error) throw error;
+  const data = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data: page, error } = await supabase
+      .from('customer_merchant_links')
+      .select('customer_name, store_id, confidence, match_method')
+      .order('customer_name', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    data.push(...(page || []));
+    if (!page?.length || page.length < PAGE) break;
+  }
   const map = new Map();
-  for (const r of data || []) {
+  for (const r of data) {
     map.set(r.customer_name, {
       storeId:    r.store_id,
       confidence: r.confidence,
