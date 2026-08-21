@@ -1129,6 +1129,10 @@ function CampaignsTab() {
     setLoading(false);
   }, [camp]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const next = allowedViews.includes(requestedView) ? requestedView : 'summary';
+    if (next !== view) setView(next);
+  }, [requestedView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // تصدير أرقام «بلا واتساب» لفريق الاتصال (رقم/اسم/آخر محاولة/الحملات)
   const exportNoWa = async () => {
@@ -1207,10 +1211,6 @@ function CampaignsTab() {
   const rtd = { padding: '9px 11px', fontSize: 12, whiteSpace: 'nowrap' };
 
   const HEALTH_TONE = { delivered: 'var(--green)', read: 'var(--green2)', replied: 'var(--accent)', failed: 'var(--red)', pending: 'var(--gold)' };
-  useEffect(() => {
-    const next = allowedViews.includes(requestedView) ? requestedView : 'summary';
-    if (next !== view) setView(next);
-  }, [requestedView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const changeCampaignView = next => {
     if (!allowedViews.includes(next)) return;
