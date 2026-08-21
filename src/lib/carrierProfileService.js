@@ -14,6 +14,8 @@
 import { supabase } from './supabase.js';
 
 const PAGE = 1000;
+const runtimeEnv = import.meta.env || {};
+export const CARRIER_360_READ_MODE = runtimeEnv.VITE_CARRIER_360_READ_MODE || 'core';
 
 async function loadAll(table, columns, filters = {}) {
   const rows = [];
@@ -180,6 +182,89 @@ export async function loadCarrierProfile(carrierId) {
     codRows:   codRows.slice(0, 50),
     zohoFinancial,
   };
+}
+
+function asNumber(value) {
+  return value == null ? null : (Number(value) || 0);
+}
+
+function adaptCarrierCore(payload) {
+  if (!payload?.carrier?.id || !payload?.summary) throw new Error('استجابة مسار Carrier 360 المركزي غير مكتملة');
+  const summary = payload.summary;
+  return {
+    carrier: payload.carrier,
+    contract: payload.contract || { status: 'missing', current: null },
+    summary: {
+      ...summary,
+      balance: asNumber(summary.balance), totalDr: asNumber(summary.totalDr), totalCr: asNumber(summary.totalCr),
+      codOutstanding: asNumber(summary.codOutstanding), codOut: asNumber(summary.codOut), codIn: asNumber(summary.codIn),
+      codOutCount: asNumber(summary.codOutCount), codInCount: asNumber(summary.codInCount),
+      audits: asNumber(summary.audits), auditsNeedAction: asNumber(summary.auditsNeedAction),
+      totalVariance: asNumber(summary.totalVariance), totalObjection: asNumber(summary.totalObjection),
+      openClaims: asNumber(summary.openClaims), openClaimsAmount: asNumber(summary.openClaimsAmount),
+      webhooks: asNumber(summary.webhooks), webhookPending: asNumber(summary.webhookPending),
+      netPosition: asNumber(summary.netPosition),
+    },
+    latestAudit: payload.latestAudit || null,
+    lastFile: payload.lastFile || null,
+    audits: payload.recent?.audits || [],
+    webhooks: payload.recent?.webhooks || [],
+    ops: payload.recent?.ops || [],
+    codRows: [],
+    zohoFinancial: payload.zohoFinancial || { available: false, error: 'source_unavailable' },
+    sources: payload.sources || {},
+    permissions: payload.permissions || {},
+    generatedAt: payload.generatedAt || null,
+    readPath: payload.readPath || 'carrier_360_core',
+  };
+}
+
+export async function loadCarrierProfileCore(carrierId, client = supabase) {
+  if (!carrierId) throw new Error('carrierId مطلوب');
+  const { data, error } = await client.rpc('carrier_360_core', { p_carrier_id: carrierId });
+  if (error) throw error;
+  return adaptCarrierCore(data);
+}
+
+export async function loadCarrierProfileRead(carrierId, { mode = CARRIER_360_READ_MODE, client = supabase } = {}) {
+  if (mode === 'legacy') return loadCarrierProfile(carrierId);
+  try {
+    return await loadCarrierProfileCore(carrierId, client);
+  } catch (error) {
+    // Additive rollout guard: a core/RPC failure must not make Carrier 360
+    // unavailable while the established read path is still present.
+    console.warn('[carrier-360-read] core unavailable; using legacy fallback', error?.code || error?.message);
+    return loadCarrierProfile(carrierId);
+  }
+}
+
+export async function loadCarrierAuditsPage(carrierId, { page = 1, pageSize = 20, filter = 'all' } = {}, client = supabase) {
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeSize = Math.min(100, Math.max(1, Number(pageSize) || 20));
+  const { data, error } = await client.rpc('carrier_360_audits_page', {
+    p_carrier_id: carrierId, p_filter: filter || 'all', p_page: safePage, p_page_size: safeSize,
+  });
+  if (error) throw error;
+  return {
+    rows: data?.rows || [], page: Number(data?.page) || safePage, pageSize: Number(data?.pageSize) || safeSize,
+    totalRows: Number(data?.totalRows) || 0, totalPages: Number(data?.totalPages) || 1,
+    filter: data?.filter || filter || 'all',
+  };
+}
+
+export function compareCarrierCoreFinancials(legacy, core) {
+  const checks = [
+    ['balance', legacy?.summary?.balance, core?.summary?.balance],
+    ['totalDr', legacy?.summary?.totalDr, core?.summary?.totalDr],
+    ['totalCr', legacy?.summary?.totalCr, core?.summary?.totalCr],
+    ['codOutstanding', legacy?.summary?.codOutstanding, core?.summary?.codOutstanding],
+    ['totalVariance', (legacy?.audits || []).reduce((sum, row) => sum + (Number(row.diff) || 0), 0), core?.summary?.totalVariance],
+    ['totalObjection', (legacy?.audits || []).reduce((sum, row) => sum + Math.max(0, Number(row.diff) || 0), 0), core?.summary?.totalObjection],
+  ];
+  return checks.flatMap(([field, before, after]) => (
+    Math.abs((Number(before) || 0) - (Number(after) || 0)) < 0.005
+      ? [] : [{ field, before: Number(before) || 0, after: Number(after) || 0 }]
+  ));
 }
 
 export async function loadCarrierZohoLinkOptions() {

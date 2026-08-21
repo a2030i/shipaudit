@@ -15,7 +15,7 @@ import {
 import { Card, Btn, Spinner, Empty, toast, Modal } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
-  loadCarrierProfile, updateCarrierFileSignature, FILE_KIND_OPTIONS, FILE_KIND_LABELS,
+  loadCarrierProfileRead, loadCarrierAuditsPage, updateCarrierFileSignature, FILE_KIND_OPTIONS, FILE_KIND_LABELS,
   loadCarrierZohoLinkOptions, saveCarrierZohoFinancialLinks,
 } from '../lib/carrierProfileService.js';
 import { carrierHasOutstandingLegacyCod } from '../lib/carrierOperatingModel.js';
@@ -813,10 +813,23 @@ function CarrierInvoiceResultSummary({ audit }) {
   );
 }
 
-function CarrierInvoicesView({ carrier, audits, carriers, mode, invoiceId, onState, onRefresh }) {
+function CarrierInvoicesView({ carrier, summary, carriers, mode, invoiceId, page, filter, reloadToken, onState, onRefresh }) {
   const [audit, setAudit] = useState(null);
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [auditError, setAuditError] = useState('');
+  const [auditPage, setAuditPage] = useState(null);
+  const [pageError, setPageError] = useState('');
+
+  useEffect(() => {
+    if (mode === 'upload' || invoiceId) return undefined;
+    let live = true;
+    setAuditPage(null);
+    setPageError('');
+    loadCarrierAuditsPage(carrier.id, { page, pageSize: 20, filter })
+      .then(value => { if (live) setAuditPage(value); })
+      .catch(error => { if (live) setPageError(error.message || 'تعذر تحميل فواتير الشركة'); });
+    return () => { live = false; };
+  }, [carrier.id, filter, invoiceId, mode, page, reloadToken]);
 
   useEffect(() => {
     if (!invoiceId) {
@@ -851,12 +864,12 @@ function CarrierInvoicesView({ carrier, audits, carriers, mode, invoiceId, onSta
     return () => { live = false; };
   }, [invoiceId, carrier.id]);
 
-  const startUpload = () => onState({ mode: 'upload', invoice: null });
+  const startUpload = () => onState({ mode: 'upload', audit: null, invoice: null });
   if (mode === 'upload') {
     return (
       <div className="carrier360-contained-flow">
         <div className="carrier360-flow-bar">
-          <button type="button" onClick={() => onState({ mode: null, invoice: null })}><ChevronLeft size={15}/> فواتير {carrier.name}</button>
+          <button type="button" onClick={() => onState({ mode: null, audit: null, invoice: null })}><ChevronLeft size={15}/> فواتير {carrier.name}</button>
           <strong>رفع فاتورة للمراجعة</strong>
         </div>
         <LazyPanel>
@@ -868,7 +881,7 @@ function CarrierInvoicesView({ carrier, audits, carriers, mode, invoiceId, onSta
             onComplete={nextAudit => {
               try { sessionStorage.setItem('lastAudit', JSON.stringify(nextAudit)); } catch { /* large drafts can exceed quota */ }
               setAudit(nextAudit);
-              onState({ mode: 'result', invoice: nextAudit.id });
+              onState({ mode: 'result', audit: nextAudit.id, invoice: null });
             }}
           />
         </LazyPanel>
@@ -880,7 +893,7 @@ function CarrierInvoicesView({ carrier, audits, carriers, mode, invoiceId, onSta
     return (
       <div className="carrier360-contained-flow">
         <div className="carrier360-flow-bar">
-          <button type="button" onClick={() => onState({ mode: null, invoice: null })}><ChevronLeft size={15}/> فواتير {carrier.name}</button>
+          <button type="button" onClick={() => onState({ mode: null, audit: null, invoice: null })}><ChevronLeft size={15}/> فواتير {carrier.name}</button>
           <strong>نتيجة مراجعة الفاتورة</strong>
         </div>
         {loadingAudit ? <div className="carrier360-loading"><Spinner size={24}/><span>جارٍ تحميل نتيجة المراجعة…</span></div> : null}
@@ -901,8 +914,9 @@ function CarrierInvoicesView({ carrier, audits, carriers, mode, invoiceId, onSta
     );
   }
 
-  const totalVariance = (audits || []).reduce((sum, item) => sum + auditPresentation(item).variance, 0);
-  const needsReview = (audits || []).filter(item => !['approved', 'rejected'].includes(auditPresentation(item).reviewStatus)).length;
+  const audits = auditPage?.rows || [];
+  const totalVariance = Number(summary.totalVariance) || 0;
+  const needsReview = Number(summary.auditsNeedAction) || 0;
   return (
     <div className="carrier360-section-stack">
       <div className="carrier360-section-heading">
@@ -910,11 +924,18 @@ function CarrierInvoicesView({ carrier, audits, carriers, mode, invoiceId, onSta
         <Btn variant="primary" icon={<UploadCloud size={15}/>} onClick={startUpload}>+ رفع فاتورة للمراجعة</Btn>
       </div>
       <div className="carrier360-mini-kpis">
-        <StatCard label="الفواتير" value={(audits || []).length} sub="آخر الفواتير المسجلة" icon={ReceiptText}/>
+        <StatCard label="الفواتير" value={summary.audits || 0} sub="كل الفواتير المسجلة" icon={ReceiptText}/>
         <StatCard label="تحتاج مراجعة" value={needsReview} sub="لم تعتمد أو ترفض بعد" color={needsReview ? 'var(--gold)' : 'var(--green)'} icon={AlertTriangle}/>
         <StatCard label="إجمالي الفروقات" value={`${fmt(totalVariance)} ر.س`} sub="من نفس نتائج التدقيق" color={totalVariance > 0 ? 'var(--red)' : 'var(--green)'} icon={Scale}/>
       </div>
-      {!(audits || []).length ? (
+      <div className="carrier360-filter-pills" aria-label="تصفية الفواتير">
+        {[["all","الكل"],["needs_action","تحتاج مراجعة"],["approved","معتمدة"],["rejected","مرفوضة"]].map(([id,label]) => (
+          <button key={id} type="button" className={filter === id ? 'active' : ''} onClick={() => onState({ filter: id === 'all' ? null : id, page: 1 })}>{label}</button>
+        ))}
+      </div>
+      {pageError ? <Card className="carrier360-error"><AlertTriangle size={18}/><span>المصدر غير متاح: {pageError}</span></Card> : null}
+      {!auditPage && !pageError ? <div className="carrier360-loading"><Spinner size={24}/><span>جارٍ تحميل الفواتير…</span></div> : null}
+      {auditPage && !(audits || []).length ? (
         <Card><Empty icon="🧾" title="لا توجد فواتير مراجعة" sub="ابدأ من زر رفع فاتورة للمراجعة؛ لن تُحفظ أي نتيجة قبل الاعتماد"/></Card>
       ) : (
         <div className="carrier360-invoice-list">
@@ -922,7 +943,7 @@ function CarrierInvoicesView({ carrier, audits, carriers, mode, invoiceId, onSta
             const result = auditPresentation(item);
             const [statusLabel, statusColor] = REVIEW_STATUS[result.reviewStatus] || REVIEW_STATUS.pending;
             return (
-              <button type="button" key={item.id} onClick={() => onState({ mode: 'result', invoice: item.id })}>
+              <button type="button" key={item.id} onClick={() => onState({ mode: 'result', audit: item.id, invoice: null })}>
                 <div className="carrier360-invoice-primary">
                   <ReceiptText size={18}/>
                   <span><strong>{item.file_name || `فاتورة ${item.period || ''}`}</strong><small>{item.period || 'الفترة غير متاحة'} · {item.row_count || 0} شحنة</small></span>
@@ -938,48 +959,81 @@ function CarrierInvoicesView({ carrier, audits, carriers, mode, invoiceId, onSta
           })}
         </div>
       )}
+      {auditPage && auditPage.totalPages > 1 ? (
+        <div className="carrier360-pagination" aria-label="صفحات الفواتير">
+          <button type="button" disabled={auditPage.page <= 1} onClick={() => onState({ page: auditPage.page - 1 })}>السابق</button>
+          <span>صفحة {auditPage.page} من {auditPage.totalPages} · {auditPage.totalRows} فاتورة</span>
+          <button type="button" disabled={auditPage.page >= auditPage.totalPages} onClick={() => onState({ page: auditPage.page + 1 })}>التالي</button>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function CarrierShipmentsView({ carrier, audits }) {
+function CarrierShipmentsView({ carrier, audits, auditId, page, filter, onState }) {
   const [rows, setRows] = useState(null);
+  const [totalRows, setTotalRows] = useState(0);
+  const [selectedAudit, setSelectedAudit] = useState(null);
   const [error, setError] = useState('');
-  const [filter, setFilter] = useState('all');
-  const auditIds = useMemo(() => (audits || []).slice(0, 8).map(item => `${item.id}:${item.period || ''}`), [audits]);
+  const selectedAuditId = auditId || audits?.[0]?.id || null;
+  const pageSize = 100;
 
   useEffect(() => {
+    if (!selectedAuditId) {
+      setRows([]);
+      setTotalRows(0);
+      setSelectedAudit(null);
+      return undefined;
+    }
     let live = true;
     setRows(null);
     setError('');
-    Promise.all(auditIds.map(async token => {
-      const [id, period] = token.split(':');
-      const shipments = await loadAuditShipments(id, { from: 0, limit: 150 });
-      return shipments.map(row => ({ ...row, auditId: id, period }));
-    }))
-      .then(groups => { if (live) setRows(groups.flat().slice(0, 500)); })
+    const status = filter === 'issues' ? 'issues' : 'all';
+    const from = (page - 1) * pageSize;
+    Promise.all([
+      loadAuditByIdFromDB(selectedAuditId, { hydrateRows: false }),
+      countAuditShipments(selectedAuditId, { status }),
+      loadAuditShipments(selectedAuditId, { status, from, limit: pageSize }),
+    ])
+      .then(([audit, count, shipments]) => {
+        if (!live) return;
+        if (String(audit?.carrierId) !== String(carrier.id)) {
+          throw new Error('هذه المراجعة لا تخص شركة الشحن المفتوحة');
+        }
+        setSelectedAudit(audit);
+        setTotalRows(count);
+        setRows(shipments.map(row => ({ ...row, auditId: selectedAuditId, period: audit.period || '' })));
+      })
       .catch(loadError => { if (live) setError(loadError.message || 'تعذر تحميل الشحنات'); })
     return () => { live = false; };
-  }, [auditIds.join('|')]);
+  }, [carrier.id, filter, page, selectedAuditId]);
 
-  const visible = useMemo(() => (rows || []).filter(row => {
-    if (filter === 'all') return true;
-    if (filter === 'issues') return row.status !== 'ok';
-    if (filter === 'weight') return row.issues?.some(issue => /weight|وزن/i.test(`${issue.field || ''} ${issue.label || ''}`));
-    if (filter === 'cod') return row.isCod || row.issues?.some(issue => /cod|تحصيل/i.test(`${issue.field || ''} ${issue.label || ''}`));
-    return true;
-  }), [rows, filter]);
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
 
   return (
     <div className="carrier360-section-stack">
-      <div className="carrier360-section-heading"><div><span>مصدر البيانات: ملفات المراجعة</span><h2>الشحنات</h2><p>هذه الشحنات ظهرت فعليًا في أحدث فواتير {carrier.name}، وليست ادعاءً بسجل شحن شامل.</p></div></div>
+      <div className="carrier360-section-heading"><div><span>مصدر البيانات: ملف المراجعة المحدد</span><h2>شحنات الفاتورة</h2><p>كل سجل قابل للوصول عبر الصفحات، دون قص النتائج أو تحميل التاريخ كاملًا في المتصفح.</p></div></div>
+      {(audits || []).length ? (
+        <div className="carrier360-filter-pills" aria-label="اختيار مراجعة الفاتورة">
+          {(audits || []).map(item => (
+            <button
+              key={item.id}
+              type="button"
+              className={selectedAuditId === item.id ? 'active' : ''}
+              onClick={() => onState({ audit: item.id, page: 1, filter: null })}
+            >
+              {item.period || item.file_name || 'مراجعة'}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="carrier360-filter-pills">
-        {[['all', 'كل الشحنات'], ['issues', 'بها مخالفات'], ['weight', 'فروقات الوزن'], ['cod', 'COD']].map(([id, label]) => <button key={id} type="button" className={filter === id ? 'active' : ''} onClick={() => setFilter(id)}>{label}</button>)}
+        {[['all', 'كل الشحنات'], ['issues', 'بها مخالفات']].map(([id, label]) => <button key={id} type="button" className={filter === id ? 'active' : ''} onClick={() => onState({ filter: id === 'all' ? null : id, page: 1 })}>{label}</button>)}
       </div>
       {error ? <Card className="carrier360-error"><AlertTriangle size={18}/><span>المصدر غير متاح: {error}</span></Card> : null}
       {!rows && !error ? <div className="carrier360-loading"><Spinner size={24}/><span>جارٍ تحميل شحنات المراجعات…</span></div> : null}
-      {rows && !visible.length ? <Card><Empty icon="📦" title="لا توجد شحنات بهذا الفلتر"/></Card> : null}
-      {visible.length ? <div className="carrier360-shipment-list">{visible.map((row, index) => {
+      {rows && !rows.length ? <Card><Empty icon="📦" title="لا توجد شحنات بهذا الفلتر"/></Card> : null}
+      {rows?.length ? <div className="carrier360-shipment-list">{rows.map((row, index) => {
         const invoice = row.invoiced?.total ?? 0;
         const expected = row.expected?.total ?? 0;
         const variance = row.diffs?.total ?? 0;
@@ -996,6 +1050,13 @@ function CarrierShipmentsView({ carrier, audits }) {
           <footer><span>{row.issues?.map(issue => issue.label).filter(Boolean).join(' · ') || 'لا يوجد سبب فرق مسجل'}</span></footer>
         </article>;
       })}</div> : null}
+      {rows && totalRows > 0 ? (
+        <div className="carrier360-pagination" aria-label="صفحات شحنات الفاتورة">
+          <button type="button" disabled={page <= 1} onClick={() => onState({ page: page - 1 })}>السابق</button>
+          <span>{selectedAudit?.period || 'الفاتورة'} · صفحة {page} من {totalPages} · {totalRows.toLocaleString('en-US')} شحنة</span>
+          <button type="button" disabled={page >= totalPages} onClick={() => onState({ page: page + 1 })}>التالي</button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1025,7 +1086,7 @@ function CarrierAccountView({ carrier, summary, ops, zohoFinancial, canConfigure
 // ── Main ───────────────────────────────────────────────────────
 export default function CarrierProfile({ carriers = [], setCarriers, onCarriersChange }) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const carrierId = searchParams.get('id');
+  const carrierId = searchParams.get('carrier') || searchParams.get('id');
   const navigate = useNavigate();
   const { can } = useAuth();
   const [data,    setData]    = useState(null);
@@ -1036,7 +1097,7 @@ export default function CarrierProfile({ carriers = [], setCarriers, onCarriersC
     if (!carrierId) return;
     setLoading(true);
     try {
-      const result = await loadCarrierProfile(carrierId);
+      const result = await loadCarrierProfileRead(carrierId);
       setData(result);
     } catch (e) {
       toast(`فشل التحميل: ${e.message}`, 'error');
@@ -1088,7 +1149,9 @@ export default function CarrierProfile({ carriers = [], setCarriers, onCarriersC
   const requestedView = searchParams.get('view');
   const view = CARRIER_VIEW_IDS.has(requestedView) ? requestedView : 'overview';
   const invoiceMode = searchParams.get('mode');
-  const invoiceId = searchParams.get('invoice');
+  const invoiceId = searchParams.get('audit') || searchParams.get('invoice');
+  const detailPage = Math.max(1, Number(searchParams.get('page')) || 1);
+  const detailFilter = searchParams.get('filter') || 'all';
   const requestedPanel = searchParams.get('panel');
   const accountPanel = ['overview', 'ledger', 'statements', ...(hasLegacyCod ? ['cod'] : [])].includes(requestedPanel) ? requestedPanel : 'overview';
   const returnTo = searchParams.get('returnTo');
@@ -1112,7 +1175,7 @@ export default function CarrierProfile({ carriers = [], setCarriers, onCarriersC
         summary={summary}
         onBack={returnToCarrierList}
         canUpload={can('audits.create')}
-        onUpload={() => updateLocation({ view: 'invoices', mode: 'upload', invoice: null })}
+        onUpload={() => updateLocation({ view: 'invoices', mode: 'upload', audit: null, invoice: null })}
       />
       {showZohoLink && (
         <ZohoLinkModal
@@ -1236,16 +1299,28 @@ export default function CarrierProfile({ carriers = [], setCarriers, onCarriersC
       {view === 'invoices' ? (
         <CarrierInvoicesView
           carrier={carrier}
-          audits={audits}
+          summary={summary}
           carriers={carriers}
           mode={invoiceMode}
           invoiceId={invoiceId}
+          page={detailPage}
+          filter={detailFilter}
+          reloadToken={data.generatedAt}
           onState={patch => updateLocation({ view: 'invoices', ...patch })}
           onRefresh={refresh}
         />
       ) : null}
 
-      {view === 'shipments' ? <CarrierShipmentsView carrier={carrier} audits={audits}/> : null}
+      {view === 'shipments' ? (
+        <CarrierShipmentsView
+          carrier={carrier}
+          audits={audits}
+          auditId={invoiceId}
+          page={detailPage}
+          filter={detailFilter}
+          onState={patch => updateLocation({ view: 'shipments', ...patch })}
+        />
+      ) : null}
 
       {view === 'claims' ? <div className="carrier360-embedded"><LazyPanel><Claims carriers={carriers} carrierId={carrier.id} isActive embedded/></LazyPanel></div> : null}
 

@@ -63,6 +63,32 @@
   color: var(--accent);
 }
 
+.carrier360-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.carrier360-pagination button {
+  min-width: 76px;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.carrier360-pagination button:disabled {
+  cursor: default;
+  opacity: .45;
+}
+
 .carrier360-view-nav label {
   display: none;
 }
