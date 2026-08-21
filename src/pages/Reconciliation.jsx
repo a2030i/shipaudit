@@ -1626,11 +1626,11 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {suggested.map(c => {
                 return (
-                  <button key={pickingZoho ? c.rawName : c.storeId} type="button" onClick={() => onConfirm(c)} style={{
+                  <button key={pickingZoho ? c.rawName : c.storeId} type="button" onClick={() => setPicked(c)} style={{
                     padding: '6px 12px', borderRadius: 999, cursor: 'pointer',
-                    border: '1.5px solid var(--border)',
-                    background: 'transparent',
-                    color: 'var(--text2)',
+                    border: `1.5px solid ${isPickedSame(c) ? 'var(--green)' : 'var(--border)'}`,
+                    background: isPickedSame(c) ? 'color-mix(in srgb, var(--green) 10%, transparent)' : 'transparent',
+                    color: isPickedSame(c) ? '#047857' : 'var(--text2)',
                     fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-sans)',
                     display: 'inline-flex', alignItems: 'center', gap: 6,
                     transition: 'all .12s',
@@ -1718,19 +1718,15 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
           ) : pickingZoho ? (
             filtered.map(c => {
               const isLinked = !!c.existingStoreId;
-              // One-click: clicking the row IS the link. The
-              // bottom "اربط بـ" button stays as a redundancy in
-              // case the operator wants to scan + select before
-              // committing — they can still set picked via keyboard.
               return (
-                <div key={c.rawName} onClick={() => onConfirm(c)} style={{
+                <button type="button" key={c.rawName} onClick={() => setPicked(c)} style={{
                   padding: '10px 14px', cursor: 'pointer',
-                  borderBottom: '1px solid var(--border)',
+                  border: 0, borderBottom: '1px solid var(--border)', width: '100%',
+                  background: isPickedSame(c) ? 'color-mix(in srgb, var(--green) 10%, transparent)' : 'transparent',
                   display: 'flex', alignItems: 'center', gap: 12,
-                  transition: 'background .12s',
+                  transition: 'background .12s', textAlign: 'start', fontFamily: 'var(--font-sans)',
                 }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'color-mix(in srgb, var(--green) 8%, transparent)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  aria-pressed={isPickedSame(c)}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -1757,22 +1753,22 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
                     display: 'flex', alignItems: 'center', gap: 4,
                   }}>
                     <Link2 size={12}/>
-                    اربط
+                    {isPickedSame(c) ? 'محدد للمراجعة' : 'اختر'}
                   </span>
-                </div>
+                </button>
               );
             })
           ) : (
             filtered.map(m => {
               return (
-                <div key={m.storeId} onClick={() => onConfirm(m)} style={{
+                <button type="button" key={m.storeId} onClick={() => setPicked(m)} style={{
                   padding: '10px 14px', cursor: 'pointer',
-                  borderBottom: '1px solid var(--border)',
+                  border: 0, borderBottom: '1px solid var(--border)', width: '100%',
+                  background: isPickedSame(m) ? 'color-mix(in srgb, var(--green) 10%, transparent)' : 'transparent',
                   display: 'flex', alignItems: 'center', gap: 12,
-                  transition: 'background .12s',
+                  transition: 'background .12s', textAlign: 'start', fontFamily: 'var(--font-sans)',
                 }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'color-mix(in srgb, var(--green) 8%, transparent)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  aria-pressed={isPickedSame(m)}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -1797,19 +1793,25 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
                     display: 'flex', alignItems: 'center', gap: 4,
                   }}>
                     <Link2 size={12}/>
-                    اربط
+                    {isPickedSame(m) ? 'محدد للمراجعة' : 'اختر'}
                   </span>
-                </div>
+                </button>
               );
             })
           )}
         </div>
 
-        <div style={{ marginTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-            💡 اضغط على أي صف للربط مباشرة
+        <div style={{ marginTop: 14, padding: 12, border: '1px solid var(--border)', borderRadius: 9, background: 'var(--surface2)' }}>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: picked ? 5 : 0 }}>
+            {picked ? 'راجع الطرف المقابل قبل تثبيت الربط:' : 'اختر اقتراحًا أو نتيجة أولًا؛ لا يتم أي ربط بمجرد الضغط.'}
           </div>
-          <Btn size="md" variant="ghost" onClick={onCancel}>إلغاء</Btn>
+          {picked && <strong style={{ display: 'block', color: 'var(--text)', fontSize: 13 }}>{pickedLabel}</strong>}
+        </div>
+        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
+          <Btn size="md" variant="ghost" type="button" onClick={onCancel}>إلغاء</Btn>
+          <Btn size="md" variant="accent" type="submit" icon={<Link2 size={14}/>} disabled={confirmDisabled}>
+            تأكيد الربط
+          </Btn>
         </div>
       </form>
     </Modal>

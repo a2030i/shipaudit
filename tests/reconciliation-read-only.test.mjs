@@ -31,4 +31,9 @@ test('external sync and link writes remain explicit reviewed actions', () => {
   assert.match(page, /MerchantPickerModal/);
   assert.match(page, /onSubmit=\{\(e\) => \{ e\.preventDefault\(\); if \(picked\) onConfirm\(picked\); \}\}/);
   assert.match(page, /الربط لا يتم تلقائيًا/);
+  assert.match(page, /onClick=\{\(\) => setPicked\(c\)\}/);
+  assert.match(page, /onClick=\{\(\) => setPicked\(m\)\}/);
+  assert.match(page, /تأكيد الربط/);
+  assert.doesNotMatch(page, /onClick=\{\(\) => onConfirm\(c\)\}/);
+  assert.doesNotMatch(page, /onClick=\{\(\) => onConfirm\(m\)\}/);
 });
