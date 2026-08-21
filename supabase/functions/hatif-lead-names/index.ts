@@ -39,7 +39,8 @@ Deno.serve(async (req) => {
   const limit = Math.min(Math.max(Number(body.limit) || 60, 1), 1000);
   const offset = Math.max(Number(body.offset) || 0, 0);
 
-  // مصادقة: مفتاح الكرون أو مدير/crm.view/sales.hatif_leads (نفس سنك المتاجر)
+  // This endpoint creates/renames external contacts. Read-only sales access
+  // is intentionally insufficient for that side effect.
   let authed = false;
   const ck = req.headers.get('X-Cron-Key') || req.headers.get('x-cron-key');
   if (ck) { const { data: za } = await db.from('zoho_auth').select('cron_key').eq('id', 1).maybeSingle(); if (za?.cron_key && za.cron_key === ck) authed = true; }
@@ -48,10 +49,10 @@ Deno.serve(async (req) => {
     const { data: { user } } = await uc.auth.getUser();
     if (user) {
       const { data: p } = await db.from('profiles').select('role, permissions').eq('id', user.id).maybeSingle();
-      authed = p?.role === 'admin' || p?.permissions?.['crm.view'] === true || p?.permissions?.['sales.hatif_leads'] === true;
+      authed = p?.role === 'admin' || p?.permissions?.['hatif.contacts.sync'] === true;
     }
   }
-  if (!authed) return json({ error: 'unauthorized' }, 401);
+  if (!authed) return json({ error: 'forbidden', required: 'hatif.contacts.sync' }, 403);
 
   let token: string; try { token = await accessToken(); } catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
 

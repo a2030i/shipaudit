@@ -106,13 +106,10 @@ Deno.serve(async (req) => {
   try { body = await req.json(); } catch { /* */ }
   const action = String(body.action || url.searchParams.get('action') || 'status');
 
-  // probe (توكن فقط) — محمي بـ ?key= للفحص أثناء الإعداد
+  // The historical query-key probe coupled Hatif to the Zoho webhook secret.
+  // Provider verification now runs through the authenticated action below.
   if (action === 'probe') {
-    const key = url.searchParams.get('key') || '';
-    const { data: za } = await db.from('zoho_auth').select('webhook_key').eq('id', 1).maybeSingle();
-    if (!za?.webhook_key || key !== za.webhook_key) return new Response('forbidden', { status: 403 });
-    try { const t = await accessToken(); return json({ ok: !!t, token_len: t.length }); }
-    catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
+    return json({ ok: false, retired: true, error: 'probe_retired' }, 410);
   }
 
   const auth = await requireUser(req, db);

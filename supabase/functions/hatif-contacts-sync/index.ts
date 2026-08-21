@@ -159,26 +159,41 @@ Deno.serve(async (req) => {
   const all = body.all === true;
   const maxWrites = Math.min(Math.max(Number(body.maxWrites) || 50, 1), 200);   // عميل واحد = ~7 استدعاءات
 
-  let authed = false;
+  let cronAuthed = false;
+  let canRead = false;
+  let canContactSync = false;
+  let canWorkspaceManage = false;
   const cronKey = req.headers.get('X-Cron-Key') || req.headers.get('x-cron-key');
   if (cronKey) {
     const { data: za } = await db.from('zoho_auth').select('cron_key').eq('id', 1).maybeSingle();
-    if (za?.cron_key && za.cron_key === cronKey) authed = true;
+    if (za?.cron_key && za.cron_key === cronKey) cronAuthed = true;
   }
-  if (!authed) {
+  if (!cronAuthed) {
     const uc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!,
       { global: { headers: { Authorization: req.headers.get('Authorization') || '' } } });
     const { data: { user } } = await uc.auth.getUser();
     if (user) {
       const { data: p } = await db.from('profiles').select('role, permissions').eq('id', user.id).maybeSingle();
-      // تفصيص 2026-07-16: تبويب «فرص من هاتف» صار على sales.hatif_leads —
-      // كان الشرط crm.view وحدها فرُفض موظف يملك التبويب (401 عند «مزامنة من هاتف»)
-      authed = p?.role === 'admin'
+      const isAdmin = p?.role === 'admin';
+      canRead = isAdmin
         || p?.permissions?.['crm.view'] === true
         || p?.permissions?.['sales.hatif_leads'] === true;
+      canContactSync = isAdmin || p?.permissions?.['hatif.contacts.sync'] === true;
+      canWorkspaceManage = isAdmin || p?.permissions?.['hatif.workspace.manage'] === true;
     }
   }
-  if (!authed) return json({ error: 'unauthorized' }, 401);
+  const readOnly = action === 'preview'
+    || (action === 'props' && !body.delete)
+    || (action === 'tags' && !body.ensure && !body.dedupe)
+    || (action === 'audit' && !body.save)
+    || (action === 'name_audit' && !body.fix);
+  const workspaceMutation = (action === 'props' && !!body.delete)
+    || (action === 'tags' && (!!body.ensure || !!body.dedupe));
+  const authorized = cronAuthed
+    || (readOnly ? canRead || canContactSync || canWorkspaceManage
+      : workspaceMutation ? canWorkspaceManage
+      : canContactSync);
+  if (!authorized) return json({ error: 'forbidden', required: workspaceMutation ? 'hatif.workspace.manage' : (readOnly ? 'crm.view' : 'hatif.contacts.sync') }, 403);
 
   // ⚠️ PostgREST يسقّف نتيجة الـRPC عند **1000 صف** (إعداد سيرفري لا يرفعه range)،
   // فوضع all يجب أن يجلب على صفحات وإلا فقدنا 455 عميلاً صامتاً.

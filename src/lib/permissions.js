@@ -181,6 +181,8 @@ export const PERMISSION_CATALOG = [
       { key: 'campaigns.ivr',       label: 'إطلاق مكالمات آلية IVR (اتصال فعلي بالعملاء)', sensitive: true },
       { key: 'whatsapp.view_log',   label: 'عرض سجل الحملات' },
       { key: 'whatsapp.configure',  label: 'إعدادات واتساب (القوالب/التنبيهات)', sensitive: true },
+      { key: 'hatif.contacts.sync', label: 'مزامنة وتهيئة جهات اتصال هاتف', sensitive: true },
+      { key: 'hatif.workspace.manage', label: 'إدارة خصائص ووسوم مساحة هاتف', sensitive: true },
     ],
   },
   {
