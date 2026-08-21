@@ -26,7 +26,6 @@ import {
   loadReconciliation,
   loadUnmatchedBalances, linkUnmatchedToStore, loadMerchantsForPicker,
   loadUnmatchedZohoForPicker, linkInternalRowToZohoRow,
-  autolinkBalancesByExactName,
   loadCustomerBalanceRecon,
   loadVendorReconciliation, loadVendorOthers,
   loadTreasuryBalances,
@@ -78,9 +77,9 @@ export default function Reconciliation({ isActive = true }) {
   const [view, setView]             = useState(() =>
     new URLSearchParams(location.search).get('tab') === 'customers' ? 'store' : 'customer');
   const [custRows, setCustRows]     = useState(null);   // صفوف مِرساة العميل (مشتركة بين العرضين)
-  const [autolinkBusy, setAutolinkBusy] = useState(false);
   const [syncing, setSyncing]       = useState(false);  // مزامنة زوهو الفورية
   const [daftraLoading, setDaftraLoading] = useState(false);
+  const [daftraSyncing, setDaftraSyncing] = useState(false);
   const [daftraData, setDaftraData] = useState(null);
   const [daftraOpen, setDaftraOpen] = useState(false);
 
@@ -96,45 +95,11 @@ export default function Reconciliation({ isActive = true }) {
     }
   }, [location.search]);
 
-  // One-click backfill for the common case where the store_balances
-  // upload happened before the merchants snapshot, leaving rows
-  // unlinked despite having identical names to existing merchants.
-  // The RPC does the SET on the server in a single transaction.
-  const runAutolinkExactName = async () => {
-    setAutolinkBusy(true);
-    try {
-      const { count, storeIds } = await autolinkBalancesByExactName();
-      if (count === 0) {
-        toast('لا توجد صفوف باسم مطابق — كل المتاجر مربوطة فعلاً', 'info');
-      } else {
-        toast(`✓ تم ربط ${count} متجراً تلقائياً بالأسماء المطابقة`, 'success');
-        await refresh();
-      }
-      return { count, storeIds };
-    } catch (e) {
-      toast(`فشل الربط التلقائي: ${e.message}`, 'error');
-    } finally {
-      setAutolinkBusy(false);
-    }
-  };
-
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      // Auto-run the segment-match auto-linker BEFORE loading the
-      // reconciliation/unmatched lists. Idempotent and fast — only
-      // touches rows where store_id IS NULL. Catches the common
-      // case where a Zoho row's raw_name is the merchant name
-      // prefixed with the legal entity ("مؤسسة X - متجر Y"). Silent
-      // if nothing changed; toast only when rows were actually
-      // linked so the operator sees what happened.
-      try {
-        const r = await autolinkBalancesByExactName();
-        if (r?.count > 0) {
-          toast(`✓ ربطنا ${r.count} متجر تلقائياً (أسماء مطابقة أو متضمنة)`, 'success');
-        }
-      } catch { /* silent — fall through to load anyway */ }
-
+      // Read-only contract: opening, refreshing and route changes never
+      // create/update a link or synchronize an external source.
       const [r, s, u, c] = await Promise.all([
         loadReconciliation().catch(() => []),
         listBalanceSnapshots().catch(() => []),
@@ -229,17 +194,7 @@ export default function Reconciliation({ isActive = true }) {
     if ((!force && daftraData) || daftraLoading) return;
     setDaftraLoading(true);
     try {
-      let data = await loadDaftraClosingBalances();
-      const uncheckedContactIds = [...new Set((data.clients || [])
-        .filter(row => row.zoho_contact_id && row.zoho_opening_balance == null)
-        .map(row => String(row.zoho_contact_id)))];
-      if (uncheckedContactIds.length) {
-        const openingSync = await syncZohoOpeningBalances({ contactIds: uncheckedContactIds });
-        if (Number(openingSync.updated || 0) > 0) data = await loadDaftraClosingBalances();
-        if (Number(openingSync.failed || 0) > 0) {
-          toast(`تعذرت قراءة افتتاحي ${openingSync.failed} عميل من زوهو؛ بقيت ظاهرة للمراجعة`, 'warning');
-        }
-      }
+      const data = await loadDaftraClosingBalances();
       setDaftraData(data);
       toast(`تمت قراءة ${Number(data.count || 0).toLocaleString('en-US')} رصيد إقفالي غير صفري من دفتره`, 'success');
     } catch (e) {
@@ -247,6 +202,33 @@ export default function Reconciliation({ isActive = true }) {
       toast(`فشل اتصال دفتره: ${e.message}`, 'error');
     } finally {
       setDaftraLoading(false);
+    }
+  };
+
+  // This is intentionally separate from opening/refreshing the modal. It is
+  // an explicit external sync that runs only after the operator asks for it.
+  const syncDaftraOpeningBalances = async () => {
+    if (daftraSyncing || !daftraData) return;
+    const contactIds = [...new Set((daftraData.clients || [])
+      .filter(row => row.zoho_contact_id && row.zoho_opening_balance == null)
+      .map(row => String(row.zoho_contact_id)))];
+    if (!contactIds.length) {
+      toast('لا توجد افتتاحيات ناقصة تحتاج مزامنة', 'info');
+      return;
+    }
+    setDaftraSyncing(true);
+    try {
+      const result = await syncZohoOpeningBalances({ contactIds });
+      await openDaftraBalances(true);
+      if (Number(result.failed || 0) > 0) {
+        toast(`تحدّث المتاح، وتعذرت قراءة افتتاحي ${result.failed} عميل`, 'warning');
+      } else {
+        toast(`تم تحديث افتتاحيات ${Number(result.updated || 0).toLocaleString('en-US')} عميل`, 'success');
+      }
+    } catch (e) {
+      toast(`تعذرت مزامنة الافتتاحيات: ${e.message}`, 'error');
+    } finally {
+      setDaftraSyncing(false);
     }
   };
 
@@ -641,16 +623,9 @@ export default function Reconciliation({ isActive = true }) {
                 {fmt(unmatchedWithBalance.reduce((s, u) => s + Math.abs(u.balance), 0))} ر.س
               </strong>
             </span>
-            <Btn
-              size="sm"
-              variant="accent"
-              icon={autolinkBusy ? <Spinner size={12}/> : <Zap size={12}/>}
-              onClick={runAutolinkExactName}
-              disabled={autolinkBusy}
-              title="يربط كل صف اسمه مطابق أو متضمَّن في اسم متجر بالكشف (يشتغل تلقائياً عند فتح الصفحة — استعمله للتحديث)"
-            >
-              {autolinkBusy ? 'جارٍ الربط…' : 'إعادة فحص الربط التلقائي'}
-            </Btn>
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+              الربط لا يتم تلقائيًا: افتح الصف، راجع الاقتراح ورقم المتجر، ثم أكّد.
+            </span>
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead>
@@ -802,6 +777,8 @@ export default function Reconciliation({ isActive = true }) {
           loading={daftraLoading}
           onClose={() => setDaftraOpen(false)}
           onRefresh={() => openDaftraBalances(true)}
+          onSyncOpening={syncDaftraOpeningBalances}
+          syncingOpening={daftraSyncing}
           onExport={exportDaftraClosingBalances}
         />
       )}
@@ -837,7 +814,7 @@ const DAFTRA_MATCH_META = {
   unmatched: { label: 'غير موجود بالاسم في زوهو', tone: 'muted', action: 'البحث عن اسم مختلف في زوهو' },
 };
 
-function DaftraBalancesModal({ data, loading, onClose, onRefresh, onExport }) {
+function DaftraBalancesModal({ data, loading, onClose, onRefresh, onSyncOpening, syncingOpening, onExport }) {
   const rows = data?.clients || [];
   const totals = data?.totals || {};
   const [q, setQ] = useState('');
@@ -880,6 +857,15 @@ function DaftraBalancesModal({ data, loading, onClose, onRefresh, onExport }) {
           <div className="daftra-balances-actions">
             <Btn variant="accent" icon={<Download size={15}/>} onClick={onExport} disabled={!rows.length}>تحميل Excel لكل الأرصدة غير الصفرية</Btn>
             <Btn variant="ghost" icon={<RefreshCw size={15}/>} onClick={onRefresh}>إعادة القراءة</Btn>
+            <Btn
+              variant="ghost"
+              icon={syncingOpening ? <Spinner size={15}/> : <Zap size={15}/>}
+              onClick={onSyncOpening}
+              disabled={syncingOpening}
+              title="تحديث صريح للافتتاحيات الناقصة؛ فتح النافذة وإعادة القراءة لا يكتبان شيئًا"
+            >
+              {syncingOpening ? 'جارٍ تحديث الافتتاحيات…' : 'تحديث الافتتاحيات الناقصة من زوهو'}
+            </Btn>
           </div>
           <div className="daftra-balances-filters">
             <input value={q} onChange={event => setQ(event.target.value)} placeholder="ابحث باسم أو رقم العميل…" />

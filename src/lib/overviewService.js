@@ -12,6 +12,14 @@
 
 import { supabase } from './supabase.js';
 import { carrierScore } from './carrierScore.js';
+import { summarizeEffectiveBankBalance } from './bankBalanceService.js';
+import { deriveAccountingCycleStages } from './accountingCycleService.js';
+import { merchantSnapshotSourceState } from './merchantsService.js';
+
+const runtimeEnv = import.meta.env || {};
+// Production stays on the proven path until the shadow gate is green. The
+// feature flag is the only supported cutover switch.
+export const OVERVIEW_READ_MODE = runtimeEnv.VITE_OVERVIEW_READ_MODE || 'legacy';
 
 // A slow optional dashboard source must not hold the whole home page in its
 // loading state forever. The underlying request may still finish later, but
@@ -671,4 +679,254 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
       };
     }),
   };
+}
+
+const overviewSourceLabels = {
+  monthly: 'أداء الشهر', previousMonth: 'أداء الشهر السابق', apAging: 'أعمار التزامات الناقلين',
+  carrierSpend: 'تركيز إنفاق الناقلين', customerDebt: 'تركيز مديونيات العملاء', carrierHealth: 'سلامة الناقلين',
+  workingCapital: 'دورة التحصيل والسداد', banks: 'أرصدة البنوك', carrierCod: 'تحصيلات الناقلين',
+  zohoInvoices: 'فواتير زوهو', zatcaPending: 'الفواتير المعلقة في زاتكا', customerMoney: 'مديونيات العملاء',
+  merchants: 'حالة المتاجر في المنصة', lamhaBalance: 'كشف حساب لمحة', accountingCycle: 'جاهزية إقفال دورة المحاسب',
+  zohoInvoiceSync: 'حداثة فواتير Zoho', zohoFinancial: 'الرقابة المالية في زوهو',
+  teamReadiness: 'جاهزية التشغيل', teamStaffing: 'تغطية صلاحيات الفريق', collectionWork: 'جاهزية أعمال التحصيل',
+};
+
+function uniqueUploadSummary(rows = [], count = 0) {
+  const uploads = new Map();
+  for (const row of rows) {
+    const key = row.upload_id || `${row.carrier_id || ''}:${row.source_file || ''}:${row.upload_date || ''}`;
+    if (key && !uploads.has(key)) uploads.set(key, row);
+  }
+  const list = [...uploads.values()];
+  return { count: Number(count) || 0, uploads: list, last: list[0] || null, error: null };
+}
+
+function adaptOverviewAccounting(raw = {}) {
+  return deriveAccountingCycleStages({
+    period: raw.period,
+    audits: raw.audits || [], weightExports: raw.weightExports || [],
+    shipmentImport: raw.shipmentImports?.[0] || null, shipmentImports: raw.shipmentImports || [],
+    auditShipments: raw.auditShipments || [], lamhaShipments: raw.lamhaShipments || [],
+    balanceSnapshot: raw.balanceSnapshot || null, merchantSnapshot: raw.merchantSnapshot || null,
+    codIn: uniqueUploadSummary(raw.codInRows, raw.codInCount),
+    codOut: uniqueUploadSummary(raw.codOutRows, raw.codOutCount),
+    events: raw.events || [], cycle: raw.cycle || null, carriers: raw.carriers || [],
+    schedules: raw.schedules || [], sourceErrors: raw.sourceErrors || [],
+  });
+}
+
+function mapCoreVat(row) {
+  if (!row) return null;
+  const n = value => Number(value) || 0;
+  const ageMinutes = row.fetched_at
+    ? Math.max(0, Math.floor((Date.now() - new Date(row.fetched_at).getTime()) / 60000)) : null;
+  return {
+    quarter: row.quarter, from: row.period_from, to: row.period_to,
+    outputTax: n(row.output_tax), inputTax: n(row.input_tax), netDue: n(row.net_due),
+    sales: n(row.output_amount), isClosed: !!row.is_closed, fetchedAt: row.fetched_at,
+    daysLeft: Number(row.days_left) || 0,
+    prevNetDue: row.prev_net_due == null ? null : n(row.prev_net_due),
+    ageMinutes, isStale: ageMinutes == null || ageMinutes > 90,
+  };
+}
+
+export function adaptOverviewCore(payload) {
+  if (!payload?.sources || !payload?.period) throw new Error('استجابة overview_core غير مكتملة');
+  const source = payload.sources;
+  const checkedAt = payload.generatedAt || new Date().toISOString();
+  const customerMoney = source.customerMoney || null;
+  const merchantSnapshot = source.merchants || null;
+  const accountingCycle = adaptOverviewAccounting(source.accountingCycleRaw || {});
+  const bankBalance = summarizeEffectiveBankBalance(
+    source.banks?.manualRows || [], source.banks?.statementRows || [],
+  );
+  const workingCapital = source.workingCapital?.[0] || {};
+  const zohoDash = source.zohoInvoices || null;
+  const zatca = source.zatcaPending || null;
+  const zohoFinancial = source.zohoFinancial || null;
+  const n = value => Number(value) || 0;
+
+  const sourceValues = {
+    ...source,
+    banks: bankBalance,
+    accountingCycle,
+  };
+  delete sourceValues.accountingCycleRaw;
+  delete sourceValues.vat;
+  const sourceStates = Object.fromEntries(Object.entries(overviewSourceLabels).map(([key, label]) => {
+    const reported = payload.sourceStatus?.[key];
+    return [key, {
+      key, label, status: reported?.status || (sourceValues[key] == null ? 'empty' : 'fresh'),
+      error: reported?.error || null, checkedAt,
+    }];
+  }));
+  sourceStates.merchants = {
+    ...sourceStates.merchants,
+    ...merchantSnapshotSourceState(merchantSnapshot, Date.parse(checkedAt)),
+  };
+  const zohoSync = source.zohoInvoiceSync;
+  if (zohoSync) {
+    const syncedAt = Date.parse(zohoSync.last_sync || '');
+    const stale = !Number.isFinite(syncedAt) || Date.parse(checkedAt) - syncedAt > 45 * 60 * 1000;
+    sourceStates.zohoInvoiceSync = {
+      ...sourceStates.zohoInvoiceSync, sourceUpdatedAt: zohoSync.last_sync || null,
+      status: zohoSync.last_status === 'error' || zohoSync.last_error ? 'unavailable' : stale ? 'stale' : 'fresh',
+      error: zohoSync.last_error || null,
+    };
+  }
+
+  const customerDecisionDataReadable = Array.isArray(customerMoney?.customers)
+    && !!merchantSnapshot?.snapshot && Array.isArray(merchantSnapshot?.merchants);
+  const customerDecisions = customerDecisionDataReadable
+    ? buildCustomerDecisions(customerMoney, merchantSnapshot) : null;
+  const customerDecisionFresh = customerDecisionDataReadable
+    && sourceStates.customerMoney.status === 'fresh'
+    && sourceStates.merchants.status === 'fresh'
+    && sourceStates.zohoInvoiceSync.status === 'fresh';
+
+  const closeBlockers = [];
+  for (const error of accountingCycle.sourceErrors || []) {
+    closeBlockers.push({ source: error.label || error.source || 'مصدر إقفال', reason: error.message || 'المصدر غير متاح.' });
+  }
+  for (const stage of (accountingCycle.stages || []).slice(0, 6)) {
+    if (stage.status !== 'complete') closeBlockers.push({ source: stage.label, reason: stage.reason || 'المرحلة غير مكتملة للفترة المحددة.' });
+  }
+  const closeReadiness = {
+    ready: !!accountingCycle.prerequisiteComplete && closeBlockers.length === 0,
+    checkedAt, completed: accountingCycle.stages?.slice(0, 6).filter(stage => stage.status === 'complete').length || 0,
+    required: 6, blockers: closeBlockers,
+  };
+
+  const merchants = merchantSnapshot?.merchants || [];
+  const normalize = value => String(value || '').trim().toLowerCase().replace(/\s+/g, '');
+  const active = value => ['نشط', 'active', 'مفعل'].includes(normalize(value));
+  const asTime = value => { const stamp = Date.parse(value || ''); return Number.isFinite(stamp) ? stamp : null; };
+  const referenceAt = asTime(merchantSnapshot?.snapshot?.uploadedAt) || Date.parse(checkedAt);
+  const monthPrefix = `${payload.period}-`;
+  const stoppedWithWallet = merchants.filter(row => !active(row.status) && n(row.wallet_balance) > 0.5);
+  const paidThisPeriod = new Set((customerMoney?.customers || [])
+    .filter(row => String(row.last_payment_date || '').startsWith(monthPrefix))
+    .map(row => row.store_id || row.zoho_id || row.name).filter(Boolean));
+  const merchantPulse = {
+    available: !!merchantSnapshot?.snapshot, snapshotAt: merchantSnapshot?.snapshot?.uploadedAt || null,
+    total: merchants.length, active: merchants.filter(row => active(row.status)).length,
+    inactive: merchants.filter(row => !active(row.status)).length,
+    newThisPeriod: merchants.filter(row => String(row.created_at_platform || '').startsWith(monthPrefix)).length,
+    recentFiveDays: merchants.filter(row => {
+      const stamp = asTime(row.last_shipment_at);
+      return stamp != null && stamp >= referenceAt - 5 * 86_400_000 && stamp <= referenceAt;
+    }).length,
+    neverShipped: merchants.filter(row => n(row.shipment_count) === 0 || !row.last_shipment_at).length,
+    stoppedWithWallet: stoppedWithWallet.length,
+    stoppedWalletAmount: +stoppedWithWallet.reduce((sum, row) => sum + n(row.wallet_balance), 0).toFixed(2),
+    paidThisPeriod: paidThisPeriod.size,
+  };
+
+  const agingSource = customerMoney?.aging || {};
+  const openingBalance = n(agingSource.opening_balance);
+  const customerAging = {
+    b0_15: n(agingSource.b0_15), b16_30: n(agingSource.b16_30),
+    b31_60: n(agingSource.b31_60), b61_90: n(agingSource.b61_90),
+    b90p: Math.max(0, n(agingSource.b90p) - openingBalance), openingBalanceExcluded: openingBalance,
+  };
+  customerAging.total = +(customerAging.b0_15 + customerAging.b16_30 + customerAging.b31_60
+    + customerAging.b61_90 + customerAging.b90p).toFixed(2);
+
+  const collectibleAr = Number(customerMoney?.outstanding);
+  const invoiceCollectibleAr = Number.isFinite(collectibleAr)
+    ? Math.max(0, collectibleAr - openingBalance) : null;
+  const totalAR = Number.isFinite(invoiceCollectibleAr) ? invoiceCollectibleAr : n(workingCapital.total_ar);
+  const totalAP = n(workingCapital.total_ap);
+  const bank = bankBalance?.balance ?? null;
+  const cashPosition = {
+    bankBalance: bank, bankBalanceComplete: bankBalance?.complete ?? false,
+    bankKnownBalance: bankBalance?.knownBalance ?? null,
+    bankExpectedCount: bankBalance?.expectedCount || bankBalance?.banks?.length || 0,
+    bankMissingAccounts: bankBalance?.missingBanks || [], bankUpdated: bankBalance?.asOf || null,
+    bankSource: bankBalance?.source || null, bankNotes: bankBalance?.notes || null,
+    bankAccounts: bankBalance?.banks || [],
+    zohoBankAccounts: (zohoFinancial?.banks || []).filter(b => b.display_kind === 'bank' && b.internal_bank_name).map(b => ({
+      id: b.zoho_id, name: b.account_name, internalName: b.internal_bank_name,
+      bookBalance: n(b.book_balance), statementBalance: b.internal_balance == null ? null : Number(b.internal_balance),
+      difference: b.internal_vs_book == null ? null : Number(b.internal_vs_book), asOf: b.internal_as_of || null,
+    })),
+    totalAR,
+    grossAR: Number.isFinite(Number(customerMoney?.gross_outstanding))
+      ? Number(customerMoney.gross_outstanding)
+      : Number.isFinite(Number(zohoDash?.open_ar)) ? Number(zohoDash.open_ar) : totalAR,
+    customerCreditOffset: n(customerMoney?.credit_offset), openingBalanceExcluded: openingBalance,
+    arSource: Number.isFinite(invoiceCollectibleAr) ? 'zoho' : 'snapshot', totalAP,
+    netNoBank: +(totalAR - totalAP).toFixed(2), net: bank == null ? null : +(bank + totalAR - totalAP).toFixed(2),
+  };
+
+  return {
+    overview: {
+      period: payload.period, prevPeriod: payload.prevPeriod, loadedAt: checkedAt, sourceStates, closeReadiness,
+      customerDecisions, customerDecisionFresh, merchantPulse, customerAging, cashPosition,
+      invoiceOperations: {
+        draftCount: n(zohoDash?.draft_cnt), draftTotal: n(zohoDash?.draft_total),
+        zatcaTodayCount: n(zatca?.today_count), zatcaTodayTotal: n(zatca?.today_total),
+        zatcaOverdueCount: n(zatca?.overdue_count), zatcaOverdueTotal: n(zatca?.overdue_total),
+        zatcaNeedsLiveCheck: n(zatca?.needs_live_check_count), zatcaAvailable: true,
+      },
+      lamhaUploads: {
+        merchants: { uploadedAt: merchantSnapshot?.snapshot?.uploadedAt || null, rowCount: merchants.length, available: !!merchantSnapshot?.snapshot },
+        balance: { uploadedAt: source.lamhaBalance?.uploaded_at || null, fileName: source.lamhaBalance?.file_name || null,
+          rowCount: source.lamhaBalance?.row_count ?? null, available: source.lamhaBalance != null },
+      },
+      readPath: 'overview_core',
+    },
+    vat: mapCoreVat(source.vat), readPath: 'overview_core',
+  };
+}
+
+export async function loadOverviewCore({ period = null, topN = 5, client = supabase } = {}) {
+  const { data, error } = await client.rpc('overview_core', {
+    p_period: period || currentPeriod(), p_top_n: Math.min(20, Math.max(1, Number(topN) || 5)),
+  });
+  if (error) throw error;
+  return adaptOverviewCore(data);
+}
+
+export async function loadOverviewRead({ period = null, topN = 5, mode = OVERVIEW_READ_MODE, client = supabase } = {}) {
+  if (mode !== 'legacy') {
+    try { return await loadOverviewCore({ period, topN, client }); }
+    catch (error) {
+      console.warn('[overview-read] core unavailable; using legacy fallback', error?.code || error?.message);
+    }
+  }
+  const [{ loadCurrentVat }, overview] = await Promise.all([
+    import('./zohoReportsService.js'), loadOverview({ period, topN }),
+  ]);
+  const vat = await withSourceTimeout(loadCurrentVat(), 5_000, 'ضريبة زوهو').catch(() => null);
+  return { overview, vat, readPath: 'legacy' };
+}
+
+export function compareOverviewDecisionSurface(legacy, core) {
+  const normalizeClose = value => value ? ({
+    ready: !!value.ready,
+    completed: Number(value.completed) || 0,
+    required: Number(value.required) || 0,
+    blockers: (value.blockers || []).map(row => ({ source: row.source, reason: row.reason })),
+  }) : null;
+  const normalizeVat = value => value ? ({
+    quarter: value.quarter, from: value.from, to: value.to,
+    outputTax: value.outputTax, inputTax: value.inputTax, netDue: value.netDue,
+    sales: value.sales, isClosed: value.isClosed, fetchedAt: value.fetchedAt,
+    daysLeft: value.daysLeft, prevNetDue: value.prevNetDue, isStale: value.isStale,
+  }) : null;
+  const pick = result => ({
+    customerDecisions: result?.overview?.customerDecisions,
+    customerDecisionFresh: result?.overview?.customerDecisionFresh,
+    invoiceOperations: result?.overview?.invoiceOperations,
+    merchantPulse: result?.overview?.merchantPulse,
+    customerAging: result?.overview?.customerAging,
+    cashPosition: result?.overview?.cashPosition,
+    closeReadiness: normalizeClose(result?.overview?.closeReadiness),
+    lamhaUploads: result?.overview?.lamhaUploads,
+    sourceStatus: Object.fromEntries(Object.entries(result?.overview?.sourceStates || {}).map(([key, value]) => [key, value?.status])),
+    vat: normalizeVat(result?.vat),
+  });
+  const a = pick(legacy), b = pick(core);
+  return JSON.stringify(a) === JSON.stringify(b) ? [] : [{ field: 'decision_surface', legacy: a, core: b }];
 }

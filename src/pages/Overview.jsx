@@ -32,7 +32,7 @@ import {
   Card, Btn, Spinner, Empty, Modal, toast, PageHeader, WorkspaceLoadingState,
 } from '../components/UI.jsx';
 import {
-  loadOverview, currentPeriod, prevPeriodOf, withSourceTimeout,
+  loadOverviewRead, currentPeriod, prevPeriodOf,
 } from '../lib/overviewService.js';
 import { scoreLevel } from '../lib/carrierScore.js';
 import TeamReadinessPanel from '../components/TeamReadinessPanel.jsx';
@@ -94,16 +94,9 @@ export default function Overview({ carriers = [], isActive = true }) {
     setLoading(true);
     setLoadError(null);
     try {
-      const [result, vatResult] = await Promise.all([
-        loadOverview({ period, topN: 5 }),
-        withSourceTimeout(
-          import('../lib/zohoReportsService.js').then(m => m.loadCurrentVat()),
-          5_000,
-          'ضريبة زوهو',
-        ).catch(() => null),
-      ]);
-      setData(result);
-      setVat(vatResult);
+      const result = await loadOverviewRead({ period, topN: 5 });
+      setData(result.overview);
+      setVat(result.vat);
     } catch (e) {
       setLoadError(e);
       toast(`فشل التحميل: ${e.message}`, 'error');
