@@ -46,6 +46,7 @@ export default function AgingOperationsQueue({
   rows = [], totalRows = 0, totalAmount = 0, filters, onFilter,
   assignees = [], selected = new Set(), onToggle, onTogglePage, onToggleAll,
   allResultsSelected = false,
+  selectedCount = selected.size,
   page = 1, onPage, onOpen, onInvoices, onBulk,
   reconciliation, sourceHealthy = true, sourceUpdatedAt,
 }) {
@@ -126,8 +127,8 @@ export default function AgingOperationsQueue({
       <button type="button" onClick={() => onToggleAll(false)}>إلغاء تحديد الكل</button>
     </div> : null}
 
-    {selected.size ? <div className="aoq-bulk" role="toolbar" aria-label="إجراءات جماعية">
-      <strong>{selected.size} متجر محدد</strong>
+    {selectedCount ? <div className="aoq-bulk" role="toolbar" aria-label="إجراءات جماعية">
+      <strong>{selectedCount} متجر محدد</strong>
       <Btn size="sm" variant="ghost" icon={<UserRoundCog size={14}/>} onClick={() => onBulk('assign')}>إسناد</Btn>
       <Btn size="sm" variant="ghost" icon={<CalendarClock size={14}/>} onClick={() => onBulk('followup')}>متابعة</Btn>
       <Btn size="sm" variant="accent" icon={<Megaphone size={14}/>} onClick={() => onBulk('campaign')}>Draft حملة</Btn>

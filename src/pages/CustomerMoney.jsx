@@ -41,6 +41,9 @@ import './CustomerFinanceCenter.css';
 import useMobileLayout from '../lib/useMobileLayout.js';
 import { useWindowedRows } from '../hooks/useWindowedRows.js';
 import { ProgressiveListFooter } from '../components/MobileUX.jsx';
+import {
+  RECEIVABLES_READ_MODE, loadAllCustomerReceivablesRows, loadCustomerReceivablesWorkQueue,
+} from '../lib/customerReceivablesRead.js';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -80,6 +83,11 @@ export default function CustomerMoney({ isActive = true }) {
   const [agingLinesError, setAgingLinesError] = useState(false);
   const [agingLinesReady, setAgingLinesReady] = useState(false);
   const [collectionAssignees, setCollectionAssignees] = useState([]);
+  const [receivablesPage, setReceivablesPage] = useState(null);
+  const [centralReadActive, setCentralReadActive] = useState(false);
+  const [allResultsSelected, setAllResultsSelected] = useState(false);
+  const [bulkRowsOverride, setBulkRowsOverride] = useState(null);
+  const [waBulkRecipients, setWaBulkRecipients] = useState(null);
   const [growthPulse, setGrowthPulse] = useState({ status: 'idle', data: null, error: null });
   const [q, setQ] = useState(() => searchParams.get('search') || searchParams.get('customer') || searchParams.get('q') || '');
   const [buckets, setBuckets] = useState(() => {
@@ -121,6 +129,7 @@ export default function CustomerMoney({ isActive = true }) {
   const [bulkOpen, setBulkOpen] = useState(false);   // مودال «طبّق للكل»
   const [lamhaPolicyOpen, setLamhaPolicyOpen] = useState(false);
   const dashboardRefreshInFlightRef = useRef(false);
+  const dashboardRequestIdRef = useRef(0);
   const lastDashboardRefreshAtRef = useRef(0);
   const resetCredits = () => {
     setCredits(null);
@@ -149,11 +158,63 @@ export default function CustomerMoney({ isActive = true }) {
   };
 
   const refresh = async () => {
-    if (dashboardRefreshInFlightRef.current) return;
+    const centralMode = RECEIVABLES_READ_MODE !== 'legacy';
+    if (!centralMode && dashboardRefreshInFlightRef.current) return;
+    const requestId = ++dashboardRequestIdRef.current;
     dashboardRefreshInFlightRef.current = true;
     setBusy(true);
     setLoadError(null);
     try {
+      if (RECEIVABLES_READ_MODE !== 'legacy') {
+        try {
+          const allowed = new Set(BUCKETS.map(bucket => bucket.key));
+          const aging = (searchParams.get('aging') || '').split(',').filter(key => allowed.has(key));
+          const central = await loadCustomerReceivablesWorkQueue({
+            aging,
+            search: searchParams.get('search') || searchParams.get('customer') || searchParams.get('q') || '',
+            status: searchParams.get('status') || 'all',
+            owner: searchParams.get('owner') || 'all',
+            collection: searchParams.get('collection') || 'all',
+            promise: searchParams.get('promise') || 'all',
+            contact: searchParams.get('contact') || 'all',
+            action: searchParams.get('action') || 'all',
+            source: searchParams.get('source') || 'all',
+            minAmount: searchParams.get('minAmount') || '',
+            maxAmount: searchParams.get('maxAmount') || '',
+            sort: searchParams.get('sort') || 'amount',
+            page: searchParams.get('page') || 1,
+            pageSize: AGING_PAGE_SIZE,
+          });
+          if (requestId !== dashboardRequestIdRef.current) return;
+          setD(central.dashboard);
+          setReceivablesPage(central.page);
+          setCollectionAssignees(central.assignees);
+          setCollectionTasks(central.page.rows.flatMap(row => row.task ? [row.task] : []));
+          setCollectionTaskError(false);
+          setAgingLines([]);
+          setAgingLinesReady(false);
+          setAgingLinesError(false);
+          const communication = new Map();
+          for (const row of central.page.rows) {
+            const phone = normalizeSaudiPhone(row.customer?.phone);
+            if (phone && row.communication) communication.set(phone, {
+              lastSentAt: row.lastCommunicationAt,
+              status: row.communication.status,
+              delivered: !!row.communication.delivered,
+              read: !!row.communication.read,
+              replied: !!row.communication.replied,
+            });
+          }
+          setWaStatus(communication);
+          setViewUpdatedAt(central.generatedAt || new Date().toISOString());
+          setCentralReadActive(true);
+          return;
+        } catch (centralError) {
+          // The existing path remains a live, immediate fallback. A central
+          // read failure must never turn a valid receivables page into zeroes.
+          console.warn('[receivables-read] central path unavailable; using legacy fallback', centralError?.code || centralError?.message);
+        }
+      }
       const canViewTasks = can('collections.view');
       const canReadAssignees = can('collections.assign');
       const [dashboard, tasks, assignees, collectibleLines] = await Promise.all([
@@ -162,7 +223,10 @@ export default function CustomerMoney({ isActive = true }) {
         canReadAssignees ? loadCollectionAssignmentCandidates().catch(() => []) : Promise.resolve([]),
         loadCustomerCollectibleLines().catch(() => null),
       ]);
+      if (requestId !== dashboardRequestIdRef.current) return;
       setD(dashboard);
+      setReceivablesPage(null);
+      setCentralReadActive(false);
       setViewUpdatedAt(new Date().toISOString());
       if (tasks !== null) setCollectionTasks(tasks);
       setCollectionTaskError(tasks === null);
@@ -173,12 +237,15 @@ export default function CustomerMoney({ isActive = true }) {
       }
       setAgingLinesError(collectibleLines === null);
     } catch (e) {
+      if (requestId !== dashboardRequestIdRef.current) return;
       setLoadError(e);
       toast(`فشل التحميل: ${e.message}`, 'error');
     } finally {
-      lastDashboardRefreshAtRef.current = Date.now();
-      dashboardRefreshInFlightRef.current = false;
-      setBusy(false);
+      if (requestId === dashboardRequestIdRef.current) {
+        lastDashboardRefreshAtRef.current = Date.now();
+        dashboardRefreshInFlightRef.current = false;
+        setBusy(false);
+      }
     }
   };
   const handleSyncZoho = async () => {
@@ -201,9 +268,10 @@ export default function CustomerMoney({ isActive = true }) {
   // بطاقة العميل تجمع زوهو مع أحدث snapshot للمتاجر. أبقِها حديثة عند
   // الرجوع للتبويب/المتصفح، ومع إعادة تحقق خفيفة أثناء بقاء الصفحة مفتوحة؛
   // وإلا قد تظل حالة «نشط» من snapshot سابق بعد رفع ملف متاجر أحدث.
+  const receivablesFilterKey = searchParams.toString();
   useEffect(() => {
     if (!isActive) return undefined;
-    refresh();
+    const initialTimer = window.setTimeout(refresh, RECEIVABLES_READ_MODE === 'legacy' ? 0 : 180);
     const refreshIfStale = () => {
       if (document.visibilityState === 'hidden') return;
       if (Date.now() - lastDashboardRefreshAtRef.current < 60_000) return;
@@ -213,20 +281,21 @@ export default function CustomerMoney({ isActive = true }) {
     document.addEventListener('visibilitychange', refreshIfStale);
     const intervalId = window.setInterval(refreshIfStale, 120_000);
     return () => {
+      window.clearTimeout(initialTimer);
       window.removeEventListener('focus', refreshIfStale);
       document.removeEventListener('visibilitychange', refreshIfStale);
       window.clearInterval(intervalId);
     };
-  }, [isActive]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isActive, receivablesFilterKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // حالة آخر حملة واتساب لكل عميل (تحميل كسول + بعد كل إرسال)
   const loadWaStatus = () => loadWhatsAppCampaignStatus().then(setWaStatus).catch(() => {});
-  useEffect(() => { if (isActive) loadWaStatus(); }, [isActive]); // eslint-disable-line
+  useEffect(() => { if (isActive && !centralReadActive) loadWaStatus(); }, [isActive, centralReadActive]); // eslint-disable-line
   // مَن وصله قالب المطالبة (sadad) يوماً — لفلتر «لم تصلهم مطالبة» (فحص الوكلاء:
   // 29 من 40 مديناً بهاتف لم يُطالَبوا قط). يُعاد تحميله بعد كل إرسال.
   const [sadadSet, setSadadSet] = useState(() => new Set());
   const [unclaimedOnly, setUnclaimedOnly] = useState(() => searchParams.get('source') === 'unclaimed');
   const loadSadad = () => loadTemplateSentSet('sadad').then(setSadadSet).catch(() => {});
-  useEffect(() => { if (isActive) loadSadad(); }, [isActive]); // eslint-disable-line
+  useEffect(() => { if (isActive && !centralReadActive) loadSadad(); }, [isActive, centralReadActive]); // eslint-disable-line
 
   // Progressive load: customer money is the primary content. Platform
   // activity starts only after that content is available, avoiding another
@@ -281,6 +350,7 @@ export default function CustomerMoney({ isActive = true }) {
     }
     const name = (c.storeName || c.name || '').trim();
     const amt = bandAmt(c);
+    setWaBulkRecipients(null);
     setWaSingle({
       to: normalizeSaudiPhone(c.phone), name, amount: amt, count: c.invCnt,
       vars: [name, Number(amt).toLocaleString('en-US', { maximumFractionDigits: 2 }), String(c.invCnt)],
@@ -291,6 +361,7 @@ export default function CustomerMoney({ isActive = true }) {
   // أرصدة دائنة غير مستخدمة (تحميل كسول مرة واحدة)
   useEffect(() => {
     if (!isActive || credits != null || creditsState.status === 'loading' || creditsState.status === 'unavailable') return;
+    if (centralReadActive && !creditsOpen && !bulkOpen && !applyTarget) return;
     setCreditsState({ status: 'loading', error: null });
     loadZohoUnusedCredits()
       .then((result) => {
@@ -301,7 +372,7 @@ export default function CustomerMoney({ isActive = true }) {
         setCredits(null);
         setCreditsState({ status: 'unavailable', error: error?.message || 'تعذرت القراءة' });
       });
-  }, [isActive, credits, creditsState.status]);
+  }, [isActive, credits, creditsState.status, centralReadActive, creditsOpen, bulkOpen, applyTarget]);
   // منح صلاحية الكتابة (invoices.UPDATE) لمرة واحدة — يفتح موافقة زوهو
   const grantWriteAccess = async () => {
     const r = await getZohoWriteAuthUrl();
@@ -311,7 +382,7 @@ export default function CustomerMoney({ isActive = true }) {
     } else toast(`تعذّر فتح الموافقة: ${r?.error || 'غير معروف'}`, 'error');
   };
 
-  const filtered = useMemo(() => {
+  const legacyFiltered = useMemo(() => {
     if (!d) return [];
     let list = d.customers;
     if (buckets.size) list = list.filter(c => bandAmt(c) > 0.5);
@@ -323,7 +394,9 @@ export default function CustomerMoney({ isActive = true }) {
       [c.name, c.storeName, c.phone].some(v => String(v ?? '').toLowerCase().includes(s)));
     return [...list].sort((a, b) => sortBy === 'oldest' ? b.oldestDays - a.oldestDays : bandAmt(b) - bandAmt(a));
   }, [d, q, buckets, platformFilter, sortBy, unclaimedOnly, sadadSet, campaignProjection, agingLinesReady]);  // eslint-disable-line
-  const filteredTotal = useMemo(() => +filtered.reduce((s, c) => s + bandAmt(c), 0).toFixed(2), [filtered, buckets]);  // eslint-disable-line
+  const filtered = centralReadActive ? (d?.customers || []) : legacyFiltered;
+  const pageFilteredTotal = useMemo(() => +filtered.reduce((s, c) => s + bandAmt(c), 0).toFixed(2), [filtered, buckets]);  // eslint-disable-line
+  const filteredTotal = centralReadActive ? Number(receivablesPage?.totalAmount || 0) : pageFilteredTotal;
   const isMobile = useMobileLayout();
   const {
     visible: visibleCustomerRows,
@@ -360,18 +433,18 @@ export default function CustomerMoney({ isActive = true }) {
     sort: searchParams.get('sort') || 'amount',
     actionOnly: searchParams.get('action') === 'needed',
   }), [buckets, searchParams]);
-  const allAgingRows = useMemo(() => buildAgingRows({
+  const legacyAllAgingRows = useMemo(() => buildAgingRows({
     customers: d?.customers || [], lines: agingLines, buckets,
     taskByCustomer: collectionTaskByCustomer, assigneeById: collectionAssigneeById,
     communicationByPhone: waStatus,
   }), [d, agingLines, buckets, collectionTaskByCustomer, collectionAssigneeById, waStatus]);
-  const agingRows = useMemo(() => {
+  const legacyAgingRows = useMemo(() => {
     const today = new Date().toLocaleDateString('en-CA');
     const now = Date.now();
     const min = agingFilterState.minAmount === '' ? null : Number(agingFilterState.minAmount);
     const max = agingFilterState.maxAmount === '' ? null : Number(agingFilterState.maxAmount);
     const needle = agingFilterState.search.trim().toLowerCase();
-    const list = allAgingRows.filter(row => {
+    const list = legacyAllAgingRows.filter(row => {
       const { customer, task, summary } = row;
       if (needle && ![customer.storeName, customer.storeId, customer.zohoId, customer.name]
         .some(value => String(value || '').toLowerCase().includes(needle))) return false;
@@ -401,29 +474,38 @@ export default function CustomerMoney({ isActive = true }) {
       if (agingFilterState.sort === 'last_contact') return String(b.lastCommunicationAt || '').localeCompare(String(a.lastCommunicationAt || ''));
       return b.summary.amount - a.summary.amount;
     });
-  }, [allAgingRows, agingFilterState]);
+  }, [legacyAllAgingRows, agingFilterState]);
+  const allAgingRows = centralReadActive ? (receivablesPage?.rows || []) : legacyAllAgingRows;
+  const agingRows = centralReadActive ? (receivablesPage?.rows || []) : legacyAgingRows;
   const agingPage = Math.max(1, Number(searchParams.get('page')) || 1);
-  const agingPageRows = useMemo(() => agingRows.slice((agingPage - 1) * AGING_PAGE_SIZE, agingPage * AGING_PAGE_SIZE), [agingRows, agingPage]);
-  const agingFilteredTotal = useMemo(() => +agingRows.reduce((sum, row) => sum + row.summary.amount, 0).toFixed(2), [agingRows]);
-  const agingDetailsTotal = useMemo(() => +allAgingRows.reduce((sum, row) => sum + row.summary.amount, 0).toFixed(2), [allAgingRows]);
+  const agingPageRows = useMemo(() => centralReadActive
+    ? agingRows
+    : agingRows.slice((agingPage - 1) * AGING_PAGE_SIZE, agingPage * AGING_PAGE_SIZE), [agingRows, agingPage, centralReadActive]);
+  const agingFilteredTotal = centralReadActive
+    ? Number(receivablesPage?.totalAmount || 0)
+    : +agingRows.reduce((sum, row) => sum + row.summary.amount, 0).toFixed(2);
   const agingDashboardTotal = useMemo(() => {
     if (!d) return 0;
     if (!buckets.size) return +Number(d.outstanding || 0).toFixed(2);
     return +[...buckets].reduce((sum, key) => sum + Number(campaignAging?.[key] || 0), 0).toFixed(2);
   }, [d, buckets, campaignAging]);
+  const agingDetailsTotal = centralReadActive
+    ? Number(receivablesPage?.sliceTotal || 0)
+    : +allAgingRows.reduce((sum, row) => sum + row.summary.amount, 0).toFixed(2);
   const agingReconciliation = useMemo(() => ({
     detailsTotal: agingDetailsTotal,
     dashboardTotal: agingDashboardTotal,
     ok: !agingLinesError && Math.abs(agingDetailsTotal - agingDashboardTotal) <= 0.01,
   }), [agingDetailsTotal, agingDashboardTotal, agingLinesError]);
   const platformCounts = useMemo(() => {
+    if (centralReadActive && d?.platformCounts) return d.platformCounts;
     const counts = { all: 0, active: 0, inactive: 0, unknown: 0 };
     for (const customer of d?.customers || []) {
       counts.all += 1;
       counts[platformStatusKey(customer)] += 1;
     }
     return counts;
-  }, [d]);
+  }, [d, centralReadActive]);
 
   useEffect(() => {
     const visibleKeys = new Set(agingRows.map(row => row.identityKey));
@@ -432,6 +514,11 @@ export default function CustomerMoney({ isActive = true }) {
       return next.size === current.size ? current : next;
     });
   }, [agingRows]);
+
+  useEffect(() => {
+    setAllResultsSelected(false);
+    setBulkRowsOverride(null);
+  }, [receivablesFilterKey]);
 
   const handleAgingFilter = (key, value) => {
     if (key === 'agingToggle') {
@@ -448,21 +535,27 @@ export default function CustomerMoney({ isActive = true }) {
     const urlKey = key === 'actionOnly' ? 'action' : key;
     updateUrlFilters({ [urlKey]: key === 'actionOnly' ? (value ? 'needed' : null) : value, page: null }, { replace: key === 'search' });
   };
-  const toggleAgingSelection = key => setSelectedAging(current => {
+  const toggleAgingSelection = key => {
+    setAllResultsSelected(false);
+    setSelectedAging(current => {
     const next = new Set(current);
     next.has(key) ? next.delete(key) : next.add(key);
     return next;
-  });
+    });
+  };
   const toggleAgingPage = checked => setSelectedAging(current => {
     if (!checked) return new Set();
     const next = new Set(current);
     agingPageRows.forEach(row => next.add(row.identityKey));
     return next;
   });
-  const allAgingSelected = agingRows.length > 0 && agingRows.every(row => selectedAging.has(row.identityKey));
-  const toggleAllAgingResults = checked => setSelectedAging(
-    checked ? new Set(agingRows.map(row => row.identityKey)) : new Set(),
-  );
+  const allAgingSelected = centralReadActive
+    ? allResultsSelected
+    : agingRows.length > 0 && agingRows.every(row => selectedAging.has(row.identityKey));
+  const toggleAllAgingResults = checked => {
+    setAllResultsSelected(checked);
+    setSelectedAging(checked ? new Set(agingRows.map(row => row.identityKey)) : new Set());
+  };
   const openStoreFromAging = (row, invoice = false) => {
     if (!row.customer.storeId) {
       toast('لا يمكن فتح Store 360 قبل وجود Store ID مؤكد لهذا الحساب المالي.', 'info');
@@ -480,7 +573,12 @@ export default function CustomerMoney({ isActive = true }) {
     if (invoice) params.set('invoice', 'bucket');
     navigate(`/customer-360?${params.toString()}`);
   };
-  const selectedAgingRows = useMemo(() => agingRows.filter(row => selectedAging.has(row.identityKey)), [agingRows, selectedAging]);
+  const selectedAgingRows = useMemo(() => {
+    const sourceRows = bulkRowsOverride || agingRows;
+    return allResultsSelected && bulkRowsOverride
+      ? sourceRows
+      : sourceRows.filter(row => selectedAging.has(row.identityKey));
+  }, [agingRows, selectedAging, bulkRowsOverride, allResultsSelected]);
   const bulkPermissions = useMemo(() => ({
     canAssign: can('collections.assign'), canCampaign: can('campaigns.send'), canIvr: can('campaigns.ivr'),
   }), [can]);
@@ -489,13 +587,28 @@ export default function CustomerMoney({ isActive = true }) {
     [selectedAgingRows, bulkAction, bulkPermissions],
   );
   const eligibleBulkRows = useMemo(() => bulkReview.filter(row => row.eligible), [bulkReview]);
-  const openBulkReview = action => {
-    if (!selectedAging.size) return;
+  const openBulkReview = async action => {
+    if (!selectedAging.size && !allResultsSelected) return;
     if (!agingReconciliation.ok && action !== 'export') {
       toast('توقفت الإجراءات: مبلغ الشريحة لا يطابق تفاصيلها بالهللة.', 'error');
       return;
     }
     setBulkAssignee('');
+    if (centralReadActive && allResultsSelected) {
+      try {
+        const rows = await loadAllCustomerReceivablesRows({
+          ...agingFilterState,
+          status: platformFilter,
+          action: agingFilterState.actionOnly ? 'needed' : 'all',
+          source: unclaimedOnly ? 'unclaimed' : 'all',
+          page: 1,
+        });
+        setBulkRowsOverride(rows);
+      } catch (error) {
+        toast(`تعذر تجهيز كل النتائج: ${error.message}`, 'error');
+        return;
+      }
+    }
     setBulkAction(action);
   };
   const handoffContext = (channel, rows) => ({
@@ -517,18 +630,18 @@ export default function CustomerMoney({ isActive = true }) {
       try {
         const result = await assignCollectionTasks(eligibleBulkRows.map(row => row.task.id), bulkAssignee);
         toast(`أُسندت ${result.updated || 0} مهمة تحصيل`, 'success');
-        setBulkAction(null); setSelectedAging(new Set()); await refresh();
+        setBulkAction(null); setBulkRowsOverride(null); setAllResultsSelected(false); setSelectedAging(new Set()); await refresh();
       } catch (error) { toast(`تعذر الإسناد: ${error.message}`, 'error'); }
       return;
     }
     if (bulkAction === 'export') {
       await exportXlsx(eligibleBulkRows.map(row => row.customer), 'Aging_المحدد');
-      setBulkAction(null);
+      setBulkAction(null); setBulkRowsOverride(null);
       return;
     }
     const context = handoffContext(bulkAction, eligibleBulkRows);
     const token = saveAudienceHandoff(context);
-    setBulkAction(null);
+    setBulkAction(null); setBulkRowsOverride(null);
     if (bulkAction === 'followup') {
       navigate(`/collections?view=queue&batchContext=${encodeURIComponent(token)}&returnTo=${encodeURIComponent(context.returnTo)}`);
       return;
@@ -538,7 +651,7 @@ export default function CustomerMoney({ isActive = true }) {
 
   // مرّر كل نتائج الفلتر إلى نافذة الحملة، بما فيها الصف بلا هاتف. نافذة
   // الإرسال هي بوابة الأهلية الوحيدة وتشرح سبب كل استبعاد بدل إسقاطه صامتاً.
-  const waRecipients = useMemo(() => filtered
+  const pageWaRecipients = useMemo(() => filtered
     .filter(c => bandAmt(c) > 0.5)
     .map(c => {
       const name = (c.storeName || c.name || '').trim();
@@ -550,14 +663,45 @@ export default function CustomerMoney({ isActive = true }) {
         fields: collectionFields(c, amt),
       };
     }), [filtered, buckets, campaignProjection, agingLinesReady]);  // eslint-disable-line
+  const waRecipients = waBulkRecipients || pageWaRecipients;
 
-  const openFocusedCampaign = () => {
+  const openFocusedCampaign = async () => {
     if (!buckets.size) {
       document.getElementById('collection-campaign-segments')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       toast('اختر شريحة فواتير متأخرة أو الرصيد الافتتاحي أولاً حتى تكون الحملة مركزة.', 'info');
       return;
     }
-    if (waRecipients.length) setWaOpen(true);
+    if (centralReadActive) {
+      try {
+        const rows = await loadAllCustomerReceivablesRows({
+          ...agingFilterState,
+          status: platformFilter,
+          action: agingFilterState.actionOnly ? 'needed' : 'all',
+          source: unclaimedOnly ? 'unclaimed' : 'all',
+          page: 1,
+        });
+        const recipients = rows.map(row => {
+          const c = row.customer;
+          const name = (c.storeName || c.name || '').trim();
+          const amount = Number(row.summary?.amount || 0);
+          return {
+            to: normalizeSaudiPhone(c.phone), name, storeId: c.storeId || null,
+            amount, count: row.summary?.invoiceCount || 0,
+            financialHold: !!c.balanceSyncIssue,
+            vars: [name, amount.toLocaleString('en-US', { maximumFractionDigits: 2 }), String(row.summary?.invoiceCount || 0)],
+            fields: collectionFields(c, amount),
+          };
+        }).filter(item => item.amount > 0.5);
+        setWaBulkRecipients(recipients);
+        if (recipients.length) setWaOpen(true);
+        else toast('لا عملاء مؤهلين في الشريحة المختارة', 'info');
+      } catch (error) {
+        toast(`تعذر تجهيز جمهور الحملة: ${error.message}`, 'error');
+      }
+      return;
+    }
+    setWaBulkRecipients(null);
+    if (pageWaRecipients.length) setWaOpen(true);
     else toast('لا عملاء مؤهلين في الشريحة المختارة', 'info');
   };
 
@@ -712,7 +856,7 @@ export default function CustomerMoney({ isActive = true }) {
             <div>
               <strong style={{ display: 'block', fontSize: 11.5 }}>المحدد: {campaignBucketLabel(buckets)}</strong>
               <span style={{ display: 'block', marginTop: 3, color: 'var(--muted)', fontSize: 10.5 }}>
-                {filtered.length} عميل · {fmt(filteredTotal)} ر.س من الشرائح المختارة فقط
+                {centralReadActive ? Number(receivablesPage?.totalRows || 0) : filtered.length} عميل · {fmt(filteredTotal)} ر.س من الشرائح المختارة فقط
               </span>
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -774,7 +918,7 @@ export default function CustomerMoney({ isActive = true }) {
 
       <AgingOperationsQueue
         rows={agingPageRows}
-        totalRows={agingRows.length}
+        totalRows={centralReadActive ? Number(receivablesPage?.totalRows || 0) : agingRows.length}
         totalAmount={agingFilteredTotal}
         filters={agingFilterState}
         onFilter={handleAgingFilter}
@@ -784,13 +928,14 @@ export default function CustomerMoney({ isActive = true }) {
         onTogglePage={toggleAgingPage}
         onToggleAll={toggleAllAgingResults}
         allResultsSelected={allAgingSelected}
+        selectedCount={allResultsSelected ? Number(receivablesPage?.totalRows || agingRows.length) : selectedAging.size}
         page={agingPage}
         onPage={(value) => updateUrlFilters({ page: value <= 1 ? null : value })}
         onOpen={row => openStoreFromAging(row, false)}
         onInvoices={row => openStoreFromAging(row, true)}
         onBulk={openBulkReview}
         reconciliation={agingReconciliation}
-        sourceHealthy={!agingLinesError && !loadError}
+        sourceHealthy={centralReadActive || (!agingLinesError && !loadError)}
         sourceUpdatedAt={viewUpdatedAt}
         campaignPanel={campaignSegmentsPanel}
       />
@@ -808,7 +953,7 @@ export default function CustomerMoney({ isActive = true }) {
 
       <DataConfidenceBar
         active={isActive}
-        sourceLabel="Zoho Books API"
+        sourceLabel={centralReadActive ? 'المرآة المحلية لـ Zoho Books' : 'Zoho Books API'}
         viewUpdatedAt={viewUpdatedAt}
         canSync={can?.('money.pnl')}
         syncing={syncingZoho}
@@ -1070,7 +1215,7 @@ export default function CustomerMoney({ isActive = true }) {
         </select>
         {/* «لم تصلهم مطالبة» — مدينون بهاتف لم يصلهم قالب sadad قط (سدّ فجوة الـ29) */}
         {(() => {
-          const unclaimedCount = (d?.customers || []).filter(c =>
+          const unclaimedCount = centralReadActive ? Number(d?.unclaimedCount || 0) : (d?.customers || []).filter(c =>
             c.phone && (c.owed || 0) > 0.5 && !sadadSet.has(normalizeSaudiPhone(c.phone))).length;
           return (
             <Btn size="sm" variant={unclaimedOnly ? 'primary' : 'outline'}
@@ -1088,7 +1233,7 @@ export default function CustomerMoney({ isActive = true }) {
         <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={() => exportXlsx(filtered)} disabled={!filtered.length}>تصدير</Btn>
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 10 }}>
-        عرض <b style={{ color: 'var(--text)' }}>{filtered.length}</b> من {d.customers.length} عميلاً
+        عرض <b style={{ color: 'var(--text)' }}>{centralReadActive ? Number(receivablesPage?.totalRows || 0) : filtered.length}</b> من {centralReadActive ? Number(d?.platformCounts?.all || 0) : d.customers.length} عميلاً
         {platformFilter !== 'all' ? ` — حالة المنصّة: ${
           platformFilter === 'active' ? 'نشط' : platformFilter === 'inactive' ? 'غير نشط' : 'غير متوفرة'
         }` : ''}
@@ -1118,7 +1263,7 @@ export default function CustomerMoney({ isActive = true }) {
       </details>
 
       {bulkAction && (
-        <Modal title={{ assign: 'مراجعة الإسناد الجماعي', followup: 'مراجعة قائمة المتابعة', campaign: 'مراجعة Draft الحملة', ivr: 'مراجعة جمهور IVR', export: 'مراجعة التصدير' }[bulkAction]} onClose={() => setBulkAction(null)} width={680}>
+        <Modal title={{ assign: 'مراجعة الإسناد الجماعي', followup: 'مراجعة قائمة المتابعة', campaign: 'مراجعة Draft الحملة', ivr: 'مراجعة جمهور IVR', export: 'مراجعة التصدير' }[bulkAction]} onClose={() => { setBulkAction(null); setBulkRowsOverride(null); }} width={680}>
           <div className="aging-bulk-review">
             <div className="aging-bulk-review__equation">
               <div><span>المحدد</span><b>{bulkReview.length}</b></div><i>−</i>
@@ -1149,7 +1294,7 @@ export default function CustomerMoney({ isActive = true }) {
       )}
 
       <WhatsAppSendModal open={waOpen}
-        onClose={() => { setWaOpen(false); setWaSingle(null); }}
+        onClose={() => { setWaOpen(false); setWaSingle(null); setWaBulkRecipients(null); }}
         recipients={waOpen ? (waSingle ? [waSingle] : waRecipients) : []}
         bucketLabel={waSingle ? `العميل ${waSingle.name}` : (buckets.size ? `شريحة ${campaignBucketLabel(buckets)}` : 'تحصيل العملاء')}
         onSent={() => { loadWaStatus(); loadSadad(); }}/>
