@@ -525,7 +525,11 @@ export default function Store360Page({ identity }) {
 
   const loadCore = useCallback(async () => {
     setLoading(true); setCoreError(null); setCore(null); setWork(null); setViewData({}); setShipmentPage(0);
-    try { setCore(await loadStore360Core(identity)); }
+    try {
+      const result = await loadStore360Core(identity);
+      setCore(result);
+      setWork(result.prefetchedWork || null);
+    }
     catch (error) { setCoreError(error); }
     setLoading(false);
   }, [identity]);
@@ -538,7 +542,9 @@ export default function Store360Page({ identity }) {
     catch { setWork(null); return null; }
     finally { setWorkLoading(false); }
   }, [core]);
-  useEffect(() => { if (core) loadWork(); }, [core, loadWork]);
+  useEffect(() => {
+    if (core && (!core.prefetchedWork || view === 'work')) loadWork();
+  }, [core, loadWork, view]);
 
   const loadView = useCallback(async (target, { force = false, page = shipmentPage } = {}) => {
     if (!core || target === 'overview' || (viewData[target] && !force && target !== 'shipments')) return;

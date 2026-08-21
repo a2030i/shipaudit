@@ -6,6 +6,9 @@ import { listTasks } from './collectionsService.js';
 import { loadPlatformSalesAccount } from './retargetingService.js';
 import { listInteractions } from './customerInteractionsService.js';
 import { normalizeStoreTimeline } from './store360Timeline.js';
+import {
+  loadStore360CoreRpc, scheduleStore360CoreShadow, STORE_360_CORE_READ_MODE,
+} from './store360Shadow.js';
 
 const normalizePhone = (raw) => {
   let value = String(raw || '').replace(/\D/g, '');
@@ -44,7 +47,7 @@ function resolveMerchant(identity, merchants, moneyRows) {
   return null;
 }
 
-export async function loadStore360Core(identity) {
+async function loadStore360CoreLegacy(identity, { shadow = true } = {}) {
   const [merchantResult, moneyResult, syncResult] = await Promise.allSettled([
     loadLatestMerchants(),
     loadCustomerMoneyDashboard(),
@@ -75,7 +78,7 @@ export async function loadStore360Core(identity) {
   const invoiceSync = syncRows.find(row => row.entity === 'invoices')?.last_sync || null;
   const paymentSync = syncRows.find(row => row.entity === 'customerpayments')?.last_sync || null;
 
-  return {
+  const core = {
     store: effectiveMerchant,
     customerName: directMoney?.name || null,
     financial: directMoney ? {
@@ -101,6 +104,23 @@ export async function loadStore360Core(identity) {
         : source('unavailable', 'دفعات Zoho Books', null, moneyResult.reason?.message || 'المصدر غير متاح'),
     },
   };
+  // Feature-gated shadow read. It is deliberately fire-and-forget: the visible
+  // result, loading state and errors continue to come exclusively from the
+  // established path until an explicit production cutover is approved.
+  if (shadow) scheduleStore360CoreShadow({ storeId: effectiveMerchant?.storeId, oldCore: core });
+  return core;
+}
+
+export async function loadStore360Core(identity) {
+  const storeId = String(identity || '').trim();
+  if (STORE_360_CORE_READ_MODE === 'core' && /^\d+$/.test(storeId)) {
+    try {
+      return await loadStore360CoreRpc(storeId);
+    } catch {
+      return loadStore360CoreLegacy(identity, { shadow: false });
+    }
+  }
+  return loadStore360CoreLegacy(identity);
 }
 
 export async function loadStore360Work({ phone, customerName }) {
