@@ -1,10 +1,30 @@
 import { supabase } from './supabase.js';
 
+const LAMHA_ERROR_LABELS = {
+  forbidden: 'هذا الإجراء متاح للمدير فقط',
+  LAMHA_EMPLOYEE_TOKEN_not_configured: 'توكن موظف لمحة غير مهيأ',
+  lamha_store_read_failed: 'تعذر قراءة حساب المتجر من لمحة قبل التنفيذ',
+  lamha_status_write_failed: 'رفضت لمحة تحديث حالة حساب المتجر',
+  lamha_status_verification_failed: 'أُرسل الطلب لكن لم تؤكد لمحة حالة الحساب الجديدة',
+  lamha_rate_limit_wait_timeout: 'تعذر تنفيذ الطلب ضمن حد لمحة الآمن؛ أعد المحاولة بعد قليل',
+};
+
+async function lamhaFunctionError(error) {
+  let payload = null;
+  if (typeof error?.context?.json === 'function') {
+    try { payload = await error.context.json(); } catch { /* response may not contain JSON */ }
+  }
+  const code = payload?.error;
+  const message = LAMHA_ERROR_LABELS[code] || payload?.message || error?.message || 'تعذر الوصول إلى لمحة';
+  const observed = payload?.observedStatus ? ` (الحالة المرصودة: ${payload.observedStatus})` : '';
+  return new Error(`${message}${observed}`);
+}
+
 async function callLamhaStoreStatus(action, storeId) {
   const id = Number(storeId);
   if (!Number.isSafeInteger(id) || id <= 0) throw new Error('رقم متجر لمحة غير صالح');
   const { data, error } = await supabase.functions.invoke('lamha-store-status', { body: { action, storeId: id } });
-  if (error) throw error;
+  if (error) throw await lamhaFunctionError(error);
   if (!data?.ok) throw new Error(data?.error || 'تعذر الوصول إلى حالة متجر لمحة');
   return data;
 }
@@ -23,7 +43,7 @@ async function callLamhaStoreBatch(action, storeIds) {
   const { data, error } = await supabase.functions.invoke('lamha-store-status', {
     body: { action: `batch-${action}`, storeIds: ids },
   });
-  if (error) throw error;
+  if (error) throw await lamhaFunctionError(error);
   if (!data || !Array.isArray(data.results)) throw new Error(data?.error || 'لم تصل نتيجة فحص متاجر لمحة');
   return data;
 }

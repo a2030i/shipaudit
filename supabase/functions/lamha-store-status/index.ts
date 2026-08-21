@@ -109,8 +109,10 @@ const hasOperationalField = (record: Record<string, unknown>) =>
   ['is_active', 'isActive', 'account_active', 'accountActive'].some(key => Object.hasOwn(record, key));
 
 // Lamha's employee API does not expose a separate operational flag. Shipment
-// creation follows the direct Lamha status only when it is exactly active or
-// inactive. Idle/stopped remain informational and never trigger an action.
+// creation can be read with certainty only when the direct Lamha status is
+// exactly active or inactive. Idle/stopped remain informational on reads, but
+// an explicit admin activate/deactivate command may still transition them to a
+// verifiable active/inactive state.
 export function storeSummary(payload: unknown, expectedStoreId: number | null = null) {
   const records = nestedRecords(payload);
   const identity = records.find(record => expectedStoreId != null && recordStoreId(record) === expectedStoreId)
@@ -188,15 +190,6 @@ async function processStore(
   }
 
   const desiredCanCreateShipments = action === 'activate';
-  if (before.store.canCreateShipments == null) {
-    return {
-      ok: false,
-      storeId,
-      error: 'lamha_status_not_actionable',
-      visualStatus: before.store.visualStatus,
-      visualStatusLabel: before.store.visualStatusLabel,
-    };
-  }
   if (before.store.canCreateShipments === desiredCanCreateShipments) {
     return { ok: true, changed: false, storeId, store: before.store };
   }
@@ -290,7 +283,7 @@ Deno.serve(async (req) => {
       return json(req, { ok: false, error: 'invalid_store_id' }, 400);
     }
     const result = await processStore(req, auth, employeeToken, storeId, action as 'get' | 'activate' | 'deactivate');
-    if (!result.ok) return json(req, result, result.error === 'lamha_status_not_actionable' ? 409 : 502);
+    if (!result.ok) return json(req, result, 502);
     return json(req, { ...result, source: 'Lamha Employee API (live)', rateLimitPerMinute: 30 });
   } catch (error) {
     return json(req, { ok: false, error: error instanceof Error ? error.message : String(error) }, 500);
