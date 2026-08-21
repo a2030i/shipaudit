@@ -80,15 +80,23 @@ export async function beginSyncRun(
   db: Db,
   triggerSource: 'manual' | 'cron' | 'full_rebuild',
   requestedBy?: string | null,
+  dedupeKey?: string | null,
 ) {
-  const runKey = crypto.randomUUID();
+  const runKey = dedupeKey || crypto.randomUUID();
   const { data, error } = await db.from('zoho_sync_runs').insert({
     run_key: runKey,
     trigger_source: triggerSource,
     requested_by: requestedBy || null,
-  }).select('id, run_key').single();
+  }).select('id, run_key, status, started_at, finished_at, results, api_calls, error').single();
+  if (error?.code === '23505' && dedupeKey) {
+    const { data: prior, error: readError } = await db.from('zoho_sync_runs')
+      .select('id, run_key, status, started_at, finished_at, results, api_calls, error')
+      .eq('run_key', dedupeKey).maybeSingle();
+    if (readError) throw new Error(`sync run dedupe read: ${readError.message}`);
+    if (prior) return { ...prior, claimed: false as const };
+  }
   if (error) throw new Error(`sync run start: ${error.message}`);
-  return data as { id: number; run_key: string };
+  return { ...data, claimed: true as const };
 }
 
 export async function finishSyncRun(

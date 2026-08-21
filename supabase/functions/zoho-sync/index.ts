@@ -38,6 +38,7 @@ const REDIRECT_URI = `${APP_ORIGIN}/zoho-callback`;
 const PNL_TTL_MS = 10 * 60_000;
 const OAUTH_PENDING_TTL_MS = 10 * 60_000;
 const PAYMENT_UNUSED_RECHECK_MS = 6 * 60 * 60_000;
+const MANUAL_SYNC_REUSE_MS = 30 * 60_000;
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
@@ -637,12 +638,12 @@ Deno.serve(async (req) => {
 
     if (action === 'sync' || action === 'sync_financial') {
       const financialOnly = action === 'sync_financial';
-      if (action === 'sync' && body.force !== true && body.full !== true) {
+      if (action === 'sync' && !cronKey && body.force !== true && body.full !== true) {
         const { data: recent } = await db.from('zoho_sync_runs')
           .select('finished_at,results,api_calls').eq('status', 'succeeded')
           .order('finished_at', { ascending: false }).limit(1).maybeSingle();
         const recentAt = recent?.finished_at ? new Date(recent.finished_at).getTime() : 0;
-        if (recentAt && Date.now() - recentAt < 2 * 60_000) {
+        if (recentAt && Date.now() - recentAt < MANUAL_SYNC_REUSE_MS) {
           return json({ ok: true, cached: true, reused_recent_sync: true,
             finished_at: recent.finished_at, api_calls: recent.api_calls || 0,
             results: recent.results || {} });
@@ -652,7 +653,24 @@ Deno.serve(async (req) => {
       // ظاهر أصلاً في results؛ لا نخترع trigger_source يكسره القيد.
       const triggerSource = cronKey ? 'cron'
         : body.full === true ? 'full_rebuild' : 'manual';
-      const run = await beginSyncRun(db, triggerSource, auth.user?.id || null);
+      // A unique minute key coalesces concurrent clicks, multiple open tabs and
+      // a manual click landing with the cron invocation.  The existing unique
+      // run_key constraint is the atomic claim; no new schema object is needed.
+      const syncWindowKey = `zoho-sync-window:${Math.floor(Date.now() / 60_000)}`;
+      const run = await beginSyncRun(db, triggerSource, auth.user?.id || null, syncWindowKey);
+      if (!run.claimed) {
+        if (run.status === 'succeeded' || run.status === 'partial') {
+          return json({ ok: true, cached: true, reused_same_window: true,
+            finished_at: run.finished_at, api_calls: run.api_calls || 0,
+            results: run.results || {} });
+        }
+        if (run.status === 'running') {
+          return json({ ok: true, cached: true, sync_in_progress: true,
+            started_at: run.started_at, api_calls: 0, results: run.results || {} });
+        }
+        return json({ ok: false, sync_throttled: true,
+          error: 'تم إيقاف إعادة المحاولة المتقاربة لحماية اتصال زوهو. انتظر المزامنة الدورية أو أعد المحاولة بعد عدة دقائق.' });
+      }
       const stats: ZohoApiStats = { apiCalls: 0, rateLimited: 0 };
       let usageOrgId = '';
       let usageRecorded = false;

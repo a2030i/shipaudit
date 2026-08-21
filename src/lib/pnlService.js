@@ -18,10 +18,14 @@ async function functionErrorMessage(error, fallback) {
   try { payload = await error?.context?.clone?.().json(); } catch { /* non-JSON response */ }
   const raw = String(payload?.error || payload?.message || error?.message || fallback || 'تعذر تنفيذ الطلب');
   if (/too many requests continuously|rate.?limit/i.test(raw)) {
-    return 'زوهو استقبل طلبات متقاربة جدًا. تم إيقاف التكرار؛ انتظر دقيقة ثم حدّث العرض.';
+    return 'زوهو أوقف تجديد الاتصال مؤقتًا بسبب طلبات متقاربة. بيانات آخر مزامنة محفوظة؛ انتظر المزامنة الدورية أو أعد المحاولة بعد عدة دقائق.';
   }
   return raw;
 }
+
+let standardZohoSyncInFlight = null;
+let recentStandardZohoSync = null;
+const CLIENT_SYNC_REUSE_MS = 60_000;
 
 export const currentPnlPeriod = () => {
   const d = new Date();
@@ -60,12 +64,29 @@ export async function refreshPnlMonth(period) {
 
 // مزامنة الفواتير والدفعات (دلتا) — تتطلب money.pnl (الحارس في الدالة).
 export async function syncZohoDocs({ force = false, full = false } = {}) {
-  const { data, error } = await supabase.functions.invoke('zoho-sync', {
-    body: { action: 'sync', force, full },
-  });
-  if (error) throw new Error(await functionErrorMessage(error, 'فشل المزامنة'));
-  if (!data?.ok) throw new Error(data?.error || 'فشل المزامنة');
-  return data;   // { invoices: N, customerpayments: M }
+  const isStandard = force !== true && full !== true;
+  if (isStandard && recentStandardZohoSync
+    && Date.now() - recentStandardZohoSync.receivedAt < CLIENT_SYNC_REUSE_MS) {
+    return { ...recentStandardZohoSync.data, reused_client_sync: true };
+  }
+  if (isStandard && standardZohoSyncInFlight) return standardZohoSyncInFlight;
+
+  const request = (async () => {
+    const { data, error } = await supabase.functions.invoke('zoho-sync', {
+      body: { action: 'sync', force, full },
+    });
+    if (error) throw new Error(await functionErrorMessage(error, 'فشل المزامنة'));
+    if (!data?.ok) throw new Error(data?.error || 'فشل المزامنة');
+    if (isStandard) recentStandardZohoSync = { data, receivedAt: Date.now() };
+    return data;   // { results: { invoices: N, customerpayments: M } }
+  })();
+
+  if (!isStandard) return request;
+  standardZohoSyncInFlight = request;
+  try { return await request; }
+  finally {
+    if (standardZohoSyncInFlight === request) standardZohoSyncInFlight = null;
+  }
 }
 
 // قراءة موجهة للرصيد الافتتاحي من بطاقة العميل الرسمية في زوهو.

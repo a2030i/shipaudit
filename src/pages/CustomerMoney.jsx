@@ -184,9 +184,12 @@ export default function CustomerMoney({ isActive = true }) {
   const handleSyncZoho = async () => {
     setSyncingZoho(true);
     try {
-      const res = await syncZohoDocs({ force: true });
+      const res = await syncZohoDocs();
       const count = res?.results?.invoices;
-      toast(count != null ? `تمت مزامنة فواتير زوهو: ${count}` : 'تمت مزامنة زوهو', 'success');
+      const reused = res?.cached || res?.reused_recent_sync || res?.reused_same_window || res?.reused_client_sync;
+      toast(reused
+        ? 'بيانات زوهو حديثة بالفعل؛ تم تحديث العرض دون طلب جديد'
+        : count != null ? `تمت مزامنة فواتير زوهو: ${count}` : 'تمت مزامنة زوهو', 'success');
       resetCredits();
       await refresh();
     } catch (e) {

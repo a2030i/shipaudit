@@ -181,9 +181,21 @@ test('bank statement flow is read-only and exports only rows missing from live Z
 });
 
 test('manual Zoho sync reuses a recent successful run to avoid refresh-token rate limits', async () => {
-  const source = await read('supabase/functions/zoho-sync/index.ts');
+  const [source, reliability, service, money] = await Promise.all([
+    read('supabase/functions/zoho-sync/index.ts'),
+    read('supabase/functions/_shared/zohoReliability.ts'),
+    read('src/lib/pnlService.js'),
+    read('src/pages/CustomerMoney.jsx'),
+  ]);
   assert.match(source, /reused_recent_sync:\s*true/);
-  assert.match(source, /2 \* 60_000/);
+  assert.match(source, /MANUAL_SYNC_REUSE_MS = 30 \* 60_000/);
+  assert.match(source, /zoho-sync-window:/);
+  assert.match(source, /sync_in_progress:\s*true/);
+  assert.match(reliability, /error\?\.code === '23505'/);
+  assert.match(reliability, /claimed:\s*false/);
+  assert.match(service, /standardZohoSyncInFlight/);
+  assert.match(service, /reused_client_sync:\s*true/);
+  assert.doesNotMatch(money, /syncZohoDocs\(\{ force: true \}\)/);
 });
 
 test('collection performance is supervisor-gated and aging snapshots are server scheduled', async () => {
