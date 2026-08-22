@@ -135,31 +135,6 @@ export function firstSectionDestination(sectionId, workspaces, navItems) {
   return sectionDestinations(sectionId, workspaces, navItems)[0]?.path || '/overview';
 }
 
-// القائمة هي فهرس تنفيذ لا شجرة تقنية. كل عقدة قابلة للفتح تُرفع إلى
-// مستوى المركز مباشرة، مع الاحتفاظ باسم مساحتها كسياق بصري فقط. بهذا لا
-// يحتاج المستخدم إلى المرور عبر مركز ← مساحة عمل ← تبويب ← تبويب فرعي.
-function promoteDestinationLeaves(nodes) {
-  const promoted = [];
-  const seenPaths = new Set();
-
-  const visit = (node, lineage = []) => {
-    if (node.children?.length) {
-      node.children.forEach(child => visit(child, [...lineage, node.label]));
-      return;
-    }
-    if (!node.path || seenPaths.has(node.path)) return;
-    seenPaths.add(node.path);
-    promoted.push({
-      ...node,
-      children: undefined,
-      navigationContext: lineage.join(' · '),
-    });
-  };
-
-  nodes.forEach(node => visit(node));
-  return promoted;
-}
-
 export default function NavigationHub({
   open,
   initialSectionId,
@@ -196,11 +171,12 @@ export default function NavigationHub({
     .filter(Boolean)
     .map(section => ({
       ...section,
-      destinations: promoteDestinationLeaves(
-        sectionDestinations(section.id, workspaces, navItems, {
-          canOpenSubTab, currentPath, currentSearch,
-        }),
-      ),
+      // القائمة تعرض مساحة العمل الأساسية فقط. تفاصيل مثل سجل الرسائل،
+      // القيود اليومية أو سجل النظام تبقى داخل مركزها ولا تتحول إلى زر
+      // مستقل يزاحم المهمة اليومية.
+      destinations: sectionDestinations(section.id, workspaces, navItems, {
+        canOpenSubTab, currentPath, currentSearch,
+      }),
     }))
     .filter(section => section.destinations.length > 0), [
       sections, workspaces, navItems, canOpenSubTab, currentPath, currentSearch,
@@ -297,7 +273,7 @@ export default function NavigationHub({
               </span>
               <span>
                 <h2 id="navigation-hub-title">{activeSection.label}</h2>
-                <p>كل الأقسام المتاحة مباشرة، دون مستويات إضافية</p>
+                <p>الوجهات الأساسية فقط؛ التفاصيل داخل كل مركز</p>
               </span>
               <button type="button" className="navigation-hub__back" onClick={goBack} aria-label="كل أقسام النظام">
                 <ArrowRight size={17}/><span>كل الأقسام</span>
@@ -315,7 +291,7 @@ export default function NavigationHub({
             <div className="navigation-hub__title-row">
               <span>
                 <h2 id="navigation-hub-title">كل أقسام النظام</h2>
-                <p>افتح وجهتك مباشرة؛ المراكز عناوين تنظيمية فقط</p>
+                <p>اختر مهمتك الأساسية؛ التفاصيل التقنية مخفية من القائمة</p>
               </span>
               <button type="button" className="navigation-hub__quick-action navigation-hub__quick-action--compact" onClick={() => { onClose(); onQuickAction(); }}>
                 <Plus size={18}/><span>إجراء جديد</span>

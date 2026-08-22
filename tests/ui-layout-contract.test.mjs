@@ -342,7 +342,8 @@ test('stable work areas use one permission-aware direct catalog', async () => {
   assert.match(app, /firstSectionDestination/);
   assert.match(hub, /CENTER_ORDER = \['customers', 'sales', 'finance', 'shipping', 'reports', 'settings'\]/);
   assert.match(hub, /sectionDestinations/);
-  assert.match(hub, /promoteDestinationLeaves/);
+  assert.doesNotMatch(hub, /promoteDestinationLeaves/);
+  assert.match(hub, /الوجهات الأساسية فقط/);
   assert.match(hub, /كل أقسام النظام/);
   assert.match(navigation, /decisions:\s*\{[^}]*visible: false/);
   assert.doesNotMatch(shell, /--sa-context-rail/);
@@ -372,7 +373,7 @@ test('approved workspaces live in the navigation hub without removing legacy rou
   assert.match(navigation, /label: 'النقد والتسويات'/);
   assert.match(navigation, /id: 'cash-settlements'[\s\S]*memberIds: \['money'\]/);
   assert.match(hub, /sectionDestinations/);
-  assert.match(hub, /افتح وجهتك مباشرة/);
+  assert.match(hub, /اختر مهمتك الأساسية/);
   assert.doesNotMatch(hub, /طريقة العرض/);
   assert.doesNotMatch(hub, /const \[trail, setTrail\]/);
   assert.doesNotMatch(hub, /destination\.children\?\.length/);
