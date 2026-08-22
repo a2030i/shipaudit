@@ -46,6 +46,7 @@ import {
 } from '../lib/whatsappAudience.js';
 import './smart-campaign-center.css';
 import { readAudienceHandoff } from '../lib/agingOperations.js';
+import { campaignBucketLabel } from '../lib/customerCampaignBuckets.js';
 
 const STEPS = ['الهدف', 'الجمهور', 'الحماية', 'القناة', 'المراجعة'];
 const COLLECTION_BUCKETS = [
@@ -373,7 +374,8 @@ export default function SmartCampaignCenter({ isActive = true }) {
     });
     const requestedChannel = searchParams.get('channel');
     setChannel(requestedChannel === 'ivr' ? 'ivr' : 'whatsapp');
-    setName(`تحصيل ${Array.isArray(context.aging) && context.aging.length ? context.aging.join(' + ') : 'Aging'} — ${dateStamp()}`);
+    const agingLabel = campaignBucketLabel(new Set(Array.isArray(context.aging) ? context.aging : [])) || 'كل المستحقات';
+    setName(`تحصيل ${agingLabel} — ${dateStamp()}`);
     setStep(5);
   }, [isActive, audienceContextToken]);
 
@@ -613,12 +615,19 @@ export default function SmartCampaignCenter({ isActive = true }) {
       {audienceHandoff && (
         <div className="scc-audience-handoff">
           <div><strong>جمهور من Aging Operations</strong><span>Snapshot: {new Date(audienceHandoff.snapshotAt).toLocaleString('ar-SA')} · لا توجد هواتف أو أسماء في الرابط</span></div>
-          <div className={audienceHandoff.count === audience.length ? 'is-same' : 'is-changed'}>
-            <span>عند الاختيار <b>{fmt0(audienceHandoff.count)}</b></span>
-            <span>مبلغ الاختيار <b>{fmtMoney(audienceHandoff.totalAmount)} ر.س</b></span>
-            <span>الآن <b>{fmt0(audience.length)}</b></span>
-            <span>المبلغ الآن <b>{fmtMoney(financialAmount)} ر.س</b></span>
+          <div className={(audienceHandoff.eligibleCount ?? audienceHandoff.count) === audience.length ? 'is-same' : 'is-changed'}>
+            <span>المحدد في التحصيل <b>{fmt0(audienceHandoff.selectedCount ?? audienceHandoff.count)}</b></span>
+            <span>غير مؤهل قبل القناة <b>{fmt0(audienceHandoff.excludedBeforeChannelCount || 0)}</b></span>
+            <span>دخل فحص القناة <b>{fmt0(audienceHandoff.eligibleCount ?? audienceHandoff.count)}</b></span>
+            <span>إعادة الاحتساب الآن <b>{fmt0(audience.length)}</b></span>
+            <span>مبلغ المحدد <b>{fmtMoney(audienceHandoff.totalAmount)} ر.س</b></span>
+            <span>مبلغ المؤهل <b>{fmtMoney(audienceHandoff.eligibleTotalAmount ?? financialAmount)} ر.س</b></span>
           </div>
+          {!!audienceHandoff.eligibilityExclusions?.length && (
+            <div className="scc-audience-handoff__reasons">
+              استبعادات ما قبل القناة: {audienceHandoff.eligibilityExclusions.map(item => `${item.reason} ${fmt0(item.count)}`).join(' · ')}
+            </div>
+          )}
           <button type="button" onClick={() => navigate(audienceHandoff.returnTo || '/customer-money')}>العودة إلى Aging</button>
         </div>
       )}

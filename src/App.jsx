@@ -168,6 +168,8 @@ const ROUTE_ITEMS = [
       { tabId: 'segments',    label: 'شرائح العملاء',        icon: Layers,      legacy: '/segments' },
       { tabId: 'merchants',   label: 'متاجر المنصّة',      icon: ShoppingBag, legacy: '/merchants' },
     ] },
+  { id: 'campaign-center', path: '/campaigns', label: 'مركز الحملات الذكي', icon: MessageCircle, section: 'sales', navOrder: 40,
+    permAny: ['campaigns.send', 'campaigns.ivr', 'whatsapp.view_log', 'receivables.view', 'sales.view'] },
   { id: 'zoho-data',       path: '/zoho-data',       label: 'زوهو: الفواتير والربط', icon: BookOpen,   section: 'money', navOrder: 60, permKey: 'zoho.view',
     subTabs: [
       { tabId: 'overview',  label: 'مراقبة اتصال زوهو',       icon: Activity },
@@ -272,9 +274,8 @@ PATH_PERM.set('/carrier',   'carriers.view');
 PATH_PERM.set('/upload',    'audits.create');
 PATH_PERM.set('/results',   'audits.view');
 PATH_PERM.set('/customers', 'receivables.view');
-// /campaigns لم يعد وجهة مستقلة؛ بقي كمسار إجراء لمراجعة جمهور قادم من
-// التحصيل قبل الإرسال/الاتصال. الحارس الصريح يحميه بعد إزالة بطاقة المركز.
-PATH_PERM.set('/campaigns', ['campaigns.send', 'campaigns.ivr', 'whatsapp.view_log', 'receivables.view', 'sales.view']);
+// مركز الحملات وجهة مستقلة داخل مركز المبيعات، كما يستقبل سياق جمهور قادمًا
+// من التحصيل. تعريف ROUTE_ITEMS أعلاه هو حارس المسار ومصدر ظهوره في القائمة.
 
 // Paths that all render the CustomerHub page (which selects the
 // right tab based on which path was used). Used to scope the
@@ -373,8 +374,7 @@ function AppInner({ theme, toggleTheme }) {
   const CENTER_ROUTES = NAV_SECTIONS.map(section => section.path);
   const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/sales','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/campaigns','/whatsapp-settings','/hatif-leads','/support','/ticket','/marketers','/platform-carriers','/next-actions','/work-agents','/operations','/accounting-cycle','/workspace/customers','/workspace/operations','/workspace/reports', ...CENTER_ROUTES];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
-  const campaignActionActive = pathname === '/campaigns'
-    && new URLSearchParams(location.search).has('audienceContext');
+  const campaignActionActive = pathname === '/campaigns';
 
   const [carriers,        setCarriers]        = useState([]);
   const [carriersLoading, setCarriersLoading] = useState(false);
@@ -457,10 +457,6 @@ function AppInner({ theme, toggleTheme }) {
     }
     if (rawPath === '/customer-money' && ['performance', 'legal'].includes(params.get('view') || params.get('tab'))) {
       navigate('/customer-money?view=money&source=retired-collection-view', { replace: true });
-      return;
-    }
-    if (rawPath === '/campaigns' && !params.get('audienceContext')) {
-      navigate('/whatsapp-settings?tab=campaigns&source=legacy-campaign-center', { replace: true });
       return;
     }
     if (rawPath === '/upload' && !params.get('carrier')) {

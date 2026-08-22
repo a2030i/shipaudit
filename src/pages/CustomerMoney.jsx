@@ -629,18 +629,39 @@ export default function CustomerMoney({ isActive = true }) {
     }
     setBulkAction(action);
   };
-  const handoffContext = (channel, rows) => ({
-    version: 1,
-    source: 'aging_operations',
-    channel,
-    aging: [...buckets],
-    filters: Object.fromEntries([...searchParams.entries()].filter(([key]) => key !== 'page')),
-    snapshotAt: viewUpdatedAt || new Date().toISOString(),
-    count: rows.length,
-    totalAmount: +rows.reduce((sum, row) => sum + row.summary.amount, 0).toFixed(2),
-    selectionKeys: rows.map(row => row.identityKey),
-    returnTo: `${location.pathname}${location.search}`,
-  });
+  const handoffContext = (channel, rows, reviewRows = bulkReview) => {
+    const excludedRows = reviewRows.filter(row => !row.eligible);
+    const exclusionCounts = new Map();
+    for (const row of excludedRows) {
+      const reason = row.exclusionReason || 'غير مؤهل للإجراء';
+      exclusionCounts.set(reason, (exclusionCounts.get(reason) || 0) + 1);
+    }
+    const selectedTotalAmount = +reviewRows
+      .reduce((sum, row) => sum + (Number(row.summary?.amount) || 0), 0)
+      .toFixed(2);
+    const eligibleTotalAmount = +rows
+      .reduce((sum, row) => sum + (Number(row.summary?.amount) || 0), 0)
+      .toFixed(2);
+    return {
+      version: 2,
+      source: 'aging_operations',
+      channel,
+      aging: [...buckets],
+      filters: Object.fromEntries([...searchParams.entries()].filter(([key]) => key !== 'page')),
+      snapshotAt: viewUpdatedAt || new Date().toISOString(),
+      // احتفظ بمعادلة الاختيار كاملة. سابقاً كان يصل للمركز عدد المؤهلين
+      // فقط، فيبدو انتقال 52 → 19 كتغيّر غامض في الجمهور.
+      count: reviewRows.length,
+      selectedCount: reviewRows.length,
+      eligibleCount: rows.length,
+      excludedBeforeChannelCount: excludedRows.length,
+      eligibilityExclusions: [...exclusionCounts].map(([reason, count]) => ({ reason, count })),
+      totalAmount: selectedTotalAmount,
+      eligibleTotalAmount,
+      selectionKeys: rows.map(row => row.identityKey),
+      returnTo: `${location.pathname}${location.search}`,
+    };
+  };
   const confirmBulkAction = async () => {
     if (!eligibleBulkRows.length) return;
     if (bulkAction === 'assign') {
@@ -657,7 +678,7 @@ export default function CustomerMoney({ isActive = true }) {
       setBulkAction(null); setBulkRowsOverride(null);
       return;
     }
-    const context = handoffContext(bulkAction, eligibleBulkRows);
+    const context = handoffContext(bulkAction, eligibleBulkRows, bulkReview);
     const token = saveAudienceHandoff(context);
     setBulkAction(null); setBulkRowsOverride(null);
     if (bulkAction === 'followup') {

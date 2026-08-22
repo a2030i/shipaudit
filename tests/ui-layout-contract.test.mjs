@@ -328,7 +328,7 @@ test('stable work areas use one permission-aware direct catalog', async () => {
   for (const id of [
     'hub', 'platform-carriers', 'accounting-cycle', 'customer-watch',
     'collections-hub', 'bank', 'zoho-data', 'operations', 'uploads',
-    'hatif-settings', 'carriers', 'contracts', 'app-settings',
+    'hatif-settings', 'carriers', 'contracts', 'app-settings', 'campaign-center',
   ]) {
     assert.match(navigation, new RegExp(`(?:^|\\n)\\s*'?${id}'?:\\s*\\{[^}]*visible: true`));
   }
@@ -468,7 +468,7 @@ test('phase two groups operations reports and admin into approved workspaces', a
 test('center view menus stay task-oriented and never exceed six entries', async () => {
   const { CENTER_WORKSPACES } = await import('../src/lib/navigation.js');
   const expected = {
-    sales: ['نمو عملاء لمحة', 'العملاء خارج المنصة', 'التواصل'],
+    sales: ['نمو عملاء لمحة', 'العملاء خارج المنصة', 'التواصل', 'مركز الحملات الذكي'],
     finance: ['مركز العملاء المالي', 'النقد والتسويات', 'الحسابات والمطابقة', 'الربحية والسيولة'],
     shipping: ['شركات الشحن', 'المهام والاستثناءات', 'دورة الشهر', 'فوترة الخدمات والأوزان'],
     reports: ['مكتبة التقارير', 'أداء شركات الشحن', 'التواصل والحملات', 'الملفات المصدّرة'],
@@ -486,7 +486,8 @@ test('legacy entity and action routes resolve to canonical homes without removin
   assert.match(app, /rawPath === '\/merchants'[\s\S]*navigate\(`\/customer-360\?/);
   assert.match(app, /rawPath === '\/sales' \|\| rawPath === '\/crm'[\s\S]*\/retargeting\?view=today/);
   assert.match(app, /rawPath === '\/marketers'[\s\S]*\/workspace\/sales\?source=legacy-marketers/);
-  assert.match(app, /rawPath === '\/campaigns'[\s\S]*!params\.get\('audienceContext'\)[\s\S]*\/whatsapp-settings\?tab=campaigns/);
+  assert.match(app, /id: 'campaign-center'[\s\S]*path: '\/campaigns'[\s\S]*campaigns\.send[\s\S]*campaigns\.ivr/);
+  assert.doesNotMatch(app, /rawPath === '\/campaigns'[\s\S]*!params\.get\('audienceContext'\)[\s\S]*\/whatsapp-settings\?tab=campaigns/);
   assert.doesNotMatch(app, /<Marketers /);
   assert.doesNotMatch(app, /<CrmWorkspace /);
   for (const path of ['/audits', '/claims', '/ledger', '/cod-settlements', '/aramex-statements', '/payments', '/carrier-kpi', '/contracts']) {
