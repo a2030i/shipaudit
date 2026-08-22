@@ -9,9 +9,8 @@ import {
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, Modal, PageHeader, toast } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { loadEmployees } from '../lib/employeeService.js';
 import {
-  loadNextBestActions, loadCustomerGrowthSnapshot, loadCustomerGrowthProfile,
+  loadNextBestActionsPage, loadAllNextBestActions, loadCustomerGrowthSnapshot, loadCustomerGrowthProfile,
   recordCustomerGrowthOutcome, NBA_META, TEMPLATE_INTENT_LABELS,
 } from '../lib/nextActionsService.js';
 
@@ -40,8 +39,7 @@ const ACTIVITY_TYPES = [
 ];
 import IvrCallButton from '../components/IvrCallButton.jsx';
 import useMobileLayout from '../lib/useMobileLayout.js';
-import { useWindowedRows } from '../hooks/useWindowedRows.js';
-import { MobileFilterBar, MobileStickyActionBar, ProgressiveListFooter } from '../components/MobileUX.jsx';
+import { MobileFilterBar, MobileStickyActionBar } from '../components/MobileUX.jsx';
 
 const fmt0 = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 const daysAgo = (d) => d ? Math.floor((Date.now() - new Date(d).getTime()) / 86_400_000) : null;
@@ -58,12 +56,15 @@ export default function NextActions({ isActive = true }) {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, canAny } = useAuth();
-  const [rows, setRows] = useState(null);
+  const [queue, setQueue] = useState(null);
   const [growth, setGrowth] = useState(null);
-  const [employees, setEmployees] = useState([]);
+  const [growthLoading, setGrowthLoading] = useState(false);
   const [mine, setMine] = useState(() => searchParams.get('owner') === 'me');
   const [group, setGroup] = useState(() => searchParams.get('status') || '');
+  const page = Math.max(0, (Number(searchParams.get('page')) || 1) - 1);
   const [selected, setSelected] = useState(() => new Set());
+  const [selectedPool, setSelectedPool] = useState(() => new Map());
+  const [selectingAll, setSelectingAll] = useState(false);
   const [previewRows, setPreviewRows] = useState(null);
   const [outcomeRow, setOutcomeRow] = useState(null);
   const [profileRow, setProfileRow] = useState(null);
@@ -71,16 +72,21 @@ export default function NextActions({ isActive = true }) {
   const [profileLoading, setProfileLoading] = useState(false);
 
   const refresh = useCallback(async () => {
-    setRows(null);
+    setQueue(null);
     try {
-      const [list, emp, growthSnapshot] = await Promise.all([
-        loadNextBestActions({ owner: mine ? user?.id || null : null, limit: 1000 }),
-        loadEmployees().catch(() => []),
-        loadCustomerGrowthSnapshot(30),
-      ]);
-      setRows(list); setEmployees(emp); setGrowth(growthSnapshot); setSelected(new Set());
-    } catch (e) { toast(`تعذّر التحميل: ${e.message}`, 'error'); setRows([]); }
-  }, [mine, user?.id]);
+      setQueue(await loadNextBestActionsPage({
+        owner: mine ? user?.id || null : null,
+        group: group || null,
+        page,
+        pageSize: 50,
+      }));
+      setSelected(new Set());
+      setSelectedPool(new Map());
+    } catch (e) {
+      toast(`تعذّر التحميل: ${e.message}`, 'error');
+      setQueue({ rows: [], count: 0, summary: { count: 0, money: 0, ready: 0, held: 0, byGroup: {} }, pageInfo: { hasNext: false } });
+    }
+  }, [mine, group, page, user?.id]);
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh]);
   useEffect(() => {
     setMine(searchParams.get('owner') === 'me');
@@ -96,6 +102,9 @@ export default function NextActions({ isActive = true }) {
 
   const updateFilters = (patch) => {
     const next = new URLSearchParams(searchParams);
+    if ((Object.hasOwn(patch, 'owner') || Object.hasOwn(patch, 'status')) && !Object.hasOwn(patch, 'page')) {
+      next.delete('page');
+    }
     for (const [key, value] of Object.entries(patch)) {
       if (value == null || value === '' || value === false) next.delete(key);
       else next.set(key, String(value));
@@ -103,31 +112,13 @@ export default function NextActions({ isActive = true }) {
     setSearchParams(next);
   };
 
-  const nameById = useMemo(() => { const m = new Map(); employees.forEach(e => m.set(e.id, e.name || e.email)); return m; }, [employees]);
-  const filtered = useMemo(() => (rows || []).filter(r => !group || NBA_META[r.reasonCode]?.group === group), [rows, group]);
+  const rows = queue?.rows || [];
   const isMobile = useMobileLayout();
-  const {
-    visible: visibleNextRows,
-    count: visibleNextCount,
-    total: visibleNextTotal,
-    hasMore: hasMoreNextRows,
-    sentinelRef: nextRowsSentinelRef,
-    loadMore: loadMoreNextRows,
-  } = useWindowedRows(filtered, { batch: isMobile ? 20 : 120 });
-  const totals = useMemo(() => {
-    const t = { count: filtered.length, money: 0, ready: 0, held: 0, byGroup: {} };
-    for (const r of filtered) {
-      t.money += r.amount || 0;
-      if (r.sendEligible) t.ready += 1; else t.held += 1;
-      const g = NBA_META[r.reasonCode]?.group || '—';
-      t.byGroup[g] = (t.byGroup[g] || 0) + 1;
-    }
-    return t;
-  }, [filtered]);
+  const totals = queue?.summary || { count: 0, money: 0, ready: 0, held: 0, byGroup: {} };
   const selectedRows = useMemo(() => {
     if (!selected.size) return [];
-    return (rows || []).filter(r => selected.has(actionKey(r)));
-  }, [rows, selected]);
+    return [...selectedPool.values()].filter(r => selected.has(actionKey(r)));
+  }, [selectedPool, selected]);
 
   if (!canAny(['collections.view', 'sales.view', 'overview.view'])) return <Pad><Empty icon="🔒" title="لا صلاحية"/></Pad>;
 
@@ -135,14 +126,50 @@ export default function NextActions({ isActive = true }) {
     const next = new Set(prev);
     const key = actionKey(r);
     if (next.has(key)) next.delete(key); else next.add(key);
+    setSelectedPool(pool => {
+      const copy = new Map(pool);
+      if (next.has(key)) copy.set(key, r); else copy.delete(key);
+      return copy;
+    });
     return next;
   });
 
-  const selectFiltered = () => setSelected(prev => {
-    const next = new Set(prev);
-    filtered.forEach(r => next.add(actionKey(r)));
-    return next;
-  });
+  const selectFiltered = async () => {
+    setSelectingAll(true);
+    try {
+      const allRows = await loadAllNextBestActions({
+        owner: mine ? user?.id || null : null,
+        group: group || null,
+      });
+      setSelected(new Set(allRows.map(actionKey)));
+      setSelectedPool(new Map(allRows.map(row => [actionKey(row), row])));
+    } catch (error) {
+      toast(`تعذّر تحديد نتائج الفلتر: ${error.message}`, 'error');
+    }
+    setSelectingAll(false);
+  };
+
+  const previewFiltered = async () => {
+    setSelectingAll(true);
+    try {
+      const allRows = await loadAllNextBestActions({
+        owner: mine ? user?.id || null : null,
+        group: group || null,
+      });
+      setPreviewRows(allRows);
+    } catch (error) {
+      toast(`تعذّرت معاينة نتائج الفلتر: ${error.message}`, 'error');
+    }
+    setSelectingAll(false);
+  };
+
+  const loadGrowth = async event => {
+    if (!event.currentTarget.open || growth || growthLoading) return;
+    setGrowthLoading(true);
+    try { setGrowth(await loadCustomerGrowthSnapshot(30)); }
+    catch (error) { toast(`تعذّر تحميل معلومات القائمة: ${error.message}`, 'error'); }
+    setGrowthLoading(false);
+  };
 
   const openGrowthProfile = async (row) => {
     setProfileRow(row); setProfileData(null); setProfileLoading(true);
@@ -172,7 +199,7 @@ export default function NextActions({ isActive = true }) {
   return (
     <Pad>
       <PageHeader icon={<Phone size={22}/>} title="مهام العملاء اليوم" subtitle="قائمة تنفيذ موحّدة — من تتصل به، ولماذا، وما الخطوة المقترحة الآن"
-        actions={<Btn size="sm" variant="ghost" ariaLabel="تحديث قائمة عمل المبيعات" onClick={refresh} disabled={rows == null}><RefreshCw size={14} className={rows == null ? 'spin' : ''}/></Btn>}/>
+        actions={<Btn size="sm" variant="ghost" ariaLabel="تحديث قائمة عمل المبيعات" onClick={refresh} disabled={queue == null}><RefreshCw size={14} className={queue == null ? 'spin' : ''}/></Btn>}/>
 
       <MobileFilterBar
         title="فلترة قائمة العمل"
@@ -183,16 +210,16 @@ export default function NextActions({ isActive = true }) {
         {renderFilters()}
       </MobileFilterBar>
       <div className="next-actions-selection-toolbar">
-        <Btn size="sm" variant="outline" icon={<ListChecks size={13}/>} disabled={!filtered.length} onClick={selectFiltered}>تحديد نتائج الفلتر</Btn>
+        <Btn size="sm" variant="outline" icon={<ListChecks size={13}/>} disabled={!rows.length || selectingAll} onClick={selectFiltered}>{selectingAll ? 'جارٍ تحديد النتائج…' : 'تحديد نتائج الفلتر'}</Btn>
         {selected.size ? <Btn size="sm" variant="ghost" onClick={() => setSelected(new Set())}>إلغاء التحديد ({selected.size})</Btn> : null}
         <Btn size="sm" variant="primary" icon={<Eye size={13}/>} disabled={!selectedRows.length} onClick={() => setPreviewRows(selectedRows)}>معاينة المحدد ({selectedRows.length})</Btn>
       </div>
 
-      {rows == null ? <div style={{ padding: 40, textAlign: 'center' }}><Spinner/></div>
-        : !filtered.length ? <Empty icon="✅" title="لا إجراءات مطلوبة" sub="لا عميل يحتاج فعلاً الآن بهذا الفلتر."/>
+      {queue == null ? <div style={{ padding: 40, textAlign: 'center' }}><Spinner/></div>
+        : !rows.length ? <Empty icon="✅" title="لا إجراءات مطلوبة" sub="لا عميل يحتاج فعلاً الآن بهذا الفلتر."/>
         : (
           <div style={{ display: 'grid', gap: 8 }}>
-            {visibleNextRows.map((r, i) => {
+            {rows.map((r, i) => {
               const m = NBA_META[r.reasonCode] || { icon: '•', label: r.reasonCode, color: 'var(--muted)' };
               return (
                 <Card key={`${r.phone}-${i}`} style={{ padding: '10px 14px', borderInlineStart: `4px solid ${m.color}`, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -202,7 +229,7 @@ export default function NextActions({ isActive = true }) {
                       <span style={{ fontSize: 16 }}>{m.icon}</span>
                       <b style={{ fontSize: 13.5 }}>{r.name}</b>
                       <span style={{ padding: '1px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700, background: `color-mix(in srgb, ${m.color} 15%, transparent)`, color: m.color }}>{m.label}</span>
-                      {r.ownerId && <span style={{ fontSize: 10.5, color: 'var(--muted2)' }}>👤 {nameById.get(r.ownerId) || '—'}</span>}
+                      {r.ownerId && <span style={{ fontSize: 10.5, color: 'var(--muted2)' }}>👤 {r.ownerName || '—'}</span>}
                       <span style={{ padding: '1px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700,
                         background: r.sendEligible ? 'color-mix(in srgb, #16A34A 14%, transparent)' : 'color-mix(in srgb, var(--gold) 14%, transparent)',
                         color: r.sendEligible ? '#16A34A' : 'var(--gold)' }}>
@@ -232,13 +259,11 @@ export default function NextActions({ isActive = true }) {
                 </Card>
               );
             })}
-            <ProgressiveListFooter
-              hasMore={hasMoreNextRows}
-              shown={visibleNextCount}
-              total={visibleNextTotal}
-              onLoadMore={loadMoreNextRows}
-              sentinelRef={nextRowsSentinelRef}
-            />
+            <div className="psc-pagination">
+              <Btn size="sm" variant="ghost" disabled={page === 0} onClick={() => updateFilters({ page: page })}>السابق</Btn>
+              <span>صفحة {page + 1} · {fmt0(queue.count)} نتيجة</span>
+              <Btn size="sm" variant="ghost" disabled={!queue.pageInfo?.hasNext} onClick={() => updateFilters({ page: page + 2 })}>التالي</Btn>
+            </div>
           </div>
         )}
 
@@ -247,7 +272,7 @@ export default function NextActions({ isActive = true }) {
         <Btn size="sm" variant="primary" icon={<Eye size={13}/>} onClick={() => setPreviewRows(selectedRows)}>معاينة المحدد</Btn>
       </MobileStickyActionBar> : null}
 
-      <details className="next-actions-context">
+      <details className="next-actions-context" onToggle={loadGrowth}>
         <summary>معلومات القائمة وضوابط التواصل</summary>
         <div className="next-actions-context__body">
           <Card style={{ padding: '11px 14px', borderColor: 'color-mix(in srgb, #2563EB 35%, var(--border2))', background: 'color-mix(in srgb, #2563EB 7%, var(--card))' }}>
@@ -257,9 +282,10 @@ export default function NextActions({ isActive = true }) {
                 <b style={{ fontSize: 13 }}>وضع تجريبي — الإرسال غير مفعّل</b>
                 <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>النظام يبني الجمهور والقالب والحواجز للمعاينة فقط، ولا ترتبط هذه الشاشة بأي دالة إرسال واتساب.</div>
               </div>
-              <Btn size="sm" variant="outline" icon={<Eye size={13}/>} disabled={!filtered.length} onClick={() => setPreviewRows(filtered)}>معاينة نتائج الفلتر</Btn>
+              <Btn size="sm" variant="outline" icon={<Eye size={13}/>} disabled={!rows.length || selectingAll} onClick={previewFiltered}>معاينة نتائج الفلتر</Btn>
             </div>
           </Card>
+          {growthLoading ? <div style={{ padding: 12, textAlign: 'center' }}><Spinner size={16}/></div> : null}
           {growth ? <GrowthOperatingPulse growth={growth}/> : null}
           <div className="next-actions-secondary-kpis">
             <Kpi label="إجراءات مطلوبة" value={fmt0(totals.count)} color="#06B6D4"/>
@@ -279,11 +305,20 @@ export default function NextActions({ isActive = true }) {
       {profileRow ? <CustomerGrowthProfile row={profileRow} data={profileData} loading={profileLoading}
         onClose={() => { setProfileRow(null); setProfileData(null); }}
         onOpenFull={() => {
-          const phone = profileRow.phone;
+          if (!profileRow.storeId) {
+            toast('لا يمكن فتح Store 360 قبل وجود Store ID محدد لهذا السجل.', 'info');
+            return;
+          }
           const returnTo = `${location.pathname}${location.search}`;
           setProfileRow(null);
           setProfileData(null);
-          navigate(`/customer-360?search=${encodeURIComponent(phone)}&open=1&returnTo=${encodeURIComponent(returnTo)}`);
+          const params = new URLSearchParams({
+            customer: String(profileRow.storeId),
+            open: '1',
+            source: 'sales_today',
+            returnTo,
+          });
+          navigate(`/customer-360?${params.toString()}`);
         }}/> : null}
     </Pad>
   );

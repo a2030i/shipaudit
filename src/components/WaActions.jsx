@@ -14,7 +14,8 @@ import IvrCallButton from './IvrCallButton.jsx';
 // props: phone (خام — يُطبَّع داخلياً) · name · amount? · count? · vars? (افتراضها [name])
 //        campaignLabel? (اسم الحملة في السجل) · size? (حجم الأيقونات) · showTel?/showChat?
 export default function WaActions({ phone, name, amount = null, count = null, vars = null,
-  fields = null, campaignLabel = null, size = 15, showTel = true, showChat = false }) {
+  fields = null, campaignLabel = null, size = 15, showTel = true, showChat = false,
+  salesAudience = false }) {
   const [open, setOpen] = useState(false);
   const digits = String(phone || '').replace(/\D/g, '');
   if (!digits) return null;
@@ -45,6 +46,7 @@ export default function WaActions({ phone, name, amount = null, count = null, va
       {open && (
         <WhatsAppSendModal open={open} recipients={[recipient]}
           bucketLabel={campaignLabel || `العميل ${displayName}`}
+          salesAudience={salesAudience}
           onClose={() => setOpen(false)} onSent={() => setOpen(false)}/>
       )}
     </span>

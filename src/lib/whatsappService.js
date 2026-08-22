@@ -438,6 +438,32 @@ export async function loadWhatsAppCampaignStatus() {
   return map;
 }
 
+// حالة حملة أرقام صفحة المبيعات فقط. يتحقق الـRPC من أن كل رقم ضمن نطاق
+// المبيعات المسموح للموظف؛ لذلك لا يصلح كواجهة استعلام عامة عن أي هاتف.
+export async function loadSalesWhatsAppCampaignStatus(phones = []) {
+  const requested = [...new Set((phones || []).map(normalizeSaudiPhone).filter(Boolean))];
+  const { data, error } = await supabase.rpc('sales_whatsapp_campaign_status', {
+    p_phones: requested,
+  });
+  if (error) throw error;
+  const map = new Map();
+  for (const r of (Array.isArray(data) ? data : [])) {
+    if (!r.phone) continue;
+    map.set(r.phone, {
+      lastTemplate: r.last_template, lastCampaign: r.last_campaign,
+      lastSentAt: r.last_sent_at, status: r.last_status,
+      delivered: !!r.delivered, read: !!r.read_flag,
+      replied: !!r.replied, replyAt: r.reply_at,
+      sends: r.sends_count || 1,
+      paidAfter: !!r.paid_after, paidAt: r.paid_at,
+      paidAfterBasis: r.paid_after_basis || 'approximate_name_date_correlation',
+      lastDeliveredAt: r.last_delivered_at || null,
+      lastAttemptFailed: !!r.last_attempt_failed,
+    });
+  }
+  return map;
+}
+
 // شارة حالة آخر رسالة حملة على بطاقة العميل — لون مميّز واضح لكل حالة (نقطة الحقيقة
 // الوحيدة، تُستعمَل في كل الصفحات بدل ألوان مضمّنة متفرّقة). الترتيب: سدّد > ردّ > فشل
 // > قُرئت > وصلت > أُرسلت.

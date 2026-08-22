@@ -5,7 +5,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { MessageCircle, ShieldCheck, Send, X, AlertTriangle, CheckCircle2, Clock, Plus, Minus } from 'lucide-react';
 import { Modal, Btn, Spinner, toast } from './UI.jsx';
-import { loadWhatsAppConfig, verifyWhatsAppKey, sendWhatsAppCampaign, loadWhatsAppCampaignStatus, saveTemplateVarMap, loadCampaignNames, loadCampaignPhones, loadCampaignRecipientContext, loadNoWhatsappSet, loadHatifTouchedPhones, loadWeakWhatsappSet, loadWhatsAppQuality, qualityTone } from '../lib/whatsappService.js';
+import { loadWhatsAppConfig, verifyWhatsAppKey, sendWhatsAppCampaign, loadWhatsAppCampaignStatus, loadSalesWhatsAppCampaignStatus, saveTemplateVarMap, loadCampaignNames, loadCampaignPhones, loadCampaignRecipientContext, loadNoWhatsappSet, loadHatifTouchedPhones, loadWeakWhatsappSet, loadWhatsAppQuality, qualityTone } from '../lib/whatsappService.js';
 import { scheduleCampaign } from '../lib/retargetingService.js';
 import { useAuth } from '../lib/auth.jsx';
 import { prepareWhatsAppAudienceRows, summarizeWhatsAppAudience, whatsappAudienceExclusionBreakdown, whatsappRecipientKey } from '../lib/whatsappAudience.js';
@@ -121,6 +121,7 @@ export default function WhatsAppSendModal({
   const [perStore, setPerStore] = useState(false);
   const [protectionsReady, setProtectionsReady] = useState(false);
   const [protectionsError, setProtectionsError] = useState('');
+  const [campaignStatusReady, setCampaignStatusReady] = useState(false);
 
   // الربط الافتراضي لقالبٍ ما: المحفوظ في الإعدادات (يُحترَم حتى لو **فارغ** —
   // قالب بلا متغيرات)، وإلا «افتراضي الصفحة» بعدد vars.
@@ -140,6 +141,7 @@ export default function WhatsAppSendModal({
     nameEdited.current = !!lockedCampaignName;
     setCampName(lockedCampaignName || uniqueCampaignName(bucketLabel, [])); setExCamps(new Set()); setExPhones(new Set()); setExOpen(false);
     setPerStore(false); setProtectionsReady(false); setProtectionsError('');
+    setCampaignStatusReady(false); setWaStatus(new Map());
     // الكل افتراضياً — بمفاتيح _rk (نفس صيغة rows: معرّف المتجر أو الهاتف+الترتيب)
     setSelected(new Set(recipients
       .map((r, i) => (r.to && r.to.length >= 11) ? whatsappRecipientKey(r, i) : null)
@@ -169,9 +171,19 @@ export default function WhatsAppSendModal({
         setVarMap(defaultMapFor(t, c));
       })
       .catch(() => { setCfg({ templates: [], templateName: '', templateLanguage: 'ar' }); setTpl(''); setVarMap([{ src: 'legacy', text: '' }]); });
-    loadWhatsAppCampaignStatus().then(setWaStatus).catch(() => {});
+    const statusRequest = salesAudience
+      ? loadSalesWhatsAppCampaignStatus(recipients.map(recipient => recipient.to))
+      : loadWhatsAppCampaignStatus();
+    statusRequest
+      .then(status => { setWaStatus(status); setCampaignStatusReady(true); })
+      .catch(error => {
+        setCampaignStatusReady(false);
+        setProtectionsError(error?.message || 'تعذّر فحص سجل التواصل السابق');
+      });
     loadWhatsAppQuality('template', 30).then(setQual).catch(() => {});
-  }, [open]);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const safetyReady = protectionsReady && campaignStatusReady && !protectionsError;
 
   // تغيير القالب → تحميل ربطه المحفوظ (أو الافتراضي)
   const pickTemplate = (t) => { setTpl(t); setVarMap(defaultMapFor(t, cfg)); };
@@ -352,7 +364,7 @@ export default function WhatsAppSendModal({
   // جدولة بدل الإرسال الآن — تُكتب في campaign_queue وينفّذها campaign-runner
   // (scheduleCampaign تقسّم المستلمين صفوف طابور 150/دفعة — لا حدّ للعدد هنا)
   const doSchedule = async () => {
-    if (!protectionsReady) { toast('انتظر اكتمال فحص أهلية المستلمين', 'warn'); return; }
+    if (!safetyReady) { toast('انتظر اكتمال فحص أهلية المستلمين', 'warn'); return; }
     if (!campName.trim()) { toast('اكتب اسماً للحملة أولاً', 'warn'); return; }
     if (!tpl) { toast('اختر قالباً أولاً', 'warn'); return; }
     if (!selectedValid.length) { toast('اختر مستلِماً واحداً على الأقل', 'warn'); return; }
@@ -382,7 +394,7 @@ export default function WhatsAppSendModal({
   // إرسال فوري بلا حدّ للعدد: دفعات SEND_CHUNK متتالية (كل استدعاء تحت مهلة
   // الدالة) — النتائج تُجمَّع، والتقدّم يظهر حياً. لا تُغلق النافذة أثناءها.
   const doSend = async () => {
-    if (!protectionsReady) { toast('انتظر اكتمال فحص أهلية المستلمين', 'warn'); return; }
+    if (!safetyReady) { toast('انتظر اكتمال فحص أهلية المستلمين', 'warn'); return; }
     if (schedOn) return doSchedule();
     if (!campName.trim()) { toast('اكتب اسماً للحملة أولاً', 'warn'); return; }
     if (!tpl) { toast('اختر قالباً — أو أضفه من «إعدادات واتساب»', 'warn'); return; }
@@ -681,10 +693,10 @@ export default function WhatsAppSendModal({
             padding: 10, background: 'var(--surface2)' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 8 }}>
               <AudienceStat label="نتيجة الفلتر" value={audience.source}/>
-              <AudienceStat label="جاهز للإرسال" value={protectionsReady ? valid.length : '…'} color="var(--green)"/>
-              <AudienceStat label="مستبعد تلقائياً" value={protectionsReady ? audience.excluded : '…'} color={audience.excluded ? 'var(--gold)' : 'var(--muted)'}/>
+              <AudienceStat label="جاهز للإرسال" value={safetyReady ? valid.length : '…'} color="var(--green)"/>
+              <AudienceStat label="مستبعد تلقائياً" value={safetyReady ? audience.excluded : '…'} color={audience.excluded ? 'var(--gold)' : 'var(--muted)'}/>
             </div>
-            {!protectionsReady && !protectionsError && (
+            {!safetyReady && !protectionsError && (
               <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--muted)' }}>يفحص النظام الحظر وتكرار الهاتف وجودة الأرقام قبل السماح بالإرسال…</div>
             )}
             {protectionsError && (
@@ -692,7 +704,7 @@ export default function WhatsAppSendModal({
                 تعذّر فحص قوائم الحماية: {protectionsError}. الإرسال متوقف حتى إعادة فتح النافذة والمحاولة مجدداً.
               </div>
             )}
-            {protectionsReady && audience.excluded > 0 && (
+            {safetyReady && audience.excluded > 0 && (
               <div style={{ marginTop: 8, fontSize: 11, color: 'var(--muted)', lineHeight: 1.7 }}>
                 أسباب الاستبعاد:
                 {skipped > 0 && ` بلا هاتف ${skipped} ·`}
@@ -711,7 +723,7 @@ export default function WhatsAppSendModal({
           {/* اختيار المستلِمين */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: 12.5, flexWrap: 'wrap' }}>
             <b>المستلِمون: {selectedValid.length} / {valid.length}</b>
-            <Btn size="sm" variant="ghost" onClick={allOn} disabled={!protectionsReady}>تحديد الكل</Btn>
+            <Btn size="sm" variant="ghost" onClick={allOn} disabled={!safetyReady}>تحديد الكل</Btn>
             <Btn size="sm" variant="ghost" onClick={allOff}>إلغاء الكل</Btn>
           </div>
           <div className="m-flow" style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 12 }}>
@@ -762,7 +774,7 @@ export default function WhatsAppSendModal({
           )}
 
           {/* تبقى معادلة الجمهور ظاهرة قرب قرار الإرسال حتى بعد تمرير النافذة للأسفل. */}
-          {protectionsReady && (
+          {safetyReady && (
             <div role="status" style={{ marginBottom: 10, border: '1px solid color-mix(in srgb, var(--accent) 30%, var(--border))',
               borderRadius: 9, padding: '9px 12px', background: 'color-mix(in srgb, var(--accent) 6%, var(--surface2))',
               fontSize: 12, lineHeight: 1.7 }}>
@@ -811,7 +823,7 @@ export default function WhatsAppSendModal({
           </div>
 
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-start' }}>
-            <Btn variant="accent" onClick={doSend} disabled={sending || !protectionsReady || !selectedValid.length || !tpl || !campName.trim()}>
+            <Btn variant="accent" onClick={doSend} disabled={sending || !safetyReady || !selectedValid.length || !tpl || !campName.trim()}>
               {sending ? <><Spinner size={14}/> {progress ? `يُرسِل ${fmt(progress.done)}/${fmt(progress.total)}…` : 'جارٍ…'}</>
                 : schedOn ? <><Clock size={14}/> جدولة ({fmt(selectedValid.length)})</>
                 : <><Send size={14}/> إرسال ({fmt(selectedValid.length)})</>}

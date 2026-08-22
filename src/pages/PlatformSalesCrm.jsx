@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import {
@@ -479,11 +479,11 @@ function AccountDrawer({ phone, employees, onClose, onSaved }) {
             <div>
               <small>متجر من المنصّة</small>
               <h2>{account.primary_store || phone}</h2>
-              <p>{phone}{Number(account.store_count) > 1 ? ` · ${account.store_count} متاجر على الحساب` : ''}</p>
+              <p>{phone}{Number(account.store_count) > 1 ? ` · ${account.store_count} متاجر تشترك في رقم التواصل` : ''}</p>
             </div>
             <div className="psc-account-actions">
               <span style={{ '--pill-tone': state.color }}>{state.label}</span>
-              <WaActions phone={phone} name={account.primary_store} campaignLabel="متابعة مبيعات" size={18}/>
+              <WaActions phone={phone} name={account.primary_store} campaignLabel="متابعة مبيعات" size={18} salesAudience/>
             </div>
           </section>
 
@@ -657,7 +657,7 @@ function AccountDrawer({ phone, employees, onClose, onSaved }) {
 export default function PlatformSalesCrm({ isActive = true }) {
   const { can, isAdmin, user } = useAuth();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const routeBucket = searchParams.get('bucket');
   const routeWork = searchParams.get('work');
   const initialBucket = PIPELINE_BUCKET_IDS.has(routeBucket) ? routeBucket : 'hot_live_new';
@@ -665,18 +665,47 @@ export default function PlatformSalesCrm({ isActive = true }) {
   const [bucket, setBucket] = useState(initialBucket);
   const [data, setData] = useState(null);
   const [employees, setEmployees] = useState([]);
-  const [owner, setOwner] = useState('');
+  const [owner, setOwner] = useState(searchParams.get('owner') || '');
   const [workFilter, setWorkFilter] = useState(WORK_FILTER_IDS.has(routeWork) ? routeWork : 'all');
-  const [sort, setSort] = useState('recommended');
-  const [search, setSearch] = useState('');
-  const [appliedSearch, setAppliedSearch] = useState('');
-  const [page, setPage] = useState(0);
+  const [sort, setSort] = useState(SORT_OPTIONS.some(([value]) => value === searchParams.get('sort')) ? searchParams.get('sort') : 'recommended');
+  const [search, setSearch] = useState(searchParams.get('search') || '');
+  const [appliedSearch, setAppliedSearch] = useState(searchParams.get('search') || '');
+  const [page, setPage] = useState(Math.max(0, (Number(searchParams.get('page')) || 1) - 1));
   const [busy, setBusy] = useState(false);
   const [selectedPhone, setSelectedPhone] = useState('');
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkOwner, setBulkOwner] = useState('');
   const [bulkRows, setBulkRows] = useState([]);
   const [bulkBusy, setBulkBusy] = useState(false);
+
+  const writeFilters = useCallback(patch => {
+    const next = new URLSearchParams(searchParams);
+    for (const [key, value] of Object.entries(patch)) {
+      if (value == null || value === '' || value === false || value === 'all' || (key === 'sort' && value === 'recommended') || (key === 'page' && Number(value) <= 1)) {
+        next.delete(key);
+      } else {
+        next.set(key, String(value));
+      }
+    }
+    setSearchParams(next);
+  }, [searchParams, setSearchParams]);
+
+  const ensureEmployees = useCallback(async () => {
+    if (employees.length) return employees;
+    try {
+      const list = await loadEmployees();
+      setEmployees(list);
+      return list;
+    } catch {
+      setEmployees([]);
+      return [];
+    }
+  }, [employees]);
+
+  const openAccount = useCallback(phone => {
+    setSelectedPhone(phone);
+    if (isAdmin || can('sales.manage')) void ensureEmployees();
+  }, [can, ensureEmployees, isAdmin]);
 
   const refresh = async ({ resetPage = false } = {}) => {
     const targetPage = resetPage ? 0 : page;
@@ -708,18 +737,19 @@ export default function PlatformSalesCrm({ isActive = true }) {
     if (!isActive) return;
     const nextBucket = searchParams.get('bucket');
     const nextWork = searchParams.get('work');
-    if (PIPELINE_BUCKET_IDS.has(nextBucket)) {
-      setLens(SCHEDULE_BUCKETS.some(item => item.id === nextBucket) ? 'schedule' : 'pipeline');
-      setBucket(nextBucket);
-    }
-    if (WORK_FILTER_IDS.has(nextWork)) setWorkFilter(nextWork);
-    setPage(0);
+    const normalizedBucket = PIPELINE_BUCKET_IDS.has(nextBucket) ? nextBucket : 'hot_live_new';
+    const normalizedWork = WORK_FILTER_IDS.has(nextWork) ? nextWork : 'all';
+    const normalizedSort = SORT_OPTIONS.some(([value]) => value === searchParams.get('sort')) ? searchParams.get('sort') : 'recommended';
+    const normalizedSearch = searchParams.get('search') || '';
+    setLens(SCHEDULE_BUCKETS.some(item => item.id === normalizedBucket) ? 'schedule' : 'pipeline');
+    setBucket(normalizedBucket);
+    setWorkFilter(normalizedWork);
+    setOwner(searchParams.get('owner') || '');
+    setSort(normalizedSort);
+    setSearch(normalizedSearch);
+    setAppliedSearch(normalizedSearch);
+    setPage(Math.max(0, (Number(searchParams.get('page')) || 1) - 1));
   }, [isActive, searchParams]);
-
-  useEffect(() => {
-    if (!isActive || (!isAdmin && !can('crm.view_all') && !can('crm.assign'))) return;
-    loadEmployees().then(setEmployees).catch(() => setEmployees([]));
-  }, [isActive, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const summary = data?.summary || {};
   const workSummary = data?.workSummary || {};
@@ -729,27 +759,25 @@ export default function PlatformSalesCrm({ isActive = true }) {
 
   const chooseLens = nextLens => {
     setLens(nextLens);
-    setWorkFilter('all');
-    setSort('recommended');
-    setBucket(nextLens === 'schedule' ? 'recontact_due' : 'hot_live_new');
+    writeFilters({
+      bucket: nextLens === 'schedule' ? 'recontact_due' : 'hot_live_new',
+      work: null,
+      sort: null,
+      page: null,
+    });
   };
 
   const chooseBucket = nextBucket => {
-    setBucket(nextBucket);
-    setWorkFilter('all');
-    setSort('recommended');
-    setPage(0);
+    writeFilters({ bucket: nextBucket, work: null, sort: null, page: null });
   };
 
   const chooseWorkFilter = nextFilter => {
-    setWorkFilter(nextFilter);
-    setPage(0);
+    writeFilters({ work: nextFilter, page: null });
   };
 
   const runSearch = event => {
     event?.preventDefault();
-    setPage(0);
-    setAppliedSearch(search.trim());
+    writeFilters({ search: search.trim(), page: null });
   };
 
   const hasNext = (page + 1) * (data?.limit || 40) < Number(data?.count || 0);
@@ -830,7 +858,7 @@ export default function PlatformSalesCrm({ isActive = true }) {
   const openBulkAssignment = async () => {
     setBulkBusy(true);
     try {
-      const rows = await readAllFilteredRows();
+      const [rows] = await Promise.all([readAllFilteredRows(), ensureEmployees()]);
       if (!rows.length) throw new Error('لا توجد نتائج لإسنادها');
       setBulkRows(rows);
       setBulkOwner('');
@@ -966,7 +994,7 @@ export default function PlatformSalesCrm({ isActive = true }) {
           </form>
 
           {(isAdmin || can('crm.view_all')) && (
-            <select value={owner} onChange={event => { setPage(0); setOwner(event.target.value); }} aria-label="فلتر المسؤول">
+            <select value={owner} onFocus={ensureEmployees} onPointerDown={ensureEmployees} onChange={event => writeFilters({ owner: event.target.value, page: null })} aria-label="فلتر المسؤول">
               <option value="">كل المسؤولين</option>
               <option value="unassigned">بلا مسؤول</option>
               {employees.map(employee => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
@@ -1022,7 +1050,7 @@ export default function PlatformSalesCrm({ isActive = true }) {
           </div>
           <label className="psc-sort-control">
             <span>الترتيب</span>
-            <select value={sort} onChange={event => { setPage(0); setSort(event.target.value); }}>
+            <select value={sort} onChange={event => writeFilters({ sort: event.target.value, page: null })}>
               {SORT_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
@@ -1081,9 +1109,9 @@ export default function PlatformSalesCrm({ isActive = true }) {
                       className={Number(row.work_rank) <= 2 ? 'psc-row-urgent' : ''}
                     >
                       <td data-label="العميل">
-                        <button type="button" className="psc-customer-link" onClick={() => setSelectedPhone(row.phone)}>
+                        <button type="button" className="psc-customer-link" onClick={() => openAccount(row.phone)}>
                           <strong>{row.primary_store || row.phone}</strong>
-                          <small>{row.phone}{Number(row.store_count) > 1 ? ` · ${row.store_count} متاجر` : ''}</small>
+                          <small>{row.phone}{Number(row.store_count) > 1 ? ` · ${row.store_count} متاجر تشترك في رقم التواصل` : ''}</small>
                         </button>
                         <span className="psc-state-pill" style={{ '--pill-tone': state.color }}>{state.label}</span>
                         <small className="psc-cell-sub">
@@ -1134,8 +1162,8 @@ export default function PlatformSalesCrm({ isActive = true }) {
                       </td>
                       <td data-label="إجراءات">
                         <div className="psc-row-actions">
-                          <WaActions phone={row.phone} name={row.primary_store} campaignLabel="متابعة مبيعات" size={16}/>
-                          <Btn size="sm" variant="ghost" onClick={() => setSelectedPhone(row.phone)}>التفاصيل</Btn>
+                          <WaActions phone={row.phone} name={row.primary_store} campaignLabel="متابعة مبيعات" size={16} salesAudience/>
+                          <Btn size="sm" variant="ghost" onClick={() => openAccount(row.phone)}>التفاصيل</Btn>
                         </div>
                       </td>
                     </tr>
@@ -1147,9 +1175,9 @@ export default function PlatformSalesCrm({ isActive = true }) {
         )}
 
         <div className="psc-pagination">
-          <Btn size="sm" variant="ghost" disabled={page === 0 || busy} onClick={() => setPage(current => Math.max(0, current - 1))}>السابق</Btn>
+          <Btn size="sm" variant="ghost" disabled={page === 0 || busy} onClick={() => writeFilters({ page })}>السابق</Btn>
           <span>صفحة {page + 1}</span>
-          <Btn size="sm" variant="ghost" disabled={!hasNext || busy} onClick={() => setPage(current => current + 1)}>التالي</Btn>
+          <Btn size="sm" variant="ghost" disabled={!hasNext || busy} onClick={() => writeFilters({ page: page + 2 })}>التالي</Btn>
         </div>
       </Card>
       </div>

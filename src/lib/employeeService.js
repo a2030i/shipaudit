@@ -1,12 +1,31 @@
 import { supabase } from './supabase.js';
 
-export async function loadEmployees() {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('id, name, email, role, avatar_color, permissions, lead_notification_phone, accepts_campaign_leads, created_at')
-    .order('created_at');
-  if (error) throw error;
-  return data ?? [];
+const EMPLOYEE_CACHE_TTL_MS = 5 * 60 * 1000;
+let employeesCache = null;
+let employeesCacheAt = 0;
+let employeesRequest = null;
+
+export async function loadEmployees({ force = false } = {}) {
+  const fresh = employeesCache && Date.now() - employeesCacheAt < EMPLOYEE_CACHE_TTL_MS;
+  if (!force && fresh) return employeesCache;
+  if (!force && employeesRequest) return employeesRequest;
+
+  employeesRequest = (async () => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, name, email, role, avatar_color, permissions, lead_notification_phone, accepts_campaign_leads, created_at')
+      .order('created_at');
+    if (error) throw error;
+    employeesCache = data ?? [];
+    employeesCacheAt = Date.now();
+    return employeesCache;
+  })();
+
+  try {
+    return await employeesRequest;
+  } finally {
+    employeesRequest = null;
+  }
 }
 
 async function callManageUsers(body) {

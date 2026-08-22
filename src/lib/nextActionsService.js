@@ -62,6 +62,111 @@ export async function loadNextBestActions({ owner = null, journey = null, limit 
   }));
 }
 
+const mapNextAction = r => ({
+  phone: r.phone,
+  name: r.name || r.phone,
+  storeId: r.store_id,
+  ownerId: r.owner_id,
+  ownerName: r.owner_name || null,
+  reasonCode: r.reason_code,
+  journey: r.journey,
+  reason: r.reason,
+  action: r.action,
+  priority: Number(r.priority) || 0,
+  amount: r.amount == null ? null : Number(r.amount),
+  followupStatus: r.followup_status,
+  lastTouch: r.last_touch,
+  recommendedChannel: r.recommended_channel,
+  recommendedTemplateKey: r.recommended_template_key,
+  sendEligible: r.send_eligible === true,
+  guardCode: r.guard_code,
+  guardReason: r.guard_reason,
+  lastCampaignAt: r.last_campaign_at,
+  lastCallAt: r.last_call_at,
+  sourceSnapshotAt: r.source_snapshot_at,
+});
+
+const SALES_CORE_READ_ENABLED = String(import.meta.env.VITE_SALES_CORE_READ_ENABLED ?? 'true') !== 'false';
+
+const buildLegacyPage = async ({ owner, group, safePage, safePageSize }) => {
+  const legacyRows = await loadNextBestActions({ owner, limit: 1000 });
+  const filtered = group
+    ? legacyRows.filter(row => NBA_META[row.reasonCode]?.group === group)
+    : legacyRows;
+  const offset = safePage * safePageSize;
+  const rows = filtered.slice(offset, offset + safePageSize);
+  const byGroup = {};
+  let money = 0;
+  let ready = 0;
+  for (const row of filtered) {
+    money += Number(row.amount) || 0;
+    if (row.sendEligible) ready += 1;
+    const rowGroup = NBA_META[row.reasonCode]?.group || '—';
+    byGroup[rowGroup] = (byGroup[rowGroup] || 0) + 1;
+  }
+  return {
+    rows,
+    count: filtered.length,
+    summary: { count: filtered.length, money, ready, held: filtered.length - ready, byGroup },
+    pageInfo: { limit: safePageSize, offset, hasNext: offset + safePageSize < filtered.length },
+    readPath: 'legacy',
+  };
+};
+
+export async function loadNextBestActionsPage({
+  owner = null,
+  group = null,
+  page = 0,
+  pageSize = 50,
+} = {}) {
+  const safePage = Math.max(0, Number(page) || 0);
+  const safePageSize = Math.max(1, Math.min(Number(pageSize) || 50, 100));
+  if (!SALES_CORE_READ_ENABLED) {
+    return buildLegacyPage({ owner, group, safePage, safePageSize });
+  }
+  const { data, error } = await supabase.rpc('customer_growth_action_queue_page', {
+    p_page_size: safePageSize,
+    p_offset: safePage * safePageSize,
+    p_owner: owner,
+    p_group: group,
+  });
+  if (error) {
+    // Authorization failures must never widen into the legacy all-team queue.
+    if (/not_allowed|permission|scope/i.test(`${error.code || ''} ${error.message || ''}`)) throw error;
+    console.warn('[sales-read] paginated queue unavailable; using legacy fallback', error.code || error.message);
+    return buildLegacyPage({ owner, group, safePage, safePageSize });
+  }
+  const value = data || {};
+  return {
+    rows: (Array.isArray(value.rows) ? value.rows : []).map(mapNextAction),
+    count: Number(value.count) || 0,
+    summary: {
+      count: Number(value.summary?.count) || 0,
+      money: Number(value.summary?.money) || 0,
+      ready: Number(value.summary?.ready) || 0,
+      held: Number(value.summary?.held) || 0,
+      byGroup: value.summary?.by_group || {},
+    },
+    pageInfo: {
+      limit: Number(value.page_info?.limit) || safePageSize,
+      offset: Number(value.page_info?.offset) || safePage * safePageSize,
+      hasNext: value.page_info?.has_next === true,
+    },
+    readPath: 'customer_growth_action_queue_page',
+  };
+}
+
+export async function loadAllNextBestActions(filters = {}, { maxRows = 1000 } = {}) {
+  const rows = [];
+  const pageSize = 100;
+  for (let page = 0; rows.length < maxRows; page += 1) {
+    const result = await loadNextBestActionsPage({ ...filters, page, pageSize });
+    rows.push(...result.rows);
+    if (!result.pageInfo.hasNext || !result.rows.length) break;
+  }
+  return rows.slice(0, maxRows);
+}
+
 export async function loadCustomerGrowthSnapshot(days = 30) {
   const { data, error } = await supabase.rpc('customer_growth_operating_snapshot', {
     p_days: days,

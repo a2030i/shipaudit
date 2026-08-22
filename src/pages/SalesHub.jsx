@@ -112,23 +112,23 @@ export default function SalesHub({ isActive = true }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
       <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
-        {visibleTabs.map(t => {
-          const Cmp = t.component;
-          const active = tab === t.id;
-          const activeVal = isActive && active;
+        {(() => {
+          const activeTab = visibleTabs.find(item => item.id === tab) || visibleTabs[0];
+          if (!activeTab) return null;
+          const Cmp = activeTab.component;
           return (
             <div
-              key={t.id}
-              aria-label={t.label}
+              key={activeTab.id}
+              aria-label={activeTab.label}
               role="tabpanel"
               className="ws-tab-panel"
-              style={{ display: active ? 'block' : 'none', height: '100%' }}
+              style={{ height: '100%' }}
             >
               {/* LeadsTab يستقبل prop باسم active (لا isActive) — إرث CRM */}
-              {t.activeProp ? <Cmp active={activeVal}/> : <Cmp isActive={activeVal}/>}
+              {activeTab.activeProp ? <Cmp active={isActive}/> : <Cmp isActive={isActive}/>}
             </div>
           );
-        })}
+        })()}
       </div>
     </div>
   );
