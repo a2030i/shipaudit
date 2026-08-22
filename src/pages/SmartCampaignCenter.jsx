@@ -701,7 +701,7 @@ export default function SmartCampaignCenter({ isActive = true }) {
                   {hatifUsers.map(row => <option key={row.userId} value={row.userId}>{row.name}{row.email ? ` — ${row.email}` : ''}</option>)}
                 </select>
                 {!hatifUsersLoading && !hatifUsers.length && (
-                  <button type="button" className="scc-hatif-owner__settings" onClick={() => navigate('/whatsapp-settings?tab=connection')}>
+                  <button type="button" className="scc-hatif-owner__settings" onClick={() => navigate('/settings/hatif')}>
                     لم يظهر موظفو هاتف — افتح إعدادات الربط
                   </button>
                 )}

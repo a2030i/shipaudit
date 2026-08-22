@@ -468,8 +468,12 @@ test('phase two groups operations reports and admin into approved workspaces', a
 
 test('center view menus stay task-oriented and never exceed six entries', async () => {
   const { CENTER_WORKSPACES } = await import('../src/lib/navigation.js');
+  const communicationsPage = await read('src/pages/WhatsAppSettings.jsx');
+  const operations = await read('src/pages/OperationsCenter.jsx');
+  const decisions = await read('src/pages/DecisionsBoard.jsx');
+  const campaigns = await read('src/pages/SmartCampaignCenter.jsx');
   const expected = {
-    sales: ['نمو عملاء لمحة', 'العملاء خارج المنصة', 'التواصل', 'مركز الحملات الذكي'],
+    sales: ['نمو عملاء لمحة', 'العملاء خارج المنصة', 'المكالمات وIVR', 'مركز الحملات الذكي'],
     finance: ['مركز العملاء المالي', 'النقد والتسويات', 'الحسابات والمطابقة', 'الربحية والسيولة'],
     shipping: ['شركات الشحن', 'المهام والاستثناءات', 'دورة الشهر', 'فوترة الخدمات والأوزان'],
     reports: ['مكتبة التقارير', 'أداء شركات الشحن', 'التواصل والحملات', 'الملفات المصدّرة'],
@@ -479,6 +483,20 @@ test('center view menus stay task-oriented and never exceed six entries', async 
     assert.deepEqual(CENTER_WORKSPACES[center].map(item => item.label), labels);
     assert.ok(CENTER_WORKSPACES[center].length <= 6, `${center} exceeds six center views`);
   }
+
+  const communications = CENTER_WORKSPACES.sales.find(item => item.id === 'communications');
+  assert.equal(communications.path, '/whatsapp-settings?tab=ivr');
+  const accounting = CENTER_WORKSPACES.finance.find(item => item.id === 'accounting');
+  assert.equal(accounting.entryId, 'reconciliation');
+  assert.equal(accounting.path, '/reconciliation?tab=customers');
+  assert.match(communicationsPage, /id: 'overview'[\s\S]*hiddenFromWorkspace: true/);
+  assert.match(communicationsPage, /visibleTabs\.find\(t => t\.id === 'ivr'\)/);
+  assert.doesNotMatch(operations, /\/whatsapp-settings\?tab=overview/);
+  assert.doesNotMatch(operations, /path: '\/whatsapp-settings'/);
+  assert.match(decisions, /\/whatsapp-settings\?tab=agents/);
+  assert.match(decisions, /\/whatsapp-settings\?tab=impact/);
+  assert.match(decisions, /\/whatsapp-settings\?tab=problems/);
+  assert.doesNotMatch(campaigns, /tab=connection/);
 });
 
 test('legacy entity and action routes resolve to canonical homes without removing route guards', async () => {

@@ -34,8 +34,8 @@ export const CENTER_WORKSPACES = {
       description: 'العملاء المحتملون والحملات التسويقية قبل دخولهم إلى لمحة.',
     },
     {
-      id: 'communications', label: 'التواصل', entryId: 'whatsapp-settings', memberIds: ['whatsapp-settings'], path: '/whatsapp-settings?tab=overview',
-      description: 'راقب الرسائل والمكالمات وIVR وجودة التواصل ونتائجه.',
+      id: 'communications', label: 'المكالمات وIVR', entryId: 'whatsapp-settings', memberIds: ['whatsapp-settings'], path: '/whatsapp-settings?tab=ivr',
+      description: 'راجع المكالمات وشغّل إجراء IVR المصرح به من مكان واحد.',
     },
     {
       id: 'campaigns', label: 'مركز الحملات الذكي', entryId: 'campaign-center', memberIds: ['campaign-center'], path: '/campaigns',
@@ -52,8 +52,8 @@ export const CENTER_WORKSPACES = {
       description: 'البنوك والمدفوعات والعمليات غير المصنفة، مع تصفية COD التاريخية حتى الصفر.',
     },
     {
-      id: 'accounting', label: 'الحسابات والمطابقة', entryId: 'zoho-data', memberIds: ['zoho-data', 'reconciliation'], path: '/zoho-data?tab=customers',
-      description: 'بيانات Zoho وربط الحسابات ومطابقة أرصدة العملاء والناقلين.',
+      id: 'accounting', label: 'الحسابات والمطابقة', entryId: 'reconciliation', memberIds: ['reconciliation', 'zoho-data'], path: '/reconciliation?tab=customers',
+      description: 'طابق أرصدة العملاء بين فواتير Zoho المفتوحة وآخر استحقاق لمحة، ثم راجع الفروقات.',
     },
     {
       id: 'planning', label: 'الربحية والسيولة', entryId: 'pnl', memberIds: ['pnl', 'cash-aging', 'forecast', 'periods'],

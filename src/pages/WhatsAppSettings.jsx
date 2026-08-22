@@ -37,6 +37,7 @@ import './WhatsAppSettings.css';
 const HATIF_TABS = [
   {
     id: 'overview', label: 'نظرة عامة', icon: Activity, perm: 'whatsapp.view_log',
+    hiddenFromWorkspace: true,
     eyebrow: 'صحة التكامل', purpose: 'اعرف هل قناة التواصل والقياس يعملان قبل أي حملة',
     description: 'ملخص هادئ لنبض واتساب والمكالمات والتاقات ومصدر بيانات التحصيل، بلا عرض محادثات أو إنشاء مهام بديلة عن هاتف.',
     outcome: 'تكامل واضح وتنبيه قابل للتصرف', tone: 'var(--brand)',
@@ -85,12 +86,14 @@ export default function WhatsAppSettings({ isActive = true, settingsOnly = false
   const { can, isAdmin } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const visibleTabs = HATIF_TABS.filter(t => tabAllowed(t, can) && (!settingsOnly || t.id === 'settings'));
+  const visibleTabs = HATIF_TABS.filter(t => (
+    !t.hiddenFromWorkspace && tabAllowed(t, can) && (!settingsOnly || t.id === 'settings')
+  ));
   const tabFromUrl = () => {
     if (settingsOnly) return 'settings';
     const requested = new URLSearchParams(location.search).get('tab');
     if (requested && visibleTabs.some(t => t.id === requested)) return requested;
-    return visibleTabs.find(t => t.id === 'overview')?.id || visibleTabs[0]?.id || 'overview';
+    return visibleTabs.find(t => t.id === 'ivr')?.id || visibleTabs[0]?.id || 'ivr';
   };
   const [cfg, setCfg] = useState(null);
   const [newTpl, setNewTpl] = useState('');
@@ -119,6 +122,14 @@ export default function WhatsAppSettings({ isActive = true, settingsOnly = false
     if (!isActive) return;
     const next = tabFromUrl();
     if (next !== tab) setTab(next);
+    if (!settingsOnly) {
+      const params = new URLSearchParams(location.search);
+      const requested = params.get('tab');
+      if (requested !== next) {
+        params.set('tab', next);
+        navigate(`/whatsapp-settings?${params.toString()}`, { replace: true });
+      }
+    }
     // visibleTabs مشتقة من الصلاحيات الحالية، وتتجدد عند تغيّر الجلسة.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, location.pathname, location.search]);

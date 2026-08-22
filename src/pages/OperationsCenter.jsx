@@ -266,7 +266,7 @@ export default function OperationsCenter({ isActive = true }) {
         communicationActions.push({ label: 'إعدادات هاتف', path: '/settings/hatif' });
       }
       if (!communicationActions.length) {
-        communicationActions.push({ label: 'سجل هاتف وواتساب', path: '/whatsapp-settings?tab=overview' });
+        communicationActions.push({ label: 'مركز الحملات', path: '/campaigns' });
       }
       gateways.push({
         key: 'hatif-gateway', title: 'هاتف وIVR', icon: PhoneCall, tone: 'purple', mode: 'قنوات وحملات',
@@ -336,7 +336,7 @@ export default function OperationsCenter({ isActive = true }) {
       cards.push({
         key: 'hatif', title: 'هاتف وواتساب', subtitle: 'المحادثات والمكالمات والحملات', icon: MessageCircle,
         status: syncAt || total ? (healthy ? 'healthy' : 'attention') : 'unavailable',
-        path: '/whatsapp-settings', action: 'فتح مركز هاتف',
+        path: '/campaigns', action: 'فتح مركز الحملات',
         facts: [
           { label: 'آخر سحب مكالمات', value: relativeTime(syncAt), tone: syncAge > 12 * HOUR ? 'gold' : 'green' },
           { label: 'تغطية حالات الرسائل', value: coverage == null ? 'لا توجد عينة' : `${coverage}%`, tone: coverage != null && coverage < 60 ? 'gold' : 'green' },
@@ -344,7 +344,11 @@ export default function OperationsCenter({ isActive = true }) {
         ],
         note: 'المحادثات تظل داخل هاتف؛ ShipAudit يراقب الحالة والأثر فقط.',
       });
-      if (!healthy) actions.push({ title: 'راجع نبض هاتف ونتائج التسليم', path: '/whatsapp-settings', tone: 'gold' });
+      if (!healthy) actions.push({
+        title: 'راجع ربط هاتف ونتائج التسليم',
+        path: allowed('whatsapp.configure') ? '/settings/hatif' : '/campaigns',
+        tone: 'gold',
+      });
     }
 
     if (allowed('webhook.view')) {
@@ -420,7 +424,7 @@ export default function OperationsCenter({ isActive = true }) {
         id: 'hatif-sync', source: 'hatif', status: syncAge <= 12 * HOUR ? 'success' : 'attention',
         statusLabel: syncAge <= 12 * HOUR ? 'مزامنة مكتملة' : 'متأخرة',
         title: 'آخر سحب لسجل المكالمات', detail: 'تحديث أثر التواصل وربطه بملفات العملاء المتاحة.',
-        at: state.hatifSync.synced_at, path: '/whatsapp-settings',
+        at: state.hatifSync.synced_at, path: '/campaigns',
       });
     }
     if (allowed('webhook.view')) {

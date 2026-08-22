@@ -938,7 +938,7 @@ export default function CustomerMoney({ isActive = true }) {
           <details className="customer-finance-command__more-actions">
             <summary>إجراءات أخرى</summary>
             <div className="customer-finance-command__more-actions-body">
-              <Btn variant="ghost" onClick={() => openWithContext('/whatsapp-settings?tab=campaigns&source=customer-finance')} icon={<MessageCircle size={15}/>}>هاتف وWhatsApp</Btn>
+              <Btn variant="ghost" onClick={() => openWithContext('/campaigns?source=customer-finance')} icon={<MessageCircle size={15}/>}>مركز الحملات</Btn>
               {can('campaigns.ivr') ? <Btn variant="ghost" onClick={() => openWithContext('/whatsapp-settings?tab=ivr&source=customer-finance')} icon={<PhoneCall size={15}/>}>مراجعة IVR</Btn> : null}
               <Btn variant="ghost" onClick={() => openWithContext('/retargeting?view=today&source=customer-finance')} icon={<TrendingUp size={15}/>}>عملاء لمحة اليوم</Btn>
               <Btn variant="ghost" onClick={() => openWithContext('/reconciliation?tab=customers&source=customer-finance')} icon={<Scale size={15}/>}>مطابقة الأرصدة</Btn>

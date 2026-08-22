@@ -208,7 +208,7 @@ export default function DecisionsBoard({ isActive = true }) {
               color: 'var(--red)', icon: '🎧', title: 'مكالمات سلبية تحتاج مراجعة',
               value: d.callOps?.negative_7d || 0, unit: 'مكالمة (7 أيام)',
               sub: `مشاعرها سلبية${(d.callOps?.negative_prev || 0) > 0 ? ` — كانت ${d.callOps.negative_prev} في الأسبوع السابق` : ''} · اسمع تسجيلها وتدخّل عند اللزوم`,
-              cta: 'أداء الفريق', onClick: () => navigate('/whatsapp-settings'),
+              cta: 'أداء الفريق', onClick: () => navigate('/whatsapp-settings?tab=agents'),
             },
           },
           {
@@ -218,7 +218,7 @@ export default function DecisionsBoard({ isActive = true }) {
               color: 'var(--red)', icon: '📉', title: 'جودة رقم واتساب في خطر',
               value: `${d.waHealth?.delivered_pct ?? '—'}%`, unit: 'تسليم (14 يوماً)',
               sub: `ردّ ${d.waHealth?.reply_pct ?? '—'}% · أضعف حملة «${(d.waHealth?.worst_campaign || '').slice(0, 24)}» (ردّ ${d.waHealth?.worst_reply_pct ?? '—'}%) — قلّل الباردة وأوقف الأرقام الضعيفة قبل تدهور التصنيف`,
-              cta: 'الأثر والحملات', onClick: () => navigate('/whatsapp-settings'),
+              cta: 'الأثر والحملات', onClick: () => navigate('/whatsapp-settings?tab=impact'),
             },
           },
           {
@@ -228,7 +228,7 @@ export default function DecisionsBoard({ isActive = true }) {
               color: 'var(--gold)', icon: '🧩', title: 'مشكلة صاعدة في المكالمات',
               value: CALL_PROBLEM_AR[d.callOps?.rising_category] || d.callOps?.rising_category || '—', unit: '',
               sub: `${d.callOps?.rising_now || 0} مكالمة (▲ +${d.callOps?.rising_delta || 0} عن الفترة السابقة) — عالجها قبل ما تكبر`,
-              cta: 'تحليل المكالمات', onClick: () => navigate('/whatsapp-settings'),
+              cta: 'تحليل المكالمات', onClick: () => navigate('/whatsapp-settings?tab=problems'),
             },
           },
           {
