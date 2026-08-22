@@ -8,7 +8,7 @@ import {
   loadWeakWhatsappSet,
   normalizeSaudiPhone,
 } from './whatsappService.js';
-import { campaignBucketLabel } from './customerCampaignBuckets.js';
+import { describeCollectionAgingFilter } from './tahseelPortalTemplate.js';
 
 export const SMART_CAMPAIGN_OBJECTIVES = Object.freeze({
   general: Object.freeze({ label: 'حملة عامة', description: 'أرقام يدوية أو Excel دون ربطها بالتحصيل أو زوهو' }),
@@ -235,7 +235,7 @@ export function filterSmartAudience(universe, objective, definition) {
   }
   if (objective === 'collection') {
     const buckets = Array.isArray(definition?.buckets) ? definition.buckets : [];
-    const agingLabel = campaignBucketLabel(new Set(buckets)) || 'كل المستحقات';
+    const agingLabel = describeCollectionAgingFilter(buckets);
     const selectionKeys = new Set(Array.isArray(definition?.selectionKeys) ? definition.selectionKeys : []);
     return rows.flatMap(row => {
       if (selectionKeys.size && !selectionKeys.has(row.key)) return [];

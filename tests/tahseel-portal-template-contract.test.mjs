@@ -48,6 +48,16 @@ test('portal preview formats a full customer balance without leaving placeholder
 test('aging description follows contiguous campaign filter thresholds', () => {
   assert.equal(describeCollectionAgingFilter([], 124), 'حتى 124 يومًا (حسب أقدم فاتورة)');
   assert.equal(describeCollectionAgingFilter([], 0), 'لا توجد مدة تأخير مسجلة');
+  assert.equal(
+    describeCollectionAgingFilter(['inv16_30', 'inv31_60', 'inv61_90', 'inv90p']),
+    'أكثر من 15 يوم',
+  );
+  assert.equal(
+    describeCollectionAgingFilter(['inv31_60', 'inv61_90', 'inv90p']),
+    'أكثر من 30 يوم',
+  );
+  assert.equal(describeCollectionAgingFilter(['inv61_90', 'inv90p']), 'أكثر من 60 يوم');
+  assert.equal(describeCollectionAgingFilter(['inv90p']), 'أكثر من 90 يوم');
   assert.equal(describeCollectionAgingFilter(['b16_30', 'b1', 'b2', 'b3']), 'أكثر من 15 يوم');
   assert.equal(describeCollectionAgingFilter(['b1', 'b2', 'b3']), 'أكثر من 30 يوم');
   assert.equal(describeCollectionAgingFilter(['b2', 'b3']), 'أكثر من 60 يوم');

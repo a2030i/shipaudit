@@ -60,10 +60,10 @@ const AGING_LABELS = Object.freeze({
 });
 
 const SUFFIX_DESCRIPTIONS = Object.freeze([
-  { keys: ['inv16_30', 'inv31_60', 'inv61_90', 'inv90p'], label: 'فواتير متأخرة أكثر من 15 يوم' },
-  { keys: ['inv31_60', 'inv61_90', 'inv90p'], label: 'فواتير متأخرة أكثر من 30 يوم' },
-  { keys: ['inv61_90', 'inv90p'], label: 'فواتير متأخرة أكثر من 60 يوم' },
-  { keys: ['inv90p'], label: 'فواتير متأخرة أكثر من 90 يوم' },
+  { keys: ['inv16_30', 'inv31_60', 'inv61_90', 'inv90p'], label: 'أكثر من 15 يوم' },
+  { keys: ['inv31_60', 'inv61_90', 'inv90p'], label: 'أكثر من 30 يوم' },
+  { keys: ['inv61_90', 'inv90p'], label: 'أكثر من 60 يوم' },
+  { keys: ['inv90p'], label: 'أكثر من 90 يوم' },
   { keys: ['b16_30', 'b1', 'b2', 'b3'], label: 'أكثر من 15 يوم' },
   { keys: ['b1', 'b2', 'b3'], label: 'أكثر من 30 يوم' },
   { keys: ['b2', 'b3'], label: 'أكثر من 60 يوم' },
