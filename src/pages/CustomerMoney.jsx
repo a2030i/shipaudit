@@ -84,6 +84,7 @@ export default function CustomerMoney({ isActive = true }) {
   const [agingLinesReady, setAgingLinesReady] = useState(false);
   const [collectionAssignees, setCollectionAssignees] = useState([]);
   const [receivablesPage, setReceivablesPage] = useState(null);
+  const [receivablesLoadedFilterKey, setReceivablesLoadedFilterKey] = useState('');
   const [centralReadActive, setCentralReadActive] = useState(false);
   const [allResultsSelected, setAllResultsSelected] = useState(false);
   const [bulkRowsOverride, setBulkRowsOverride] = useState(null);
@@ -158,6 +159,7 @@ export default function CustomerMoney({ isActive = true }) {
   };
 
   const refresh = async () => {
+    const requestFilterKey = searchParams.toString();
     const centralMode = RECEIVABLES_READ_MODE !== 'legacy';
     if (!centralMode && dashboardRefreshInFlightRef.current) return;
     const requestId = ++dashboardRequestIdRef.current;
@@ -188,6 +190,7 @@ export default function CustomerMoney({ isActive = true }) {
           if (requestId !== dashboardRequestIdRef.current) return;
           setD(central.dashboard);
           setReceivablesPage(central.page);
+          setReceivablesLoadedFilterKey(requestFilterKey);
           setCollectionAssignees(central.assignees);
           setCollectionTasks(central.page.rows.flatMap(row => row.task ? [row.task] : []));
           setCollectionTaskError(false);
@@ -226,6 +229,7 @@ export default function CustomerMoney({ isActive = true }) {
       if (requestId !== dashboardRequestIdRef.current) return;
       setD(dashboard);
       setReceivablesPage(null);
+      setReceivablesLoadedFilterKey(requestFilterKey);
       setCentralReadActive(false);
       setViewUpdatedAt(new Date().toISOString());
       if (tasks !== null) setCollectionTasks(tasks);
@@ -269,6 +273,12 @@ export default function CustomerMoney({ isActive = true }) {
   // الرجوع للتبويب/المتصفح، ومع إعادة تحقق خفيفة أثناء بقاء الصفحة مفتوحة؛
   // وإلا قد تظل حالة «نشط» من snapshot سابق بعد رفع ملف متاجر أحدث.
   const receivablesFilterKey = searchParams.toString();
+  // URL filters change before the server response arrives. Never combine the
+  // new Aging context with rows from the previous request; that transient mix
+  // used to show a false mismatch and could leave bulk actions selectable.
+  const receivablesContextPending = centralReadActive
+    && receivablesLoadedFilterKey !== receivablesFilterKey;
+  const currentReceivablesPage = receivablesContextPending ? null : receivablesPage;
   useEffect(() => {
     if (!isActive) return undefined;
     const initialTimer = window.setTimeout(refresh, RECEIVABLES_READ_MODE === 'legacy' ? 0 : 180);
@@ -394,9 +404,11 @@ export default function CustomerMoney({ isActive = true }) {
       [c.name, c.storeName, c.phone].some(v => String(v ?? '').toLowerCase().includes(s)));
     return [...list].sort((a, b) => sortBy === 'oldest' ? b.oldestDays - a.oldestDays : bandAmt(b) - bandAmt(a));
   }, [d, q, buckets, platformFilter, sortBy, unclaimedOnly, sadadSet, campaignProjection, agingLinesReady]);  // eslint-disable-line
-  const filtered = centralReadActive ? (d?.customers || []) : legacyFiltered;
+  const filtered = centralReadActive
+    ? (receivablesContextPending ? [] : (d?.customers || []))
+    : legacyFiltered;
   const pageFilteredTotal = useMemo(() => +filtered.reduce((s, c) => s + bandAmt(c), 0).toFixed(2), [filtered, buckets]);  // eslint-disable-line
-  const filteredTotal = centralReadActive ? Number(receivablesPage?.totalAmount || 0) : pageFilteredTotal;
+  const filteredTotal = centralReadActive ? Number(currentReceivablesPage?.totalAmount || 0) : pageFilteredTotal;
   const isMobile = useMobileLayout();
   const {
     visible: visibleCustomerRows,
@@ -475,14 +487,14 @@ export default function CustomerMoney({ isActive = true }) {
       return b.summary.amount - a.summary.amount;
     });
   }, [legacyAllAgingRows, agingFilterState]);
-  const allAgingRows = centralReadActive ? (receivablesPage?.rows || []) : legacyAllAgingRows;
-  const agingRows = centralReadActive ? (receivablesPage?.rows || []) : legacyAgingRows;
+  const allAgingRows = centralReadActive ? (currentReceivablesPage?.rows || []) : legacyAllAgingRows;
+  const agingRows = centralReadActive ? (currentReceivablesPage?.rows || []) : legacyAgingRows;
   const agingPage = Math.max(1, Number(searchParams.get('page')) || 1);
   const agingPageRows = useMemo(() => centralReadActive
     ? agingRows
     : agingRows.slice((agingPage - 1) * AGING_PAGE_SIZE, agingPage * AGING_PAGE_SIZE), [agingRows, agingPage, centralReadActive]);
   const agingFilteredTotal = centralReadActive
-    ? Number(receivablesPage?.totalAmount || 0)
+    ? Number(currentReceivablesPage?.totalAmount || 0)
     : +agingRows.reduce((sum, row) => sum + row.summary.amount, 0).toFixed(2);
   const agingDashboardTotal = useMemo(() => {
     if (!d) return 0;
@@ -490,13 +502,15 @@ export default function CustomerMoney({ isActive = true }) {
     return +[...buckets].reduce((sum, key) => sum + Number(campaignAging?.[key] || 0), 0).toFixed(2);
   }, [d, buckets, campaignAging]);
   const agingDetailsTotal = centralReadActive
-    ? Number(receivablesPage?.sliceTotal || 0)
+    ? Number(currentReceivablesPage?.sliceTotal || 0)
     : +allAgingRows.reduce((sum, row) => sum + row.summary.amount, 0).toFixed(2);
   const agingReconciliation = useMemo(() => ({
     detailsTotal: agingDetailsTotal,
     dashboardTotal: agingDashboardTotal,
-    ok: !agingLinesError && Math.abs(agingDetailsTotal - agingDashboardTotal) <= 0.01,
-  }), [agingDetailsTotal, agingDashboardTotal, agingLinesError]);
+    pending: receivablesContextPending,
+    ok: !receivablesContextPending && !agingLinesError
+      && Math.abs(agingDetailsTotal - agingDashboardTotal) <= 0.01,
+  }), [agingDetailsTotal, agingDashboardTotal, agingLinesError, receivablesContextPending]);
   const platformCounts = useMemo(() => {
     if (centralReadActive && d?.platformCounts) return d.platformCounts;
     const counts = { all: 0, active: 0, inactive: 0, unknown: 0 };
@@ -589,6 +603,10 @@ export default function CustomerMoney({ isActive = true }) {
   const eligibleBulkRows = useMemo(() => bulkReview.filter(row => row.eligible), [bulkReview]);
   const openBulkReview = async action => {
     if (!selectedAging.size && !allResultsSelected) return;
+    if (receivablesContextPending) {
+      toast('جاري تحديث الشريحة؛ انتظر اكتمال النتائج ثم أعد الإجراء.', 'info');
+      return;
+    }
     if (!agingReconciliation.ok && action !== 'export') {
       toast('توقفت الإجراءات: مبلغ الشريحة لا يطابق تفاصيلها بالهللة.', 'error');
       return;
@@ -856,7 +874,7 @@ export default function CustomerMoney({ isActive = true }) {
             <div>
               <strong style={{ display: 'block', fontSize: 11.5 }}>المحدد: {campaignBucketLabel(buckets)}</strong>
               <span style={{ display: 'block', marginTop: 3, color: 'var(--muted)', fontSize: 10.5 }}>
-                {centralReadActive ? Number(receivablesPage?.totalRows || 0) : filtered.length} عميل · {fmt(filteredTotal)} ر.س من الشرائح المختارة فقط
+                {centralReadActive ? Number(currentReceivablesPage?.totalRows || 0) : filtered.length} عميل · {fmt(filteredTotal)} ر.س من الشرائح المختارة فقط
               </span>
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -918,7 +936,7 @@ export default function CustomerMoney({ isActive = true }) {
 
       <AgingOperationsQueue
         rows={agingPageRows}
-        totalRows={centralReadActive ? Number(receivablesPage?.totalRows || 0) : agingRows.length}
+        totalRows={centralReadActive ? Number(currentReceivablesPage?.totalRows || 0) : agingRows.length}
         totalAmount={agingFilteredTotal}
         filters={agingFilterState}
         onFilter={handleAgingFilter}
@@ -928,13 +946,14 @@ export default function CustomerMoney({ isActive = true }) {
         onTogglePage={toggleAgingPage}
         onToggleAll={toggleAllAgingResults}
         allResultsSelected={allAgingSelected}
-        selectedCount={allResultsSelected ? Number(receivablesPage?.totalRows || agingRows.length) : selectedAging.size}
+        selectedCount={allResultsSelected ? Number(currentReceivablesPage?.totalRows || agingRows.length) : selectedAging.size}
         page={agingPage}
         onPage={(value) => updateUrlFilters({ page: value <= 1 ? null : value })}
         onOpen={row => openStoreFromAging(row, false)}
         onInvoices={row => openStoreFromAging(row, true)}
         onBulk={openBulkReview}
         reconciliation={agingReconciliation}
+        loading={receivablesContextPending}
         sourceHealthy={centralReadActive || (!agingLinesError && !loadError)}
         sourceUpdatedAt={viewUpdatedAt}
         campaignPanel={campaignSegmentsPanel}
@@ -1233,7 +1252,7 @@ export default function CustomerMoney({ isActive = true }) {
         <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={() => exportXlsx(filtered)} disabled={!filtered.length}>تصدير</Btn>
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 10 }}>
-        عرض <b style={{ color: 'var(--text)' }}>{centralReadActive ? Number(receivablesPage?.totalRows || 0) : filtered.length}</b> من {centralReadActive ? Number(d?.platformCounts?.all || 0) : d.customers.length} عميلاً
+        عرض <b style={{ color: 'var(--text)' }}>{centralReadActive ? Number(currentReceivablesPage?.totalRows || 0) : filtered.length}</b> من {centralReadActive ? Number(d?.platformCounts?.all || 0) : d.customers.length} عميلاً
         {platformFilter !== 'all' ? ` — حالة المنصّة: ${
           platformFilter === 'active' ? 'نشط' : platformFilter === 'inactive' ? 'غير نشط' : 'غير متوفرة'
         }` : ''}

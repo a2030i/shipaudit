@@ -48,7 +48,7 @@ export default function AgingOperationsQueue({
   allResultsSelected = false,
   selectedCount = selected.size,
   page = 1, onPage, onOpen, onInvoices, onBulk,
-  reconciliation, sourceHealthy = true, sourceUpdatedAt,
+  reconciliation, loading = false, sourceHealthy = true, sourceUpdatedAt,
 }) {
   const isMobile = useMobileLayout();
   const rowWindow = useWindowedRows(rows, { batch: isMobile ? 10 : Math.max(rows.length, 1) });
@@ -80,9 +80,12 @@ export default function AgingOperationsQueue({
   return <section className="aging-operations" dir="rtl">
     <header className="aoq-header">
       <div><span>AGING OPERATIONS</span><h1>قائمة عمل أعمار المستحقات</h1><p>اختر الشريحة، افتح الفواتير التي صنعت مبلغها، ثم نفّذ الإجراء وارجع إلى السياق نفسه.</p></div>
-      <div className={`aoq-reconcile ${reconciliation?.ok ? 'is-pass' : 'is-fail'}`}>
-        <small>مطابقة الشريحة بالتفاصيل</small><strong>{reconciliation?.ok ? 'مطابق بالهللة' : 'تحتاج مراجعة'}</strong>
-        <span>{MONEY(reconciliation?.detailsTotal)} / {MONEY(reconciliation?.dashboardTotal)} ر.س</span>
+      <div className={`aoq-reconcile ${reconciliation?.pending ? 'is-pending' : reconciliation?.ok ? 'is-pass' : 'is-fail'}`}>
+        <small>مطابقة الشريحة بالتفاصيل</small>
+        <strong>{reconciliation?.pending ? 'جاري تحديث الشريحة' : reconciliation?.ok ? 'مطابق بالهللة' : 'تحتاج مراجعة'}</strong>
+        <span>{reconciliation?.pending
+          ? 'سيظهر المبلغ بعد اكتمال نفس طلب الشريحة'
+          : `${MONEY(reconciliation?.detailsTotal)} / ${MONEY(reconciliation?.dashboardTotal)} ر.س`}</span>
       </div>
     </header>
 
@@ -114,13 +117,13 @@ export default function AgingOperationsQueue({
       <span>* سجل التواصل مرتبط برقم التواصل للعرض فقط، ولا يُستخدم لإثبات هوية المتجر أو احتساب مديونيته.</span>
     </div>
 
-    <div className="aoq-select-page">
+    {!loading ? <div className="aoq-select-page">
       <label><input type="checkbox" checked={allSelected} onChange={e => onTogglePage(e.target.checked)}/> تحديد نتائج هذه الصفحة</label>
       <div className="aoq-select-page__meta">
         {hasMoreResults && !allResultsSelected ? <button type="button" onClick={() => onToggleAll(true)}>تحديد كل النتائج ({totalRows})</button> : null}
         <span>صفحة {page} من {pages}</span>
       </div>
-    </div>
+    </div> : null}
 
     {allResultsSelected && totalRows > 0 ? <div className="aoq-selection-scope is-all" role="status">
       <strong>تم تحديد جميع النتائج المطابقة للفلاتر ({totalRows})</strong>
@@ -139,7 +142,7 @@ export default function AgingOperationsQueue({
 
     <div className="aoq-list">
       {rowWindow.visible.map(row => <RowCard key={row.identityKey} row={row} selected={selected.has(row.identityKey)} onSelect={() => onToggle(row.identityKey)} onOpen={() => onOpen(row)} onInvoices={() => onInvoices(row)}/>) }
-      {!rows.length ? <div className="aoq-empty">لا توجد متاجر تطابق الفلاتر الحالية.</div> : null}
+      {!rows.length ? <div className="aoq-empty" role={loading ? 'status' : undefined}>{loading ? 'جاري تحديث نتائج الشريحة…' : 'لا توجد متاجر تطابق الفلاتر الحالية.'}</div> : null}
     </div>
     <ProgressiveListFooter hasMore={rowWindow.hasMore} shown={rowWindow.count} total={rows.length} onLoadMore={rowWindow.loadMore} sentinelRef={rowWindow.sentinelRef}/>
 

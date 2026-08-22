@@ -45,3 +45,12 @@ test('opening balance remains separate from overdue invoice buckets', () => {
   assert.match(migration, /'opening' = any\(v_aging\).*effective_kind = 'opening_balance'/s);
   assert.match(migration, /'inv90p' = any\(v_aging\).*effective_kind = 'invoice'.*age_days > 90/s);
 });
+
+test('changing URL filters never mixes the new Aging context with the previous page', () => {
+  assert.match(page, /receivablesLoadedFilterKey/);
+  assert.match(page, /receivablesLoadedFilterKey !== receivablesFilterKey/);
+  assert.match(page, /const currentReceivablesPage = receivablesContextPending \? null : receivablesPage/);
+  assert.match(page, /pending: receivablesContextPending/);
+  assert.match(page, /جاري تحديث الشريحة؛ انتظر اكتمال النتائج/);
+  assert.match(page, /loading=\{receivablesContextPending\}/);
+});
