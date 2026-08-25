@@ -28,14 +28,16 @@ function DecisionBadge({ decision }) {
   return <span className={`lfar-decision is-${decision.key}`}><Icon size={13}/>{decision.label}</span>;
 }
 
-export default function LamhaFinancialAccountReview({ onClose }) {
+export default function LamhaFinancialAccountReview({ onClose, initialView = 'all' }) {
   const [source, setSource] = useState({ state: 'loading', data: null, error: null });
   const [results, setResults] = useState(() => new Map());
   const [financialHoldStoreIds, setFinancialHoldStoreIds] = useState(() => new Set());
   const [cacheState, setCacheState] = useState({ state: 'loading', restored: 0, error: null });
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState({ completed: 0, total: 0 });
-  const [view, setView] = useState('all');
+  const [view, setView] = useState(() => (
+    ['all', 'overdue', 'clear', 'deactivate', 'activate', 'review'].includes(initialView) ? initialView : 'all'
+  ));
   const [page, setPage] = useState(1);
   const [review, setReview] = useState(null);
   const [selected, setSelected] = useState(() => new Set());

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowRight, BadgeDollarSign, Building2, CalendarClock, ChevronLeft, CircleDollarSign,
@@ -17,9 +17,8 @@ import {
 } from '../lib/store360Service.js';
 import { STORE_TIMELINE_FILTERS } from '../lib/store360Timeline.js';
 import { loadLamhaStoreStatus, updateLamhaStoreStatus } from '../lib/lamhaStoreStatusService.js';
+import { saveAudienceHandoff } from '../lib/agingOperations.js';
 import './store-360.css';
-
-const WhatsAppSendModal = lazy(() => import('../components/WhatsAppSendModal.jsx'));
 
 const VIEWS = [
   ['overview', 'نظرة عامة'], ['finance', 'المالية والفواتير'],
@@ -228,10 +227,9 @@ function StoreStatusConfirmModal({ store, canCreateShipments, activate, busy, on
   </Modal>;
 }
 
-function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onReloadWork, lamhaStatus, setLamhaStatus, refreshLamhaStatus }) {
+function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onReloadWork, onOpenCampaign, lamhaStatus, setLamhaStatus, refreshLamhaStatus }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [modal, setModal] = useState(null);
-  const [waOpen, setWaOpen] = useState(false);
   const [statusBusy, setStatusBusy] = useState(false);
   const closeMobileActions = useCallback(() => setMobileOpen(false), []);
   const store = core.store;
@@ -278,7 +276,7 @@ function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onRelo
     { icon: MessageCircle, label: 'بدء تواصل', reason: !store.phone ? 'لا يوجد رقم تواصل' : null, onClick: store.phone ? () => window.open(`https://wa.me/${String(store.phone).replace(/\D/g, '')}`, '_blank', 'noopener,noreferrer') : null, external: true },
     { icon: Truck, label: 'فتح الشحنات', onClick: () => changeView('shipments') },
     { icon: CircleDollarSign, label: 'التفاصيل المالية', onClick: () => changeView('finance') },
-    { icon: Send, label: 'إضافة إلى حملة', reason: !store.phone ? 'لا يوجد رقم تواصل' : !campaignAllowed ? 'تحتاج صلاحية الحملات' : null, onClick: store.phone && campaignAllowed ? () => setWaOpen(true) : null },
+    { icon: Send, label: 'إنشاء حملة للمتجر', reason: !store.phone ? 'لا يوجد رقم تواصل' : !campaignAllowed ? 'تحتاج صلاحية الحملات' : null, onClick: store.phone && campaignAllowed ? onOpenCampaign : null },
   ];
   return <>
     <Card className="s360-action-center">
@@ -328,11 +326,10 @@ function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onRelo
     {modal === 'sales' || modal === 'followup' ? <SalesActionModal store={store} mode={modal} onClose={() => setModal(null)} onSaved={onReloadWork}/> : null}
     {modal === 'promise' && task ? <PromiseModal task={task} contextAmount={agingAmount || null} contextLabel={agingLabel} currentBalance={core.financial?.outstanding} onClose={() => setModal(null)} onSaved={onReloadWork}/> : null}
     {modal === 'store-activate' || modal === 'store-deactivate' ? <StoreStatusConfirmModal store={store} canCreateShipments={lamhaStatus.canCreateShipments} activate={modal === 'store-activate'} busy={statusBusy} onClose={() => setModal(null)} onConfirm={runStoreStatusAction}/> : null}
-    {waOpen ? <Suspense fallback={null}><WhatsAppSendModal open recipients={[{ to: store.phone, name: store.storeName, amount: core.financial?.outstanding || 0, vars: [store.storeName, MONEY(core.financial?.outstanding)] }]} bucketLabel={`متجر 360 · ${store.storeName}`} onClose={() => setWaOpen(false)} onSent={() => setWaOpen(false)}/></Suspense> : null}
   </>;
 }
 
-function OverviewView({ core, work, changeView, onOpenStore }) {
+function OverviewView({ core, work, changeView, onOpenStore, onOpenCampaign, onOpenReconciliation, onOpenCarrierCenter }) {
   const finance = core.financial;
   return <div className="s360-view-stack">
     <section><SectionHeader title="ما يحتاج انتباه الآن" subtitle="الملخص لا يخلط مرحلة المبيعات بمرحلة التحصيل"/>
@@ -340,6 +337,25 @@ function OverviewView({ core, work, changeView, onOpenStore }) {
         <Card><Target size={18}/><b>المبيعات</b><strong>{work?.sales?.account?.sales_stage || work?.sales?.account?.stage || 'لم تبدأ'}</strong><span>{work?.sales?.account?.owner_name || 'بلا مسؤول'}</span><button onClick={() => changeView('work')}>فتح المبيعات</button></Card>
         <Card><HandCoins size={18}/><b>التحصيل</b><strong>{work?.activeTask ? STAGE_AR[work.activeTask.stage] || work.activeTask.stage : 'لا توجد مهمة مفتوحة'}</strong><span>{work?.activeTask?.assignee_name || 'بلا محصل'}</span><button onClick={() => changeView('work')}>فتح التحصيل</button></Card>
         <Card><ReceiptText size={18}/><b>الفواتير</b><strong>{finance ? `${finance.invoiceCount} فاتورة` : core.sources.finance?.status === 'unavailable' ? 'المصدر غير متاح' : 'لا توجد بيانات مالية'}</strong><span>{finance ? `${MONEY(finance.outstanding)} ر.س مستحق` : 'لا يوجد حساب مالي مرتبط'}</span><button onClick={() => changeView('finance')}>فتح الفواتير</button></Card>
+      </div>
+    </section>
+    <section><SectionHeader title="رحلات المتجر" subtitle="كل ما يخص هذا المتجر يبدأ من ملفه، بينما القوائم الجماعية تبقى لاكتشاف من يحتاج إجراء"/>
+      <div className="s360-workflow-grid">
+        <Card className={`s360-workflow-card ${finance?.balanceSyncIssue ? 'is-warning' : 'is-ready'}`}>
+          <span className="s360-workflow-card__icon"><BadgeDollarSign size={19}/></span>
+          <div><b>مطابقة لمحة مع Zoho</b><strong>{!finance ? 'لا يوجد ربط مالي موثق' : finance.balanceSyncIssue ? 'تحتاج مراجعة' : 'مطابقة الرصيد متاحة'}</strong><small>المطابقة تفتح على هذا المتجر فقط ولا تنشئ ربطًا تلقائيًا.</small></div>
+          <button type="button" onClick={onOpenReconciliation}>فتح المطابقة <ChevronLeft size={14}/></button>
+        </Card>
+        <Card className="s360-workflow-card is-action">
+          <span className="s360-workflow-card__icon"><Send size={19}/></span>
+          <div><b>حملة وتواصل</b><strong>{finance?.outstanding > 0 ? 'حملة تحصيل لهذا المتجر' : 'حملة تواصل لهذا المتجر'}</strong><small>ينتقل إلى المراجعة واختيار القالب والحماية قبل أي إرسال.</small></div>
+          <button type="button" onClick={onOpenCampaign} disabled={!core.store.phone} title={!core.store.phone ? 'لا يوجد رقم تواصل موثق لهذا المتجر' : undefined}>{core.store.phone ? 'مراجعة الحملة' : 'لا يوجد رقم تواصل'} <ChevronLeft size={14}/></button>
+        </Card>
+        <Card className="s360-workflow-card">
+          <span className="s360-workflow-card__icon"><Truck size={19}/></span>
+          <div><b>الشحن والناقلون والعقود</b><strong>الشحنات هنا، والتدقيق في Carrier 360</strong><small>نتائج العقود والأسعار تبقى من محرك تدقيق الناقل المعتمد دون إعادة حساب.</small></div>
+          <div className="s360-workflow-card__actions"><button type="button" onClick={() => changeView('shipments')}>شحنات المتجر</button><button type="button" onClick={onOpenCarrierCenter}>شركات الشحن والعقود</button></div>
+        </Card>
       </div>
     </section>
     {core.sharedContactStores.length ? <section><SectionHeader title="متاجر تشترك في رقم التواصل" subtitle="تشابه رقم الاتصال لا يعني ملكية واحدة ولا تُجمع المبالغ بينها" source={core.sources.identity}/>
@@ -466,10 +482,10 @@ function WorkView({ data }) {
   </div>;
 }
 
-function ShipmentsView({ data, page, onPage }) {
+function ShipmentsView({ data, page, onPage, onOpenCarrierCenter }) {
   if (data?.source?.status === 'unavailable') return <UnavailableBlock source={data.source}/>;
   const pages = Math.max(1, Math.ceil((data?.count || 0) / 20));
-  return <section><SectionHeader title="الشحنات والناقلون" subtitle="هذا القسم من آخر snapshot لشحنات لمحة ويطابق اسم المتجر؛ مؤشر الرأس المنفصل مصدره دليل المتاجر" source={data?.source}/>
+  return <section><SectionHeader title="الشحنات والناقلون" subtitle="هذا القسم من آخر snapshot لشحنات لمحة ويطابق اسم المتجر؛ مؤشر الرأس المنفصل مصدره دليل المتاجر" source={data?.source} action={<Btn size="sm" variant="ghost" onClick={onOpenCarrierCenter}>شركات الشحن والعقود</Btn>}/>
     {!data?.rows?.length ? <Empty icon="📦" title="لا توجد شحنات مطابقة في مصدر شحنات لمحة" sub="قد يعرض دليل المتاجر عددًا وآخر شحنة من مصدر مختلف؛ مصدر الشحنات الحالية لا يحمل Store ID ويعتمد اسم المتجر"/> : <div className="s360-card-list shipments">{data.rows.map(row => <article key={row.id}>
       <div><PackageSearch size={17}/><span><b>{row.awb || row.order_no || 'شحنة'}</b><small>{row.carrier_name || 'الناقل غير متاح'} · {DATE(row.order_date || row.pickup_at)}</small></span></div>
       <div><b>{row.order_status || 'الحالة غير متاحة'}</b>{row.delivered_at ? <small>تسليم {DATE(row.delivered_at)}</small> : null}</div>
@@ -574,6 +590,24 @@ export default function Store360Page({ identity }) {
 
   const store = core.store;
   const finance = core.financial;
+  const openCampaignReview = () => {
+    const bucketMap = { b0_15: 'inv1_15', b16_30: 'inv16_30', b31_60: 'inv31_60', b61_90: 'inv61_90', b90p: 'inv90p', opening: 'opening' };
+    const positiveAging = Object.entries(finance?.aging || {}).filter(([, amount]) => Number(amount) > 0).map(([key]) => bucketMap[key]).filter(Boolean);
+    const collection = positiveAging.length > 0 && finance?.outstanding > 0;
+    const context = collection ? {
+      source: 'aging_operations', aging: positiveAging, filters: { store_id: store.storeId },
+      selectionKeys: [`store:${store.storeId}`], snapshotAt: new Date().toISOString(),
+      count: 1, totalAmount: Number(finance.outstanding) || 0, returnTo: currentUrl,
+    } : {
+      source: 'store_360', storeId: store.storeId, storeName: store.storeName,
+      manualRows: [{ phone: store.phone, name: store.storeName, amount: 0 }],
+      snapshotAt: new Date().toISOString(), count: 1, returnTo: currentUrl,
+    };
+    const token = saveAudienceHandoff(context);
+    navigate(`/campaigns?audienceContext=${encodeURIComponent(token)}&channel=whatsapp&step=5&returnTo=${encodeURIComponent(currentUrl)}`);
+  };
+  const openReconciliation = () => navigate(`/reconciliation?tab=zoho_live&store=${encodeURIComponent(store.storeId)}&search=${encodeURIComponent(store.storeName)}&returnTo=${encodeURIComponent(currentUrl)}`);
+  const openCarrierCenter = () => navigate(`/hub?source=store360&returnTo=${encodeURIComponent(currentUrl)}`);
   const financeMissingLabel = core.sources.finance?.status === 'unavailable' ? 'المصدر غير متاح' : 'لا توجد بيانات مالية';
   const financeDetails = viewData.finance;
   const financeInvoiceCount = financeDetails?.invoiceCount ?? finance?.invoiceCount;
@@ -603,7 +637,7 @@ export default function Store360Page({ identity }) {
       <div className="s360-meta-chips"><span className={`s360-account-chip ${lamhaStatus.canCreateShipments === true ? 'is-active' : lamhaStatus.canCreateShipments === false ? 'is-inactive' : 'is-unknown'}`}>{lamhaAccountLabel(lamhaStatus)}</span><span>{store.billingType || 'نوع الفوترة غير متاح'}</span><span>{store.integrationType || 'التكامل غير متاح'}</span><span>{workLoading ? 'المسؤول…' : work?.owner || 'بلا مسؤول'}</span></div>
     </header>
 
-    <ActionCenter core={core} work={work} can={can} isAdmin={isAdmin} changeView={changeView} currentUrl={currentUrl} onReloadWork={loadWork} lamhaStatus={lamhaStatus} setLamhaStatus={setLamhaStatus} refreshLamhaStatus={refreshLamhaStatus}/>
+    <ActionCenter core={core} work={work} can={can} isAdmin={isAdmin} changeView={changeView} currentUrl={currentUrl} onReloadWork={loadWork} onOpenCampaign={openCampaignReview} lamhaStatus={lamhaStatus} setLamhaStatus={setLamhaStatus} refreshLamhaStatus={refreshLamhaStatus}/>
 
     <div className="s360-kpi-row">
       <KpiCard label="المستحق" value={finance ? `${MONEY(finance.outstanding)} ر.س` : financeMissingLabel} detail={financeDocumentDetail} source={core.sources.finance} tone="danger" onClick={() => changeView('finance')}/>
@@ -616,7 +650,7 @@ export default function Store360Page({ identity }) {
 
     <main className="s360-main">
       {viewLoading[view] || (view === 'work' && workLoading) ? <LoadingBlock/> : null}
-      {!viewLoading[view] && view === 'overview' ? <OverviewView core={core} work={work} changeView={changeView} onOpenStore={target => navigate(`/customer-360?customer=${encodeURIComponent(target.storeId)}&view=overview&returnTo=${encodeURIComponent(currentUrl)}`)}/> : null}
+      {!viewLoading[view] && view === 'overview' ? <OverviewView core={core} work={work} changeView={changeView} onOpenCampaign={openCampaignReview} onOpenReconciliation={openReconciliation} onOpenCarrierCenter={openCarrierCenter} onOpenStore={target => navigate(`/customer-360?customer=${encodeURIComponent(target.storeId)}&view=overview&returnTo=${encodeURIComponent(currentUrl)}`)}/> : null}
       {!viewLoading[view] && view === 'finance' ? <FinanceView
         core={core}
         data={viewData.finance}
@@ -630,7 +664,7 @@ export default function Store360Page({ identity }) {
         onReloadWork={loadWork}
       /> : null}
       {!viewLoading[view] && !workLoading && view === 'work' ? <WorkView data={work}/> : null}
-      {!viewLoading[view] && view === 'shipments' ? <ShipmentsView data={viewData.shipments} page={shipmentPage} onPage={setShipmentPage}/> : null}
+      {!viewLoading[view] && view === 'shipments' ? <ShipmentsView data={viewData.shipments} page={shipmentPage} onPage={setShipmentPage} onOpenCarrierCenter={openCarrierCenter}/> : null}
       {!viewLoading[view] && view === 'communications' ? <CommunicationView data={viewData.communications}/> : null}
       {!viewLoading[view] && view === 'timeline' ? <TimelineView data={viewData.timeline}/> : null}
     </main>

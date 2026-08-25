@@ -680,7 +680,7 @@ export default function Reconciliation({ isActive = true }) {
         ))}
       </div>
 
-      {view === 'customer' && <ZohoLiveTab rows={custRows}/>}
+      {view === 'customer' && <ZohoLiveTab rows={custRows} initialSearch={new URLSearchParams(location.search).get('search') || new URLSearchParams(location.search).get('store') || ''}/>}
 
       {/* Reconciliation table — anchored on internal (المرجع) */}
       {view === 'store' && (noStoreAnchor.count > 0) && (
@@ -935,9 +935,10 @@ const RECON_STATUS_META = {
 
 // عرض «حسب العميل» — الصفوف تأتي من الأب (جلبة واحدة يتقاسمها العرضان،
 // ويحسب منها الأب كم يُخفي عرض المتجر).
-function ZohoLiveTab({ rows }) {
-  const [q, setQ]           = useState('');
+function ZohoLiveTab({ rows, initialSearch = '' }) {
+  const [q, setQ]           = useState(initialSearch);
   const [st, setSt]         = useState('');
+  useEffect(() => { setQ(initialSearch); }, [initialSearch]);
 
   const filtered = useMemo(() => {
     if (!rows) return [];
@@ -945,7 +946,7 @@ function ZohoLiveTab({ rows }) {
     if (st) list = list.filter(r => r.status === st);
     const s = q.trim().toLowerCase();
     if (s) list = list.filter(r =>
-      [r.storeName, r.phone, ...(r.zohoNames || []), ...(r.internalNames || [])]
+      [r.storeId, r.storeName, r.phone, ...(r.zohoNames || []), ...(r.internalNames || [])]
         .some(v => String(v ?? '').toLowerCase().includes(s)));
     return list;
   }, [rows, q, st]);

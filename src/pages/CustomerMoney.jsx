@@ -68,6 +68,35 @@ const platformStatusMeta = (customer) => {
   return { key, label: 'حالة المنصّة غير متوفرة', color: 'var(--gold)' };
 };
 
+const decisionKey = value => ['stop', 'deduct'].includes(value) ? value : null;
+const normalizedBillingType = value => String(value || '').trim().toLowerCase().replace(/\s+/g, '');
+const customerDecisionMatch = (customer, decision) => {
+  const billing = normalizedBillingType(customer?.billingType);
+  const invoiceCount = Number(customer?.invCnt || 0);
+  if (decision === 'stop') {
+    const overdue30 = Number(customer?.inv31_60 || 0)
+      + Number(customer?.inv61_90 || 0)
+      + Number(customer?.inv90p || 0)
+      + Number(customer?.opening || 0);
+    return ['دفعلاحق', 'postpaid'].includes(billing)
+      && platformStatusKey(customer) === 'active'
+      && invoiceCount > 0
+      && overdue30 > 0.5;
+  }
+  if (decision === 'deduct') {
+    return ['دفعمسبق', 'prepaid'].includes(billing)
+      && Number(customer?.walletBalance || 0) > 0.5
+      && Number(customer?.owed || 0) > 0.5
+      && invoiceCount > 0;
+  }
+  return false;
+};
+
+const customerDecisionAmount = (customer, decision) => decision === 'stop'
+  ? Number(customer?.inv31_60 || 0) + Number(customer?.inv61_90 || 0)
+    + Number(customer?.inv90p || 0) + Number(customer?.opening || 0)
+  : Math.min(Number(customer?.walletBalance || 0), Number(customer?.owed || 0));
+
 export default function CustomerMoney({ isActive = true }) {
   const { can, user, isAdmin } = useAuth();
   const location = useLocation();
@@ -129,6 +158,7 @@ export default function CustomerMoney({ isActive = true }) {
   const [settlementsOpen, setSettlementsOpen] = useState(true);
   const [bulkOpen, setBulkOpen] = useState(false);   // مودال «طبّق للكل»
   const [lamhaPolicyOpen, setLamhaPolicyOpen] = useState(false);
+  const [decisionResults, setDecisionResults] = useState({ state: 'idle', rows: [], error: null });
   const dashboardRefreshInFlightRef = useRef(false);
   const dashboardRequestIdRef = useRef(0);
   const lastDashboardRefreshAtRef = useRef(0);
@@ -147,6 +177,31 @@ export default function CustomerMoney({ isActive = true }) {
     setUnclaimedOnly(searchParams.get('source') === 'unclaimed');
   }, [searchParams]);
 
+  const requestedDecision = decisionKey(searchParams.get('decision'));
+  useEffect(() => {
+    if (!isActive || !requestedDecision) {
+      setDecisionResults({ state: 'idle', rows: [], error: null });
+      return;
+    }
+    let cancelled = false;
+    setDecisionResults({ state: 'loading', rows: [], error: null });
+    loadAllCustomerReceivablesRows({
+      aging: [], search: '', status: 'all', owner: 'all', collection: 'all',
+      promise: 'all', contact: 'all', action: 'all', source: 'all', sort: 'amount',
+    }).then(rows => {
+      if (cancelled) return;
+      setDecisionResults({
+        state: 'available',
+        rows: rows.filter(row => customerDecisionMatch(row.customer, requestedDecision)),
+        error: null,
+      });
+    }).catch(error => {
+      if (cancelled) return;
+      setDecisionResults({ state: 'error', rows: [], error: error?.message || 'تعذرت قراءة نتائج القرار' });
+    });
+    return () => { cancelled = true; };
+  }, [isActive, requestedDecision]);
+
   const updateUrlFilters = (patch, { replace = false } = {}) => {
     const next = new URLSearchParams(searchParams);
     for (const [key, value] of Object.entries(patch)) {
@@ -156,6 +211,34 @@ export default function CustomerMoney({ isActive = true }) {
     next.delete('customer');
     next.delete('q');
     setSearchParams(next, { replace });
+  };
+
+  const clearDecisionResults = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('decision');
+    setSearchParams(next, { replace: true });
+  };
+
+  const closeDecisionResults = () => {
+    const returnTo = searchParams.get('returnTo');
+    if (returnTo?.startsWith('/')) {
+      navigate(returnTo);
+      return;
+    }
+    clearDecisionResults();
+  };
+
+  const openDecisionStore = row => {
+    if (!row.customer?.storeId) {
+      toast('لا يمكن فتح Store 360 قبل وجود Store ID مؤكد لهذا الحساب المالي.', 'info');
+      return;
+    }
+    const returnTo = `${location.pathname}${location.search}`;
+    const params = new URLSearchParams({
+      customer: String(row.customer.storeId), open: '1', view: 'finance',
+      source: 'overview-decision', returnTo,
+    });
+    navigate(`/customer-360?${params.toString()}`);
   };
 
   const refresh = async () => {
@@ -1345,8 +1428,74 @@ export default function CustomerMoney({ isActive = true }) {
           onClose={() => setBulkOpen(false)}
           onDone={() => { setBulkOpen(false); resetCredits(); refresh(); }}/>
       )}
+      {requestedDecision && (
+        <Modal
+          title={requestedDecision === 'stop' ? 'نتائج: حسابات تحتاج مراجعة الإيقاف' : 'نتائج: أرصدة دفع مسبق قابلة للخصم'}
+          onClose={closeDecisionResults}
+          width={760}
+          bodyClassName="customer-decision-results"
+        >
+          {decisionResults.state === 'loading' && <WorkspaceLoadingState label="جارٍ تحميل السجلات المكوّنة للقرار…"/>}
+          {decisionResults.state === 'error' && (
+            <Empty title="تعذرت قراءة النتائج" description={decisionResults.error || 'المصدر غير متاح الآن.'}/>
+          )}
+          {decisionResults.state === 'available' && (
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <b>{decisionResults.rows.length.toLocaleString('en-US')} حساب</b>
+                  <div style={{ color: 'var(--muted)', fontSize: 12 }}>
+                    الإجمالي {fmt(decisionResults.rows.reduce((sum, row) => sum + customerDecisionAmount(row.customer, requestedDecision), 0))} ر.س
+                  </div>
+                </div>
+                {requestedDecision === 'stop' && isAdmin && (
+                  <Btn variant="accent" onClick={() => { clearDecisionResults(); setLamhaPolicyOpen(true); }}>
+                    فحص حالة لمحة ومراجعة الإيقاف
+                  </Btn>
+                )}
+              </div>
+              {!decisionResults.rows.length ? (
+                <Empty title="لا توجد نتائج حالية" description="تغيّرت البيانات أو لم يعد أي حساب يطابق شروط القرار."/>
+              ) : (
+                <div style={{ display: 'grid', gap: 8, maxHeight: '58vh', overflowY: 'auto', paddingInlineEnd: 2 }}>
+                  {decisionResults.rows.map(row => {
+                    const customer = row.customer || {};
+                    const amount = customerDecisionAmount(customer, requestedDecision);
+                    return (
+                      <button
+                        type="button"
+                        key={row.identityKey}
+                        onClick={() => openDecisionStore(row)}
+                        style={{
+                          width: '100%', minHeight: 64, padding: '12px 14px', border: '1px solid var(--line)',
+                          borderRadius: 14, background: 'var(--card)', color: 'inherit', cursor: customer.storeId ? 'pointer' : 'default',
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, textAlign: 'right',
+                        }}
+                        aria-label={`فتح ملف ${customer.storeName || customer.name || 'العميل'}`}
+                      >
+                        <span style={{ minWidth: 0 }}>
+                          <strong style={{ display: 'block' }}>{customer.storeName || customer.name || 'عميل بلا اسم'}</strong>
+                          <small style={{ color: 'var(--muted)' }}>
+                            {requestedDecision === 'stop'
+                              ? `دفع لاحق · نشط · ${Number(customer.oldestDays || 0)} يومًا كأقدم استحقاق`
+                              : `محفظة ${fmt(customer.walletBalance)} ر.س · مستحق ${fmt(customer.owed)} ر.س`}
+                          </small>
+                        </span>
+                        <span style={{ flexShrink: 0, fontWeight: 800 }}>{fmt(amount)} ر.س</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <small style={{ color: 'var(--muted)' }}>
+                المصدر: بيانات التحصيل المحلية الحالية. فتح النتائج للقراءة فقط ولا ينفذ خصمًا أو إيقافًا.
+              </small>
+            </div>
+          )}
+        </Modal>
+      )}
       {lamhaPolicyOpen ? <Suspense fallback={<WorkspaceLoadingState label="جارٍ فتح مراجعة حسابات لمحة…"/>}>
-        <LamhaFinancialAccountReview onClose={() => setLamhaPolicyOpen(false)}/>
+        <LamhaFinancialAccountReview initialView="overdue" onClose={() => setLamhaPolicyOpen(false)}/>
       </Suspense> : null}
       {applyTarget && (
         <ApplyCreditsModal target={applyTarget} onGrant={grantWriteAccess}

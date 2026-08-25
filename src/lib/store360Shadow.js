@@ -147,6 +147,8 @@ export function adaptStore360Core(nextCore) {
       lastPaymentAmount: Number(payment?.amount) || 0,
       invoiceCount: Number(finance.openInvoiceCount) || 0,
       balanceSyncIssue: !!finance.balanceSyncIssue,
+      balanceSyncGap: Number(finance.balanceSyncGap) || 0,
+      balanceSyncOverage: Number(finance.balanceSyncOverage) || 0,
     } : null,
     sharedContactStores: Array.isArray(identity.sharedContactStores) ? identity.sharedContactStores : [],
     sources: {

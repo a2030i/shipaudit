@@ -356,8 +356,27 @@ export default function SmartCampaignCenter({ isActive = true }) {
   useEffect(() => {
     if (!isActive) return;
     const context = readAudienceHandoff(audienceContextToken);
-    if (!context || context.source !== 'aging_operations') return;
+    if (!context || !['aging_operations', 'store_360'].includes(context.source)) return;
     setAudienceHandoff(context);
+    const requestedChannel = searchParams.get('channel');
+    setChannel(requestedChannel === 'ivr' ? 'ivr' : 'whatsapp');
+    if (context.source === 'store_360') {
+      setObjective('general');
+      setDefinition({
+        ...defaultAudienceDefinition('general'),
+        manualRows: Array.isArray(context.manualRows) ? context.manualRows : [],
+        audienceContext: {
+          source: context.source,
+          storeId: context.storeId,
+          snapshotAt: context.snapshotAt,
+          count: context.count,
+          returnTo: context.returnTo,
+        },
+      });
+      setName(`تواصل ${context.storeName || 'متجر'} — ${dateStamp()}`);
+      setStep(5);
+      return;
+    }
     setObjective('collection');
     setDefinition({
       ...defaultAudienceDefinition('collection'),
@@ -372,8 +391,6 @@ export default function SmartCampaignCenter({ isActive = true }) {
         returnTo: context.returnTo,
       },
     });
-    const requestedChannel = searchParams.get('channel');
-    setChannel(requestedChannel === 'ivr' ? 'ivr' : 'whatsapp');
     const agingLabel = campaignBucketLabel(new Set(Array.isArray(context.aging) ? context.aging : [])) || 'كل المستحقات';
     setName(`تحصيل ${agingLabel} — ${dateStamp()}`);
     setStep(5);

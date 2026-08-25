@@ -90,6 +90,8 @@ async function loadStore360CoreLegacy(identity, { shadow = true } = {}) {
       lastPaymentAmount: Number(directMoney.lastPaymentAmount) || 0,
       invoiceCount: Number(directMoney.invCnt) || 0,
       balanceSyncIssue: !!directMoney.balanceSyncIssue,
+      balanceSyncGap: Number(directMoney.balanceSyncGap) || 0,
+      balanceSyncOverage: Number(directMoney.balanceSyncOverage) || 0,
     } : null,
     sharedContactStores: samePhone.filter(row => row.storeId !== effectiveMerchant?.storeId),
     sources: {
