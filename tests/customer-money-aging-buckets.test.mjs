@@ -15,7 +15,7 @@ test('customer collection exposes focused invoice and opening-balance campaign s
   assert.deepEqual(CUSTOMER_CAMPAIGN_BUCKETS.map(bucket => bucket.label), [
     '1–15 يوم', '16–30 يوم', '31–60 يوم', '61–90 يوم', 'أكثر من 90 يوم', 'رصيد افتتاحي غير مدفوع',
   ]);
-  assert.match(page, /شرائح حملات التحصيل/);
+  assert.match(page, /فلتر شرائح السداد/);
   assert.match(page, /شريحة مستقلة ولا تدخل ضمن «أكثر من 90 يوم»/);
   assert.match(page, /openFocusedCampaign/);
   assert.ok(
