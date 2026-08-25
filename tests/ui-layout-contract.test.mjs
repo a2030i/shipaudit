@@ -396,7 +396,9 @@ test('approved workspaces live in the navigation hub without removing legacy rou
   assert.match(cash, /id: 'unclassified'/);
   assert.match(cash, /defaultSavedClass: 'unclassified'/);
   assert.match(customers, /title="دليل العملاء والمتاجر"/);
-  assert.match(customers, /params\.set\('customer', identity\)/);
+  assert.match(customers, /buildStore360Url\(\{/);
+  assert.match(customers, /storeId: identity/);
+  assert.match(customers, /لا يمكن فتح Store 360 قبل وجود Store ID مؤكد/);
 
   for (const path of ['/cod-settlements', '/payments', '/bank', '/collections', '/legal', '/receivables', '/retargeting', '/hatif-leads', '/segments', '/merchants']) {
     assert.ok(app.includes(`'${path}'`), `legacy path ${path} must remain registered`);

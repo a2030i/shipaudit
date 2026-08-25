@@ -3,6 +3,7 @@
 // الإجراء المقترح + أزرار تنفيذه (اتصال IVR / حملة واتساب / عرض العميل).
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { buildStore360Url } from '../lib/store360Navigation.js';
 import {
   RefreshCw, Phone, Eye, ShieldCheck, ListChecks, Activity, Target,
   Link2, CalendarClock, User, ExternalLink, CircleDollarSign,
@@ -312,13 +313,7 @@ export default function NextActions({ isActive = true }) {
           const returnTo = `${location.pathname}${location.search}`;
           setProfileRow(null);
           setProfileData(null);
-          const params = new URLSearchParams({
-            customer: String(profileRow.storeId),
-            open: '1',
-            source: 'sales_today',
-            returnTo,
-          });
-          navigate(`/customer-360?${params.toString()}`);
+          navigate(buildStore360Url({ storeId: profileRow.storeId, source: 'sales_today', returnTo }));
         }}/> : null}
     </Pad>
   );

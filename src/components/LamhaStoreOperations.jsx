@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { buildStore360Url } from '../lib/store360Navigation.js';
 import {
   AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Clock3,
   ExternalLink, Pause, Play, Power, PowerOff, RefreshCw, Search, ShieldCheck, XCircle,
@@ -161,13 +162,10 @@ export default function LamhaStoreOperations({ merchants, onClose }) {
   }, [busy]);
 
   const openStore = merchant => {
-    const params = new URLSearchParams({
-      customer: String(merchant.store_id),
-      open: '1',
-      source: 'lamha-status',
+    navigate(buildStore360Url({
+      storeId: merchant.store_id, source: 'lamha-status',
       returnTo: `${location.pathname}${location.search}`,
-    });
-    navigate(`/customer-360?${params.toString()}`);
+    }));
   };
 
   const reviewRows = reviewMode === 'get-all' ? filtered : selectedRows;

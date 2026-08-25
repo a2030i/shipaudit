@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { buildStore360Url } from '../src/lib/store360Navigation.js';
 
 const read = path => readFile(new URL(path, import.meta.url), 'utf8');
 
@@ -33,4 +34,40 @@ test('Reconciliation scopes the customer view by Store ID as well as the display
   const page = await read('../src/pages/Reconciliation.jsx');
   assert.match(page, /initialSearch=/);
   assert.match(page, /\[r\.storeId, r\.storeName, r\.phone/);
+});
+
+test('Store 360 navigation requires a numeric Store ID and preserves workflow context', () => {
+  assert.equal(buildStore360Url({ storeId: 'متجر الأندية' }), null);
+  assert.equal(buildStore360Url({ storeId: '+966500000000' }), null);
+  const url = buildStore360Url({
+    storeId: 847,
+    view: 'finance',
+    source: 'aging',
+    aging: ['inv31_60', 'inv90p'],
+    invoice: 'bucket',
+    returnTo: '/customer-money?aging=inv90p&page=3&search=club',
+  });
+  const parsed = new URL(url, 'https://example.test');
+  assert.equal(parsed.pathname, '/customer-360');
+  assert.equal(parsed.searchParams.get('customer'), '847');
+  assert.equal(parsed.searchParams.get('view'), 'finance');
+  assert.equal(parsed.searchParams.get('aging'), 'inv31_60,inv90p');
+  assert.equal(parsed.searchParams.get('invoice'), 'bucket');
+  assert.equal(parsed.searchParams.get('returnTo'), '/customer-money?aging=inv90p&page=3&search=club');
+});
+
+test('Store 360 leads with a decision and exposes scoped reconciliation in finance', async () => {
+  const page = await read('../src/pages/Store360Page.jsx');
+  assert.match(page, /function DecisionPanel/);
+  assert.match(page, /الحساب نشط وعليه/);
+  assert.match(page, /مطابقة رصيد المتجر بين لمحة وZoho/);
+  assert.match(page, /لا ينشئ ربطًا أو كتابة تلقائية/);
+});
+
+test('Store 360 uses the local Lamha mirror first and reserves live reads for explicit refresh', async () => {
+  const page = await read('../src/pages/Store360Page.jsx');
+  assert.match(page, /if \(refreshKey === 0\)/);
+  assert.match(page, /source: 'local'/);
+  assert.match(page, /loadLamhaStoreStatus\(id\)/);
+  assert.match(page, /refreshLamhaStatus/);
 });

@@ -18,6 +18,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { buildStore360Url } from '../lib/store360Navigation.js';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import {
@@ -911,16 +912,16 @@ function TaskDrawer({ task, customer, onClose, onRefresh, onPromise, onWriteoff,
   const navigate = useNavigate();
   const location = useLocation();
   const openStore360 = () => {
-    const identity = customer?.merchant?.storeId || task.customer_name;
-    const params = new URLSearchParams({
-      customer: identity,
-      open: '1',
-      view: 'work',
-      source: 'collections',
-      returnTo: `${location.pathname}${location.search}`,
-    });
+    const identity = customer?.merchant?.storeId;
+    if (!identity) {
+      toast('لا يمكن فتح Store 360 قبل وجود Store ID مؤكد لهذا الحساب المالي.', 'info');
+      return;
+    }
     onClose();
-    navigate(`/customer-360?${params.toString()}`);
+    navigate(buildStore360Url({
+      storeId: identity, view: 'work', source: 'collections',
+      returnTo: `${location.pathname}${location.search}`,
+    }));
   };
   return (
     <Modal title={`مهمة تحصيل — ${task.customer_name}`} onClose={onClose} width={560}>

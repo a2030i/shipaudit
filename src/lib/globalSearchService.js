@@ -1,6 +1,7 @@
 import { supabase } from './supabase.js';
 import { searchAwbAcrossAudits } from './coreService.js';
 import { zohoStatusAr } from './pnlService.js';
+import { buildStore360Url } from './store360Navigation.js';
 
 const enc = (v) => encodeURIComponent(String(v ?? '').trim());
 const cleanTerm = (v) => String(v ?? '').trim().replace(/[%,]/g, ' ').replace(/\s+/g, ' ');
@@ -30,7 +31,7 @@ function merchantResult(m) {
   ].filter(Boolean);
   return {
     kind: 'merchant', group: 'متجر', label: title, sub: parts.join(' · '),
-    path: `/customer-360?tab=watch&customer=${enc(title)}`,
+    path: buildStore360Url({ storeId: m.store_id, view: 'overview', source: 'global-search' }) || '/customers',
   };
 }
 

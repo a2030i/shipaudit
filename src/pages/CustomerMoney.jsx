@@ -6,6 +6,7 @@
 
 import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { buildStore360Url } from '../lib/store360Navigation.js';
 import { Search, Download, Phone, MessageCircle, ChevronDown, ChevronLeft, HandCoins,
   TrendingUp, PhoneCall, Scale, Megaphone, ListChecks } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -234,11 +235,7 @@ export default function CustomerMoney({ isActive = true }) {
       return;
     }
     const returnTo = `${location.pathname}${location.search}`;
-    const params = new URLSearchParams({
-      customer: String(row.customer.storeId), open: '1', view: 'finance',
-      source: 'overview-decision', returnTo,
-    });
-    navigate(`/customer-360?${params.toString()}`);
+    navigate(buildStore360Url({ storeId: row.customer.storeId, view: 'finance', source: 'overview-decision', returnTo }));
   };
 
   const refresh = async () => {
@@ -659,16 +656,10 @@ export default function CustomerMoney({ isActive = true }) {
       return;
     }
     const returnTo = `${location.pathname}${location.search}`;
-    const params = new URLSearchParams({
-      customer: row.customer.storeId,
-      open: '1',
-      view: 'finance',
-      source: 'aging',
-      returnTo,
-    });
-    if (buckets.size) params.set('aging', [...buckets].join(','));
-    if (invoice) params.set('invoice', 'bucket');
-    navigate(`/customer-360?${params.toString()}`);
+    navigate(buildStore360Url({
+      storeId: row.customer.storeId, view: 'finance', source: 'aging', returnTo,
+      aging: buckets.size ? [...buckets] : null, invoice: invoice ? 'bucket' : null,
+    }));
   };
   const selectedAgingRows = useMemo(() => {
     const sourceRows = bulkRowsOverride || agingRows;
@@ -1974,15 +1965,14 @@ function CustomerCard({
     ? bandKeys.map(k => (BUCKETS.find(b => b.key === k) || {}).label).filter(Boolean).join(' + ')
     : null;
   const openStore360 = () => {
-    const params = new URLSearchParams({
-      customer: c.storeId || c.name,
-      open: '1',
-      view: 'finance',
-      source: 'aging',
-      returnTo: returnTo || '/customer-money',
-    });
-    if (bandKeys.length) params.set('aging', bandKeys.join(','));
-    navigate(`/customer-360?${params.toString()}`);
+    if (!c.storeId) {
+      toast('لا يمكن فتح Store 360 قبل وجود Store ID مؤكد لهذا الحساب المالي.', 'info');
+      return;
+    }
+    navigate(buildStore360Url({
+      storeId: c.storeId, view: 'finance', source: 'aging',
+      returnTo: returnTo || '/customer-money', aging: bandKeys,
+    }));
   };
 
   return (

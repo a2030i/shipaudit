@@ -11,6 +11,7 @@
 
 import { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { buildStore360Url } from '../lib/store360Navigation.js';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import {
@@ -300,18 +301,21 @@ export default function CustomerWatch({ isActive = true }) {
   }, [isActive]);
 
   const openCustomer360 = (entry) => {
-    const identity = entry?.merchant?.storeId || entry?.name;
+    const identity = entry?.merchant?.storeId;
     // Full Store 360 owns the active experience. Keeping the legacy modal
     // state here would make it reappear as a ghost when the user returns.
     setOpenCustomer(null);
-    if (!identity) return;
-    const params = new URLSearchParams(location.search);
-    if (!params.get('returnTo')) params.set('returnTo', `${location.pathname}${location.search}`);
-    params.set('customer', identity);
-    params.set('open', '1');
-    params.delete('search');
-    params.delete('q');
-    navigate(`/customer-360?${params.toString()}`);
+    if (!identity) {
+      toast('لا يمكن فتح Store 360 قبل وجود Store ID مؤكد لهذا المتجر.', 'info');
+      return;
+    }
+    const existing = new URLSearchParams(location.search);
+    navigate(buildStore360Url({
+      storeId: identity,
+      view: existing.get('view') || 'overview',
+      source: 'customer-directory',
+      returnTo: existing.get('returnTo') || `${location.pathname}${location.search}`,
+    }));
   };
 
   const closeCustomer360 = () => {
@@ -474,7 +478,7 @@ export default function CustomerWatch({ isActive = true }) {
 
   if (isFullProfile && profileIdentity) {
     return <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><Spinner size={28}/></div>}>
-      <Store360Page identity={profileIdentity}/>
+      <Store360Page key={profileIdentity} identity={profileIdentity}/>
     </Suspense>;
   }
 
