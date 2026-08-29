@@ -232,6 +232,7 @@ export default function CustomerMoney({ isActive = true }) {
   const dashboardRequestIdRef = useRef(0);
   const lastDashboardRefreshAtRef = useRef(0);
   const workspaceRestoredRef = useRef('');
+  const worklistFocusRef = useRef('');
   const workspaceKey = `customer-money:${location.pathname}${location.search}`;
   const resetCredits = () => {
     setCredits(null);
@@ -248,6 +249,17 @@ export default function CustomerMoney({ isActive = true }) {
     setPlatformFilter(['active', 'inactive', 'unknown'].includes(searchParams.get('status')) ? searchParams.get('status') : 'all');
     setUnclaimedOnly(searchParams.get('source') === 'unclaimed');
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!isActive || !d || searchParams.get('worklist') !== '1') return undefined;
+    if (worklistFocusRef.current === location.search) return undefined;
+    worklistFocusRef.current = location.search;
+    const timer = window.setTimeout(() => {
+      document.querySelector('.aging-operations')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.querySelector('.aoq-query-builder input, .aoq-query-builder select')?.focus({ preventScroll: true });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [d, isActive, location.search, searchParams]);
 
   const requestedDecision = decisionKey(searchParams.get('decision'));
   const rawDecisionMinAmount = Number(searchParams.get('decisionMin'));

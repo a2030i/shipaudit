@@ -1,7 +1,8 @@
-import { ChevronLeft, LayoutDashboard, LogOut } from 'lucide-react';
+import { ChevronLeft, LayoutDashboard, LogOut, Menu } from 'lucide-react';
 import { LamhaLogo } from './BrandLogo.jsx';
 
 const HOME_PATHS = new Set(['/overview', '/decisions']);
+const PRIMARY_SECTION_IDS = new Set(['finance', 'customers', 'shipping']);
 
 export default function ExecutiveSidebar({
   sections,
@@ -12,11 +13,15 @@ export default function ExecutiveSidebar({
   roleLabel,
   canOpenHome,
   onNavigate,
+  onMore,
   onSignOut,
 }) {
   const visibleSections = sections.filter(section => (
     navItems.some(item => item.section === section.id)
   ));
+  const primarySections = visibleSections.filter(section => PRIMARY_SECTION_IDS.has(section.id));
+  const moreSections = visibleSections.filter(section => !PRIMARY_SECTION_IDS.has(section.id));
+  const moreActive = moreSections.some(section => section.id === currentSectionId);
 
   return (
     <aside className="sidebar" aria-label="التنقل الرئيسي">
@@ -43,7 +48,7 @@ export default function ExecutiveSidebar({
             </button>
           ) : null}
 
-          {visibleSections.map(section => {
+          {primarySections.map(section => {
             const Icon = section.icon;
             const active = currentSectionId === section.id;
             return (
@@ -60,6 +65,18 @@ export default function ExecutiveSidebar({
               </button>
             );
           })}
+          {moreSections.length ? (
+            <button
+              type="button"
+              className={`primary-center-item${moreActive ? ' active' : ''}`}
+              aria-current={moreActive ? 'page' : undefined}
+              onClick={onMore}
+            >
+              <span className="primary-center-item__icon"><Menu size={19}/></span>
+              <span><strong>المزيد</strong><small>المبيعات · التقارير · الإدارة</small></span>
+              <ChevronLeft size={15}/>
+            </button>
+          ) : null}
         </div>
       </nav>
 

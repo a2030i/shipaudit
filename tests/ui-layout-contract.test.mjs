@@ -129,6 +129,10 @@ test('V2 shell keeps one compact desktop rail and one mobile navigation catalog'
   assert.match(app, /<NavigationHub/);
   assert.match(app, /<ExecutiveSidebar/);
   assert.match(sidebar, /<aside className="sidebar" aria-label="التنقل الرئيسي">/);
+  assert.match(sidebar, /PRIMARY_SECTION_IDS = new Set\(\['finance', 'customers', 'shipping'\]\)/);
+  assert.match(sidebar, /<strong>المزيد<\/strong><small>المبيعات · التقارير · الإدارة<\/small>/);
+  assert.match(app, /path: '\/workspace\/operations', label: 'التشغيل'/);
+  assert.doesNotMatch(app.slice(app.indexOf('<nav className="bottom-nav">')), /path: '\/workspace\/sales'/);
   assert.doesNotMatch(app, /<CenterLanding/);
   assert.match(css, /\.navigation-hub__catalog\s*\{/);
   assert.match(css, /\.navigation-hub__group\s*\{[\s\S]*content-visibility:\s*auto/);
@@ -480,15 +484,17 @@ test('mobile customer finance actions stay in document flow', async () => {
   assert.match(mobile, /\.customer-finance-command__kpis button:hover\s*\{\s*transform:\s*none;/);
 });
 
-test('phase one KPI and filter contracts expose source truth and URL state', async () => {
+test('phase one financial and work-list contracts expose source truth and URL state', async () => {
   const commandCenter = await read('src/components/operations/FigmaCommandCenter.jsx');
   const customerMoney = await read('src/pages/CustomerMoney.jsx');
   const bank = await read('src/pages/BankStatement.jsx');
   const css = await read('src/workspace-layout.css');
 
-  assert.match(commandCenter, /source="Zoho Books"/);
-  assert.match(commandCenter, /آخر تحديث/);
-  assert.match(commandCenter, /تعذرت القراءة؛ لم نعرض صفراً بديلاً/);
+  assert.match(commandCenter, /label="إجمالي الرصيد المحاسبي"/);
+  assert.match(commandCenter, /label="القابل للتحصيل تشغيليًا"/);
+  assert.match(commandCenter, /label="الرصيد الهامشي \/ غير التشغيلي"/);
+  assert.match(commandCenter, /sourceState=\{states\.customerMoney \|\| states\.zohoInvoices\}/);
+  assert.match(commandCenter, /worklist: '1'/);
   assert.match(customerMoney, /searchParams\.get\('aging'\)/);
   assert.match(customerMoney, /params\.set\('aging'/);
   assert.match(bank, /defaultSavedClass = 'all'/);

@@ -727,6 +727,7 @@ function AppInner({ theme, toggleTheme }) {
           roleLabel={ROLE_LABEL[profile.role] ?? profile.role}
           canOpenHome={isAdmin || can('overview.view')}
           onNavigate={goto}
+          onMore={() => openNavigation()}
           onSignOut={signOut}
         />
 
@@ -1217,9 +1218,9 @@ function AppInner({ theme, toggleTheme }) {
       <nav className="bottom-nav">
         {[
           { path: '/overview',            label: 'الرئيسية', icon: LayoutDashboard, show: isAdmin || can('overview.view') },
-          { path: '/workspace/customers', label: 'العملاء',  icon: Users, sectionId: 'customers', show: visibleNav.some(item => item.section === 'customers') },
-          { path: '/workspace/sales',     label: 'المبيعات', icon: Target, sectionId: 'sales', show: visibleNav.some(item => item.section === 'sales') },
           { path: '/workspace/finance',   label: 'المالية',  icon: DollarSign, sectionId: 'finance', show: visibleNav.some(item => item.section === 'finance') },
+          { path: '/workspace/customers', label: 'العملاء',  icon: Users, sectionId: 'customers', show: visibleNav.some(item => item.section === 'customers') },
+          { path: '/workspace/operations', label: 'التشغيل', icon: Truck, sectionId: 'shipping', show: visibleNav.some(item => item.section === 'shipping') },
         ].filter(it => it.show).map(it => {
           const Icon = it.icon;
           const active = it.sectionId ? contextSection?.id === it.sectionId : location.pathname === it.path;

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Activity,
+  ArrowDownCircle,
   ArrowLeft,
   CalendarDays,
   CheckCircle2,
@@ -12,10 +13,10 @@ import {
   PhoneCall,
   ReceiptText,
   RefreshCw,
+  SlidersHorizontal,
   ShieldCheck,
   UploadCloud,
   UserPlus,
-  UserRoundCheck,
   UserRoundX,
   UsersRound,
   WalletCards,
@@ -66,18 +67,16 @@ const syncDateLabel = (iso) => {
   }).format(new Date(iso))}`;
 };
 
+const dateLabel = (iso) => {
+  if (!iso) return null;
+  return new Intl.DateTimeFormat('ar-SA-u-ca-gregory', {
+    day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
+  }).format(new Date(iso));
+};
+
 const uploadEvidencePath = (item, period) => {
   const source = item?.sourceKind ? `&source=${encodeURIComponent(item.sourceKind)}` : '';
   return `/accounting-cycle?period=${period}&stage=${item?.stage || 'carrier_audits'}${source}`;
-};
-
-const updatedLabel = (iso) => {
-  if (!iso) return 'وقت التحديث غير متاح';
-  const value = new Date(iso);
-  if (Number.isNaN(value.getTime())) return 'وقت التحديث غير متاح';
-  return `آخر تحديث ${new Intl.DateTimeFormat('ar-SA-u-ca-gregory', {
-    day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
-  }).format(value)}`;
 };
 
 const sourceTone = (state) => {
@@ -129,24 +128,58 @@ function ActionCard({ tone, icon: Icon, title, count, value, note, action, onCli
   );
 }
 
-function KpiCard({ label, value, note, icon: Icon, tone = 'blue', onClick, source, updatedAt, unavailable = false, loading = false }) {
-  const Tag = onClick ? 'button' : 'article';
+const WORKLIST_DEFAULTS = Object.freeze({
+  aging: 'all', minDays: '', minAmount: '', billing: 'all', wallet: 'all', invoices: 'all', status: 'all',
+});
+
+function WorklistBuilder({ navigate }) {
+  const [open, setOpen] = useState(false);
+  const [filters, setFilters] = useState(WORKLIST_DEFAULTS);
+  const activeCount = Object.entries(filters)
+    .filter(([key, value]) => value !== '' && !(key !== 'minDays' && key !== 'minAmount' && value === 'all')).length;
+  const change = (key, value) => setFilters(current => ({ ...current, [key]: value }));
+  const openResults = () => {
+    const params = new URLSearchParams({ worklist: '1', returnTo: '/overview' });
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== '' && value !== 'all') params.set(key, value);
+    }
+    navigate(`/customer-money?${params.toString()}`);
+  };
+
   return (
-    <Tag
-      className={`fco-kpi fco-kpi--${tone}${unavailable ? ' is-unavailable' : ''}`}
-      type={onClick ? 'button' : undefined}
-      onClick={onClick}
-      aria-label={onClick ? `${label} — فتح التفاصيل` : undefined}
-    >
-      <span className="fco-kpi__icon"><Icon size={18}/></span>
-      <span className="fco-kpi__copy">
-        <small>{label}</small>
-        <strong>{loading ? 'جارٍ التحميل…' : unavailable ? 'المصدر غير متاح' : value}</strong>
-        <em>{loading ? 'سيظهر الملخص بعد أول عرض للصفحة' : unavailable ? 'تعذرت القراءة؛ لم نعرض صفراً بديلاً' : note}</em>
-        <span className="fco-kpi__source">{source || 'المصدر غير محدد'} · {updatedLabel(updatedAt)}</span>
-      </span>
-      {onClick && <ArrowLeft size={15}/>}
-    </Tag>
+    <div className={`fco-worklist-builder${open ? ' is-open' : ''}`}>
+      <button className="fco-worklist-builder__trigger" type="button" onClick={() => setOpen(value => !value)} aria-expanded={open}>
+        <span className="fco-worklist-builder__icon"><SlidersHorizontal size={19}/></span>
+        <span><strong>ابنِ قائمة عمل بشروطك</strong><small>ضع شروطًا متغيرة، شاهد النتائج، ثم نفّذ الإجراء الفردي أو الجماعي من القائمة نفسها.</small></span>
+        <em>{activeCount ? `${activeCount} شروط` : 'بدون شروط مسبقة'}</em>
+        <span className="fco-worklist-builder__cta">{open ? 'إخفاء الشروط' : 'بناء القائمة'}</span>
+      </button>
+      {open ? <form className="fco-worklist-builder__form" onSubmit={event => { event.preventDefault(); openResults(); }}>
+        <div className="fco-worklist-builder__fields">
+          <label><span>احتسب مبلغ النتائج من</span><select value={filters.aging} onChange={event => change('aging', event.target.value)}><option value="all">كل المستحقات المتأخرة</option><option value="inv16_30,inv31_60,inv61_90,inv90p">فواتير تجاوزت 15 يومًا</option><option value="inv31_60,inv61_90,inv90p">فواتير تجاوزت 30 يومًا</option><option value="inv61_90,inv90p">فواتير تجاوزت 60 يومًا</option><option value="inv90p">فواتير تجاوزت 90 يومًا</option></select></label>
+          <label><span>عمر أقدم فاتورة أكبر من</span><div><input inputMode="numeric" type="number" min="0" value={filters.minDays} onChange={event => change('minDays', event.target.value)} placeholder="اختياري"/><b>يوم</b></div></label>
+          <label><span>المبلغ أكبر من</span><div><input inputMode="decimal" type="number" min="0" step="0.01" value={filters.minAmount} onChange={event => change('minAmount', event.target.value)} placeholder="مثال: 100"/><b>ر.س</b></div></label>
+          <label><span>نوع الدفع</span><select value={filters.billing} onChange={event => change('billing', event.target.value)}><option value="all">الكل</option><option value="prepaid">مسبق الدفع</option><option value="postpaid">دفع لاحق</option><option value="unknown">غير متاح</option></select></label>
+          <label><span>رصيد المحفظة</span><select value={filters.wallet} onChange={event => change('wallet', event.target.value)}><option value="all">الكل</option><option value="positive">موجب</option><option value="negative">سالب</option><option value="zero">صفري / هامشي</option></select></label>
+          <label><span>الفواتير</span><select value={filters.invoices} onChange={event => change('invoices', event.target.value)}><option value="all">الكل</option><option value="open">لديه فواتير مفتوحة</option><option value="none">بلا فواتير مفتوحة</option></select></label>
+          <label><span>تشغيل حساب لمحة</span><select value={filters.status} onChange={event => change('status', event.target.value)}><option value="all">كل الحالات</option><option value="active">يعمل</option><option value="inactive">موقوف</option><option value="unknown">غير متاح</option></select></label>
+        </div>
+        <div className="fco-worklist-builder__actions">
+          <button type="button" onClick={() => setFilters(WORKLIST_DEFAULTS)} disabled={!activeCount}>مسح الشروط</button>
+          <button type="submit">عرض النتائج واتخاذ إجراء <ArrowLeft size={15}/></button>
+        </div>
+      </form> : null}
+    </div>
+  );
+}
+
+function FinancialMetric({ label, value, note, icon: Icon, onClick, tone = 'neutral', sourceState, unavailable = false }) {
+  return (
+    <button type="button" className={`fco-financial-metric is-${tone}${unavailable ? ' is-unavailable' : ''}`} onClick={onClick}>
+      <span className="fco-financial-metric__icon"><Icon size={17}/></span>
+      <span><small>{label}</small><strong>{unavailable ? 'غير متاح' : value}</strong><em>{note}</em></span>
+      <i className={`fco-source-dot fco-source-dot--${sourceTone(sourceState)}`}/>
+    </button>
   );
 }
 
@@ -266,6 +299,11 @@ export default function FigmaCommandCenter({
   const aging = data?.customerAging || {};
   const overdue30 = Number(aging.b31_60 || 0) + Number(aging.b61_90 || 0) + Number(aging.b90p || 0);
   const cash = data?.cashPosition || {};
+  const accountingOutstanding = Number(cash.grossAR ?? cash.totalAR);
+  const operationalCollectible = Number(cash.totalAR);
+  const residualBalance = Number.isFinite(accountingOutstanding) && Number.isFinite(operationalCollectible)
+    ? +(accountingOutstanding - operationalCollectible).toFixed(2)
+    : null;
   const states = data?.sourceStates || {};
   const sourceEntries = Object.values(data?.primarySourceStates || states);
   const availableSources = sourceEntries.filter((source) => source?.status !== 'unavailable').length;
@@ -300,6 +338,7 @@ export default function FigmaCommandCenter({
           <p>ما الذي يحتاج قرارك اليوم؟ صورة موحدة مرتبة حسب الأثر والخطر وقابلية التنفيذ.</p>
         </div>
         <div className="fco-heading__actions">
+          {data?.loadedAt ? <small className="fco-heading__updated">آخر تحديث {dateLabel(data.loadedAt)}</small> : null}
           <div className="fco-period" aria-label="الفترة المعروضة">
             <button type="button" onClick={onPrevious} aria-label="الشهر السابق">›</button>
             <span><CalendarDays size={15}/>{monthLabel(period)}</span>
@@ -328,8 +367,11 @@ export default function FigmaCommandCenter({
         <button type="button" onClick={() => navigate('/operations')}>مراقبة التكاملات <ArrowLeft size={14}/></button>
       </div>
 
-      <section className="fco-section">
-        <div className="fco-section__heading"><div><h2>يتطلب تدخلك الآن</h2><span>مرتبة حسب الخطر المالي والتشغيلي</span></div><small>كل صف يفتح الحالات التي كوّنته</small></div>
+      <div className="fco-command-grid">
+      <section className="fco-section fco-command-grid__worklists">
+        <div className="fco-section__heading"><div><h2>قائمة العمل والقرارات</h2><span>ابدأ بشروطك أو افتح قائمة جاهزة من استثناء حقيقي</span></div><small>النتائج والتحديد والإجراء في مساحة واحدة</small></div>
+        <WorklistBuilder navigate={navigate}/>
+        <div className="fco-saved-worklists"><strong>قوائم جاهزة من البيانات الحالية</strong><small>اختصارات متكررة وليست شروطًا مفروضة عليك</small></div>
         <div className="fco-actions-list">
           <ActionCard tone="red" icon={UserRoundX} title="حسابات مرشحة للإيقاف" count={stopCount} value={`${compactMoney(stopAmount)} ر.س`} note={`دفع لاحق · الحساب يعمل · تجاوز 30 يومًا · أكثر من ${money(DEFAULT_SUSPENSION_MIN_OVERDUE)} ر.س`} action="عرض النتائج" onClick={() => navigate(`/customer-money?decision=stop&decisionMin=${DEFAULT_SUSPENSION_MIN_OVERDUE}&returnTo=%2Foverview`)} unavailable={decisionGuard.status === 'unavailable'} statusMessage={stopStatusLoading ? 'جارٍ التحقق الحي' : stopStatusError ? 'يُعاد الفحص داخل النتائج' : decisionGuard.message} source={states.customerMoney || states.finance || states.zohoInvoices}/>
           <ActionCard tone="blue" icon={WalletCards} title="محفظة موجبة مع فواتير غير مسددة" count={deductCount} value={`${compactMoney(deductAmount)} ر.س`} note="مراجعة تشغيلية للإيقاف؛ تسوية Zoho إجراء مستقل" action="عرض النتائج" onClick={() => navigate('/customer-money?decision=deduct&returnTo=%2Foverview')} unavailable={decisionGuard.status === 'unavailable'} statusMessage={decisionGuard.message} source={states.customerMoney || states.finance || states.zohoInvoices}/>
@@ -339,15 +381,18 @@ export default function FigmaCommandCenter({
         </div>
       </section>
 
-      <section className="fco-section">
-        <div className="fco-section__heading"><div><span>نبض الشركة</span><h2>المؤشرات التي تغيّر القرار</h2></div><button type="button" onClick={() => navigate('/reports')}>التقارير <ArrowLeft size={14}/></button></div>
-        <div className="fco-kpi-grid">
-          <KpiCard icon={Landmark} label="القابل للتحصيل تشغيليًا" value={`${compactMoney(cash.totalAR)} ر.س`} note={`${compactMoney(overdue30)} ر.س تجاوزت 30 يومًا`} source="Zoho Books · سطور التحصيل" updatedAt={(states.customerMoney || states.zohoInvoices)?.sourceUpdatedAt || (states.customerMoney || states.zohoInvoices)?.checkedAt} unavailable={(states.customerMoney || states.zohoInvoices)?.status === 'unavailable'} tone="red" onClick={() => navigate('/customer-money')}/>
-          <KpiCard icon={ReceiptText} label={`ضريبة ${vat?.quarter || 'الربع الحالي'}`} value={vat ? `${compactMoney(vat.netDue)} ر.س` : 'غير متاح'} note={vat ? `${vat.from} ← ${vat.to} · مخرجات ${compactMoney(vat.outputTax)} · مدخلات ${compactMoney(vat.inputTax)}` : 'تحتاج قراءة زوهو'} source="Zoho Books" updatedAt={vat?.fetchedAt || states.zatcaPending?.checkedAt} unavailable={!vat} tone="amber" onClick={() => navigate('/zoho-data?tab=reports')}/>
-          <KpiCard icon={UserRoundCheck} label="نشطون خلال آخر 5 أيام" value={money(merchantPulse.recentFiveDays)} note={merchantPulse.snapshotAt ? `حسب لقطة ${new Date(merchantPulse.snapshotAt).toLocaleDateString('ar-SA')}` : 'تحتاج مزامنة Lamha API'} source="Lamha API" updatedAt={merchantPulse.snapshotAt || states.merchants?.checkedAt} loading={merchantPulse.loading} unavailable={!merchantPulse.loading && !merchantPulse.available} tone="green" onClick={() => navigate('/customer-360?view=lists&listGroup=activity&lastShipmentDays=5')}/>
-          <KpiCard icon={FileSpreadsheet} label="فواتير مسودة" value={money(invoiceOps.draftCount)} note={`${compactMoney(invoiceOps.draftTotal)} ر.س بانتظار الاعتماد`} source="Zoho Books" updatedAt={states.zohoInvoiceSync?.sourceUpdatedAt || states.zatcaPending?.checkedAt} unavailable={!invoiceOps.zatcaAvailable} tone="blue" onClick={() => navigate('/zoho-data?tab=customers&type=invoices&focus=draft')}/>
+      <section className="fco-section fco-command-grid__finance">
+        <div className="fco-section__heading"><div><span>المركز المالي الآن</span><h2>أين المال وما الذي يغيّر القرار؟</h2></div><button type="button" onClick={() => navigate('/workspace/finance')}>فتح المالية <ArrowLeft size={14}/></button></div>
+        <div className={`fco-financial-strip${residualBalance != null && Math.round(residualBalance * 100) !== 0 ? ' has-residual' : ''}`}>
+          <FinancialMetric icon={Landmark} label="النقد والبنوك" value={cash.bankBalance == null ? '—' : `${compactMoney(cash.bankBalance)} ر.س`} note={cash.bankBalanceComplete ? 'أرصدة ختامية مكتملة' : 'من الحسابات المتاحة'} sourceState={states.banks} unavailable={cash.bankBalance == null} tone="blue" onClick={() => navigate('/money?tab=banks')}/>
+          <FinancialMetric icon={ReceiptText} label="إجمالي الرصيد المحاسبي" value={`${compactMoney(accountingOutstanding)} ر.س`} note="Zoho outstanding_receivable · رقم خام" sourceState={states.customerMoney || states.zohoInvoices} unavailable={!Number.isFinite(accountingOutstanding)} onClick={() => navigate('/customer-money')}/>
+          <FinancialMetric icon={WalletCards} label="القابل للتحصيل تشغيليًا" value={`${compactMoney(operationalCollectible)} ر.س`} note={`${compactMoney(overdue30)} ر.س تجاوزت 30 يومًا`} sourceState={states.customerMoney || states.zohoInvoices} unavailable={!Number.isFinite(operationalCollectible)} tone="green" onClick={() => navigate('/customer-money?worklist=1')}/>
+          {residualBalance != null && Math.round(residualBalance * 100) !== 0 ? <FinancialMetric icon={CircleAlert} label="الرصيد الهامشي / غير التشغيلي" value={`${compactMoney(residualBalance)} ر.س`} note="محاسبي فقط · لا يدخل الإيقاف أو التحصيل" sourceState={states.customerMoney || states.zohoInvoices} tone="neutral" onClick={() => navigate('/customer-money')}/> : null}
+          <FinancialMetric icon={ArrowDownCircle} label="التزامات علينا" value={`${compactMoney(cash.totalAP)} ر.س`} note="موردون وشركات شحن" sourceState={states.finance} tone="red" onClick={() => navigate('/pnl')}/>
+          <FinancialMetric icon={ReceiptText} label={`ضريبة ${vat?.quarter || 'الربع الحالي'}`} value={vat ? `${compactMoney(vat.netDue)} ر.س` : '—'} note={vat ? `${vat.from} — ${vat.to} · مخرجات ${compactMoney(vat.outputTax)} · مدخلات ${compactMoney(vat.inputTax)}` : 'تحتاج قراءة Zoho'} sourceState={states.zatcaPending} unavailable={!vat} tone="amber" onClick={() => navigate('/zoho-data?tab=reports')}/>
         </div>
       </section>
+      </div>
 
       <section className="fco-section fco-lamha-upload">
         <div className="fco-section__heading">
