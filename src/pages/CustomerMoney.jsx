@@ -818,7 +818,9 @@ export default function CustomerMoney({ isActive = true }) {
     : +agingRows.reduce((sum, row) => sum + row.summary.amount, 0).toFixed(2);
   const agingDashboardTotal = useMemo(() => {
     if (!d) return 0;
-    if (!buckets.size) return +Number(d.operationalCollectible || 0).toFixed(2);
+    // القائمة مبنية من سطور أعمار المستحقات المتأخرة؛ لا تقارنها بإجمالي
+    // collectible الذي قد يتضمن استحقاق اليوم. لا tolerance ولا إخفاء فرق.
+    if (!buckets.size) return +Number(d.overdueAmt ?? 0).toFixed(2);
     return +[...buckets].reduce((sum, key) => sum + Number(campaignAging?.[key] || 0), 0).toFixed(2);
   }, [d, buckets, campaignAging]);
   const agingDetailsTotal = centralReadActive

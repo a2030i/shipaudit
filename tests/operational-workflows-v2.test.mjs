@@ -170,6 +170,7 @@ test('operational surfaces share the V2 result, preflight, and action-result con
   assert.match(money, /<OperationalResultSet/);
   assert.match(money, /<ResultSetColumnVisibility/);
   assert.match(money, /<BulkPreflightDialog/);
+  assert.match(money, /Number\(d\.overdueAmt \?\? 0\)/);
   assert.match(money, /<LamhaDecisionActionReview rows=\{decisionScopeRows\}/);
   assert.match(money, /enforceFinancialPolicy=\{decisionScopeFinancialPolicy\}/);
   assert.match(money, /setDecisionScopeFinancialPolicy\(requestedDecision === 'stop'\)/);
