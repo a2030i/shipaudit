@@ -395,6 +395,7 @@ function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onRelo
 
 function DecisionPanel({ core, work, lamhaStatus, changeView, onOpenReconciliation }) {
   const finance = core.financial;
+  const reconciliation = core.lamhaZohoReconciliation;
   const financeUnavailable = core.sources.finance?.status === 'unavailable';
   let tone = 'success';
   let icon = <CheckCircle2 size={22}/>;
@@ -409,11 +410,16 @@ function DecisionPanel({ core, work, lamhaStatus, changeView, onOpenReconciliati
     title = 'البيانات المالية غير متاحة';
     detail = 'يعرض النظام آخر ما هو معروف ولا يحول تعذر المصدر إلى رصيد صفر.';
     actionLabel = 'فتح تفاصيل المالية'; onAction = () => changeView('finance');
-  } else if (finance?.balanceSyncIssue) {
+  } else if (reconciliation?.status === 'available' && reconciliation.isExact === false) {
     tone = 'danger'; icon = <AlertTriangle size={22}/>; eyebrow = 'مطابقة الأرصدة';
     title = 'رصيد المتجر بين لمحة وZoho يحتاج مراجعة';
     detail = 'افتح المطابقة لهذا المتجر قبل اتخاذ إجراء تحصيل أو قرار حساب.';
     actionLabel = 'مراجعة المطابقة'; onAction = onOpenReconciliation;
+  } else if (finance?.zohoMirrorIntegrityIssue) {
+    tone = 'danger'; icon = <AlertTriangle size={22}/>; eyebrow = 'اتساق مرآة Zoho';
+    title = 'المركز المالي يحتاج مراجعة اتساق داخلية';
+    detail = 'هذه حالة مستقلة عن مقارنة كشف لمحة مع Zoho، وتظهر قبل اتخاذ إجراء مالي.';
+    actionLabel = 'فتح تفاصيل المالية'; onAction = () => changeView('finance');
   } else if (Number(finance?.overdue || 0) > 0 && lamhaStatus.canCreateShipments === true) {
     tone = 'warning'; icon = <AlertTriangle size={22}/>; eyebrow = 'قرار حساب لمحة';
     title = `الحساب نشط وعليه ${MONEY(finance.overdue)} ر.س متأخرة`;
@@ -442,6 +448,13 @@ function DecisionPanel({ core, work, lamhaStatus, changeView, onOpenReconciliati
 
 function OverviewView({ core, work, lamhaStatus, changeView, onOpenStore, onOpenCampaign, onOpenReconciliation, onOpenCarrierCenter }) {
   const finance = core.financial;
+  const reconciliation = core.lamhaZohoReconciliation;
+  const reconciliationNeedsReview = reconciliation?.status === 'available' && reconciliation.isExact === false;
+  const reconciliationLabel = reconciliation?.status === 'unavailable'
+    ? 'تعذر التحقق من المصدر'
+    : reconciliation?.status === 'empty'
+      ? 'لا يوجد رصيد داخل مجموعة المطابقة'
+      : reconciliationNeedsReview ? 'تحتاج مراجعة' : 'مطابق بدقة';
   return <div className="s360-view-stack">
     <section><SectionHeader title="ما يحتاج انتباه الآن" subtitle="قرار واحد واضح مبني على البيانات الحالية، دون تغيير قواعد العمل"/>
       <DecisionPanel core={core} work={work} lamhaStatus={lamhaStatus} changeView={changeView} onOpenReconciliation={onOpenReconciliation}/>
@@ -455,9 +468,9 @@ function OverviewView({ core, work, lamhaStatus, changeView, onOpenStore, onOpen
     </section>
     <section><SectionHeader title="رحلات المتجر" subtitle="كل ما يخص هذا المتجر يبدأ من ملفه، بينما القوائم الجماعية تبقى لاكتشاف من يحتاج إجراء"/>
       <div className="s360-workflow-grid">
-        <Card className={`s360-workflow-card ${finance?.balanceSyncIssue ? 'is-warning' : 'is-ready'}`}>
+        <Card className={`s360-workflow-card ${reconciliationNeedsReview || reconciliation?.status === 'unavailable' ? 'is-warning' : 'is-ready'}`}>
           <span className="s360-workflow-card__icon"><BadgeDollarSign size={19}/></span>
-          <div><b>مطابقة لمحة مع Zoho</b><strong>{!finance ? 'لا يوجد ربط مالي موثق' : finance.balanceSyncIssue ? 'تحتاج مراجعة' : 'مطابقة الرصيد متاحة'}</strong><small>المطابقة تفتح على هذا المتجر فقط ولا تنشئ ربطًا تلقائيًا.</small></div>
+          <div><b>مطابقة كشف لمحة مع Zoho</b><strong>{reconciliationLabel}</strong><small>المطابقة تفتح على هذا المتجر فقط ولا تنشئ ربطًا تلقائيًا.</small></div>
           <button type="button" onClick={onOpenReconciliation}>فتح المطابقة <ChevronLeft size={14}/></button>
         </Card>
         <Card className="s360-workflow-card is-action">
@@ -524,6 +537,19 @@ function InvoiceDetailModal({ invoice, task, canRecordPromise, contextAmount, co
 function FinanceView({ core, data, work, invoiceFocus, agingBuckets = [], canRecordPromise, onOpenInvoice, onCloseInvoice, onOpenAllAging, onOpenReconciliation, onReloadWork }) {
   if (data?.source?.status === 'unavailable') return <UnavailableBlock source={data.source}/>;
   const finance = core.financial;
+  const reconciliation = core.lamhaZohoReconciliation;
+  const reconciliationNeedsReview = reconciliation?.status === 'available' && reconciliation.isExact === false;
+  const reconciliationUnavailable = reconciliation?.status === 'unavailable';
+  const reconciliationTitle = reconciliationUnavailable
+    ? 'تعذر التحقق من المطابقة'
+    : reconciliation?.status === 'empty'
+      ? 'لا يوجد رصيد داخل مجموعة المطابقة'
+      : reconciliationNeedsReview ? 'تحتاج مراجعة' : 'مطابق بدقة';
+  const reconciliationDetail = reconciliation?.status === 'available'
+    ? `كشف لمحة غير المسدد: ${MONEY(reconciliation.lamhaStatementBalance)} ر.س · Zoho المفتوح: ${MONEY(reconciliation.zohoAccountingBalance)} ر.س · الفرق: ${MONEY(reconciliation.difference)} ر.س`
+    : reconciliationUnavailable
+      ? 'لم نعرض غياب المصدر على أنه تطابق. افتح مجموعة النتائج لإعادة التحقق.'
+      : 'لا يوجد صف لهذا Store ID في القراءة الحالية.';
   const activeTask = work?.activeTask;
   const selectedAgingLabel = agingBuckets.map(key => AGING_LABELS[key]).filter(Boolean).join(' + ');
   const selectedExpected = agingBuckets.length && data?.campaignAging
@@ -547,10 +573,10 @@ function FinanceView({ core, data, work, invoiceFocus, agingBuckets = [], canRec
       : <Card className="s360-unlinked-finance"><BadgeDollarSign size={24}/><div><b>لا توجد بيانات مالية مرتبطة بهذا المتجر</b><p>مصدر Zoho متاح، لكن Store ID الحالي لا يطابق حسابًا ماليًا في القراءة الحالية.</p></div></Card>}
   </div>;
   return <div className="s360-view-stack">
-    <Card className={`s360-reconciliation-status ${finance.balanceSyncIssue ? 'is-warning' : 'is-match'}`}>
-      <span>{finance.balanceSyncIssue ? <AlertTriangle size={21}/> : <CheckCircle2 size={21}/>}</span>
-      <div><small>مطابقة رصيد المتجر بين لمحة وZoho</small><strong>{finance.balanceSyncIssue ? 'تحتاج مراجعة' : 'لا توجد مشكلة مطابقة ظاهرة'}</strong><p>الفتح مقيّد بهذا Store ID، ولا ينشئ ربطًا أو كتابة تلقائية.</p></div>
-      <button type="button" onClick={onOpenReconciliation}>{finance.balanceSyncIssue ? 'مراجعة الفرق' : 'فتح المطابقة'}<ChevronLeft size={14}/></button>
+    <Card className={`s360-reconciliation-status ${reconciliationNeedsReview || reconciliationUnavailable ? 'is-warning' : 'is-match'}`}>
+      <span>{reconciliationNeedsReview || reconciliationUnavailable ? <AlertTriangle size={21}/> : <CheckCircle2 size={21}/>}</span>
+      <div><small>مطابقة كشف لمحة غير المسدد مع فواتير Zoho المفتوحة</small><strong>{reconciliationTitle}</strong><p>{reconciliationDetail}</p><small>الفتح مقيّد بهذا Store ID، ولا ينشئ ربطًا أو كتابة تلقائية.</small></div>
+      <button type="button" onClick={onOpenReconciliation}>{reconciliationNeedsReview ? 'مراجعة الفرق' : 'فتح المطابقة'}<ChevronLeft size={14}/></button>
     </Card>
     {agingBuckets.length ? <div className={`s360-aging-context ${moneyToMinorUnits(data?.selectedAmount) === moneyToMinorUnits(selectedExpected) ? 'is-match' : 'is-mismatch'}`}>
       <div><b>سياق Aging: {selectedAgingLabel}</b><span>يعرض هذا القسم السطور التي كوّنت مبلغ الشريحة فقط.</span></div>

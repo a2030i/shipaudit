@@ -6,7 +6,8 @@ import { listTasks } from './collectionsService.js';
 import { loadPlatformSalesAccount } from './retargetingService.js';
 import { listInteractions } from './customerInteractionsService.js';
 import { normalizeStoreTimeline } from './store360Timeline.js';
-import { loadCustomerFinancialPosition } from './customerFinancialPosition.js';
+import { loadCustomerFinancialPosition, moneyToMinorUnits } from './customerFinancialPosition.js';
+import { loadCustomerBalanceRecon } from './reconciliationService.js';
 import {
   loadStore360CoreRpc, scheduleStore360CoreShadow, STORE_360_CORE_READ_MODE,
 } from './store360Shadow.js';
@@ -22,11 +23,11 @@ const normalizePhone = (raw) => {
 const exactText = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
 const source = (status, label, updatedAt = null, error = null) => ({ status, label, updatedAt, error });
 
-async function attachFinancialPosition(core) {
+function attachFinancialPosition(core, position) {
   const finance = core?.financial;
-  if (!finance?.zohoId) return core;
-  const position = await loadCustomerFinancialPosition(finance.zohoId);
-  if (!position) return core;
+  if (!finance || !position) return core;
+  const financialPositionIntegrityIssue = !(position.sourceReconciledExactly && position.reconciledExactly);
+  const zohoMirrorIntegrityIssue = Boolean(finance.balanceSyncIssue || financialPositionIntegrityIssue);
   return {
     ...core,
     financial: {
@@ -36,10 +37,70 @@ async function attachFinancialPosition(core) {
       residualBalance: position.residualBalance,
       creditOffset: position.creditOffset,
       financialPositionReconciled: position.sourceReconciledExactly && position.reconciledExactly,
-      balanceSyncIssue: finance.balanceSyncIssue || !(position.sourceReconciledExactly && position.reconciledExactly),
+      zohoMirrorIntegrityIssue,
+      financialPositionIntegrityIssue,
+      balanceSyncIssue: zohoMirrorIntegrityIssue,
       outstanding: position.operationalCollectible,
     },
   };
+}
+
+export function attachLamhaZohoReconciliation(core, rows = null, loadError = null) {
+  const finance = core?.financial;
+  const storeId = String(core?.store?.storeId || '').trim();
+  const sourceMeta = rows?.sourceMeta || null;
+  const row = Array.isArray(rows)
+    ? rows.find(item => String(item.storeId || '').trim() === storeId) || null
+    : null;
+  const status = loadError ? 'unavailable' : row ? 'available' : 'empty';
+  const isExact = row ? moneyToMinorUnits(row.diff) === 0 : null;
+  const lamhaZohoReconciliation = {
+    status,
+    isExact,
+    storeId,
+    lamhaStatementBalance: row ? Number(row.internal) || 0 : null,
+    zohoAccountingBalance: row ? Number(row.zoho) || 0 : null,
+    difference: row ? Number(row.diff) || 0 : null,
+    classification: row?.status || null,
+    sourceMeta,
+    error: loadError?.message || null,
+  };
+  const updatedAt = sourceMeta?.lamha?.uploadedAt || sourceMeta?.zoho?.syncedAt || null;
+  const reconciliationSource = source(
+    loadError ? 'unavailable' : sourceMeta?.lamhaStale || sourceMeta?.zohoStale ? 'stale' : status,
+    'كشف لمحة غير المسدد + فواتير Zoho المفتوحة',
+    updatedAt,
+    loadError?.message || null,
+  );
+  const lamhaZohoReconciliationIssue = status === 'available' && !isExact;
+  return {
+    ...core,
+    lamhaZohoReconciliation,
+    financial: finance ? {
+      ...finance,
+      zohoMirrorIntegrityIssue: Boolean(finance.zohoMirrorIntegrityIssue ?? finance.balanceSyncIssue),
+      lamhaZohoReconciliationIssue,
+      balanceSyncIssue: Boolean(finance.balanceSyncIssue || lamhaZohoReconciliationIssue),
+    } : finance,
+    sources: { ...core.sources, balanceReconciliation: reconciliationSource },
+  };
+}
+
+async function attachFinancialContext(core) {
+  const finance = core?.financial;
+  const storeId = String(core?.store?.storeId || '').trim();
+  const [positionResult, reconciliationResult] = await Promise.allSettled([
+    finance?.zohoId ? loadCustomerFinancialPosition(finance.zohoId) : Promise.resolve(null),
+    storeId ? loadCustomerBalanceRecon() : Promise.resolve([]),
+  ]);
+  const withPosition = positionResult.status === 'fulfilled'
+    ? attachFinancialPosition(core, positionResult.value)
+    : core;
+  return attachLamhaZohoReconciliation(
+    withPosition,
+    reconciliationResult.status === 'fulfilled' ? reconciliationResult.value : null,
+    reconciliationResult.status === 'rejected' ? reconciliationResult.reason : null,
+  );
 }
 
 function merchantView(row) {
@@ -136,14 +197,14 @@ async function loadStore360CoreLegacy(identity, { shadow = true } = {}) {
   // result, loading state and errors continue to come exclusively from the
   // established path until an explicit production cutover is approved.
   if (shadow) scheduleStore360CoreShadow({ storeId: effectiveMerchant?.storeId, oldCore: core });
-  return core;
+  return attachFinancialContext(core);
 }
 
 export async function loadStore360Core(identity) {
   const storeId = String(identity || '').trim();
   if (STORE_360_CORE_READ_MODE === 'core' && /^\d+$/.test(storeId)) {
     try {
-      return await attachFinancialPosition(await loadStore360CoreRpc(storeId));
+      return await attachFinancialContext(await loadStore360CoreRpc(storeId));
     } catch {
       return loadStore360CoreLegacy(identity, { shadow: false });
     }

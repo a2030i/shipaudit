@@ -57,11 +57,23 @@ test('Store 360 navigation requires a numeric Store ID and preserves workflow co
 });
 
 test('Store 360 leads with a decision and exposes scoped reconciliation in finance', async () => {
-  const page = await read('../src/pages/Store360Page.jsx');
+  const [page, service] = await Promise.all([
+    read('../src/pages/Store360Page.jsx'),
+    read('../src/lib/store360Service.js'),
+  ]);
   assert.match(page, /function DecisionPanel/);
   assert.match(page, /الحساب نشط وعليه/);
-  assert.match(page, /مطابقة رصيد المتجر بين لمحة وZoho/);
+  assert.match(page, /مطابقة كشف لمحة غير المسدد مع فواتير Zoho المفتوحة/);
+  assert.match(page, /كشف لمحة غير المسدد:.*Zoho المفتوح:.*الفرق:/s);
   assert.match(page, /لا ينشئ ربطًا أو كتابة تلقائية/);
+  assert.doesNotMatch(page, /لا توجد مشكلة مطابقة ظاهرة/);
+  assert.match(service, /attachLamhaZohoReconciliation/);
+  assert.match(service, /moneyToMinorUnits\(row\.diff\) === 0/);
+  assert.match(service, /lamhaStatementBalance/);
+  assert.match(service, /zohoAccountingBalance/);
+  assert.match(service, /Promise\.allSettled\(\[/);
+  assert.match(service, /zohoMirrorIntegrityIssue/);
+  assert.match(service, /lamhaZohoReconciliationIssue/);
 });
 
 test('Store 360 uses the local Lamha mirror first and reserves live reads for explicit refresh', async () => {

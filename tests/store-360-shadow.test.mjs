@@ -54,8 +54,8 @@ test('visible Store 360 path schedules shadow only after old result is complete'
   const source = await fs.readFile(new URL('../src/lib/store360Service.js', import.meta.url), 'utf8');
   const built = source.indexOf('const core = {');
   const shadow = source.lastIndexOf('scheduleStore360CoreShadow');
-  const returned = source.indexOf('return core;', built);
-  assert.ok(built > -1 && shadow > built && returned > shadow);
+  const attached = source.indexOf('return attachFinancialContext(core);', built);
+  assert.ok(built > -1 && shadow > built && attached > shadow);
   assert.match(source, /fire-and-forget/);
 });
 
