@@ -112,10 +112,15 @@ function RowCard({ row, selected, onSelect, onOpen, onInvoices }) {
       <span>الدفع <b>{customer.billingType || 'غير متاح'}</b></span>
       <span>المحفظة <b>{MONEY(customer.walletBalance)} ر.س</b></span>
       <span>حساب لمحة <b>{customer.platformStatus || 'غير متاح'}</b></span>
-      <span>آخر دفعة <b>{customer.lastPaymentDate ? DATE(customer.lastPaymentDate) : 'لا توجد'}</b></span>
-      <span>آخر تواصل* <b>{row.lastCommunicationAt ? DATE(row.lastCommunicationAt) : 'غير متاح'}</b></span>
-      <span>الوعد <b>{task?.promise_date ? `${MONEY(task.promise_amount)} · ${DATE(task.promise_date)}` : 'لا يوجد'}</b></span>
-      <span>المحصل <b>{row.assignee || 'بلا مسؤول'}</b></span>
+      <details className="aoq-card__secondary">
+        <summary>تفاصيل التحصيل والتواصل</summary>
+        <div>
+          <span>آخر دفعة <b>{customer.lastPaymentDate ? DATE(customer.lastPaymentDate) : 'لا توجد'}</b></span>
+          <span>آخر تواصل* <b>{row.lastCommunicationAt ? DATE(row.lastCommunicationAt) : 'غير متاح'}</b></span>
+          <span>الوعد <b>{task?.promise_date ? `${MONEY(task.promise_amount)} · ${DATE(task.promise_date)}` : 'لا يوجد'}</b></span>
+          <span>المحصل <b>{row.assignee || 'بلا مسؤول'}</b></span>
+        </div>
+      </details>
     </div>
     <div className="aoq-card__reason"><WalletCards size={15}/><span><b>سبب الظهور:</b> {row.reason}</span></div>
     <div className="aoq-card__next"><span>الإجراء التالي</span><strong>{row.nextAction}</strong></div>
@@ -158,8 +163,8 @@ export default function AgingOperationsQueue({
     ...(filters.actionOnly ? [{ key: 'action', label: 'يحتاج إجراء', onRemove: () => onFilter('actionOnly', false) }] : []),
   ];
   const context = {
-    title: 'قائمة عمل أعمار المستحقات',
-    description: 'افتح السجلات المكوّنة للمبلغ، حافظ على سياق العميل، ثم نفّذ الإجراء من نفس مجموعة النتائج.',
+    title: 'قائمة التنفيذ',
+    description: 'أضف شروطك المتغيرة، راجع النتائج، ثم حدد ونفّذ الإجراء من القائمة نفسها.',
     reason: activeFilters.length
       ? `تطابق كل شروط القائمة الحالية (${activeFilters.length} شروط فعالة).`
       : filters.aging.size
@@ -196,6 +201,7 @@ export default function AgingOperationsQueue({
     onSelectAllResults: onToggleAll,
     onClear: () => onToggleAll(false),
     disabled: loading || !sourceHealthy || !reconciliation?.ok,
+    showActionsWhenEmpty: true,
     actions: [
       ...(canSuspend ? [{ key: 'suspend', label: 'إيقاف الحسابات', icon: <ShieldAlert size={14}/>, variant: 'primary', onClick: () => onBulk('suspend') }] : []),
       { key: 'assign', label: 'إسناد', icon: <UserRoundCog size={14}/>, onClick: () => onBulk('assign') },
@@ -218,6 +224,7 @@ export default function AgingOperationsQueue({
     className="aging-operations"
   >
     <div className="aoq-list">
+      <div className="aoq-list__head" aria-hidden="true"><span/><span>العميل والمبلغ</span><span>البيانات التشغيلية</span><span>سبب الظهور</span><span>الإجراء التالي</span></div>
       {rowWindow.visible.map(row => <RowCard key={row.identityKey} row={row} selected={selected.has(row.identityKey)} onSelect={() => onToggle(row.identityKey)} onOpen={() => onOpen(row)} onInvoices={() => onInvoices(row)}/>) }
     </div>
     <ProgressiveListFooter hasMore={rowWindow.hasMore} shown={rowWindow.count} total={rows.length} onLoadMore={rowWindow.loadMore} sentinelRef={rowWindow.sentinelRef}/>

@@ -8,8 +8,8 @@ test('finance primary navigation opens a real executive workspace instead of res
   const app = await read('src/App.jsx');
   assert.match(app, /const FinanceExecutive = lazy\(\(\) => import\('\.\/pages\/FinanceExecutive\.jsx'\)\)/);
   assert.match(app, /if \(center && center\.id !== 'finance'\)/);
-  assert.match(app, /<PageSlot active=\{pathname==='\/workspace\/finance'\} scroll>/);
-  assert.match(app, /<FinanceExecutive carriers=\{carriers\} isActive=\{pathname==='\/workspace\/finance'\}\/?>/);
+  assert.match(app, /section\.id === 'finance'[\s\S]*?<FinanceExecutive carriers=\{carriers\} isActive=\{pathname === section\.path\}/);
+  assert.doesNotMatch(app, /<PageSlot key=\{section\.id\} active=\{pathname === section\.path\} scroll>\s*<Navigate/);
   assert.match(app, /<button key=\{it\.path\} onClick=\{\(\) => goto\(it\.path\)\}/);
 });
 

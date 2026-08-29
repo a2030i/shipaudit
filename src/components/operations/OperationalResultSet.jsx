@@ -47,6 +47,7 @@ export function ResultSetSelection({
   visibleCount = 0, totalCount = visibleCount, selectedCount = 0,
   allVisibleSelected = false, allResultsSelected = false,
   onToggleVisible, onSelectAllResults, onClear, actions = [], disabled = false,
+  showActionsWhenEmpty = false,
 }) {
   return <>
     <div className="ors-selection-control">
@@ -54,10 +55,10 @@ export function ResultSetSelection({
       {!allResultsSelected && totalCount > visibleCount && selectedCount >= visibleCount ? <button type="button" onClick={() => onSelectAllResults?.(true)}>تحديد كل النتائج ({COUNT(totalCount)})</button> : null}
       <span>{COUNT(selectedCount)} محدد</span>
     </div>
-    {selectedCount ? <div className="ors-bulk-bar" role="toolbar" aria-label="إجراءات النتائج المحددة">
-      <strong>{allResultsSelected ? `كل النتائج محددة (${COUNT(totalCount)})` : `${COUNT(selectedCount)} سجل محدد`}</strong>
-      <div>{actions.filter(action => !action.hidden).map(action => <Btn key={action.key} size="sm" variant={action.variant || 'ghost'} icon={action.icon} onClick={action.onClick} disabled={disabled || action.disabled}>{action.label}</Btn>)}</div>
-      <button type="button" onClick={onClear}>إلغاء التحديد</button>
+    {selectedCount || showActionsWhenEmpty ? <div className={`ors-bulk-bar${selectedCount ? ' is-active' : ' is-idle'}`} role="toolbar" aria-label="إجراءات النتائج المحددة">
+      <strong>{selectedCount ? (allResultsSelected ? `كل النتائج محددة (${COUNT(totalCount)})` : `${COUNT(selectedCount)} سجل محدد`) : 'حدد عميلًا أو أكثر لتفعيل الإجراء'}</strong>
+      <div>{actions.filter(action => !action.hidden).map(action => <Btn key={action.key} size="sm" variant={action.variant || 'ghost'} icon={action.icon} onClick={action.onClick} disabled={!selectedCount || disabled || action.disabled}>{action.label}</Btn>)}</div>
+      {selectedCount ? <button type="button" onClick={onClear}>إلغاء التحديد</button> : null}
     </div> : null}
   </>;
 }

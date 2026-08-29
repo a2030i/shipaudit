@@ -795,7 +795,9 @@ function AppInner({ theme, toggleTheme }) {
             {NAV_SECTIONS.map(section => {
               return (
                 <PageSlot key={section.id} active={pathname === section.path} scroll>
-                  <Navigate to={firstSectionDestination(section.id, CENTER_WORKSPACES, visibleNav)} replace/>
+                  {section.id === 'finance'
+                    ? <FinanceExecutive carriers={carriers} isActive={pathname === section.path}/>
+                    : <Navigate to={firstSectionDestination(section.id, CENTER_WORKSPACES, visibleNav)} replace/>}
                 </PageSlot>
               );
             })}
@@ -997,9 +999,6 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/whatsapp-settings'} scroll>
               <WhatsAppSettings isActive={pathname==='/whatsapp-settings'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/workspace/finance'} scroll>
-              <FinanceExecutive carriers={carriers} isActive={pathname==='/workspace/finance'}/>
             </PageSlot>
             <PageSlot active={ACCOUNTING_WORKSPACE_PATHS.includes(pathname)} scroll>
               <CenterWorkspace

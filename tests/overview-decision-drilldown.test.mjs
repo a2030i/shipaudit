@@ -21,12 +21,13 @@ test('overview decision cards open explicit, returnable result drill-downs', () 
 
 test('executive work lists open exact result sets without losing the flexible path', () => {
   assert.match(commandCenter, /zoho-data\?tab=customers&type=invoices&focus=zatca/);
-  assert.match(commandCenter, /new URLSearchParams\(\{ worklist: '1', returnTo: '\/overview' \}\)/);
-  assert.match(commandCenter, /aging: 'all', minDays: '', minAmount: '', billing: 'all', wallet: 'all', invoices: 'all', status: 'all'/);
-  assert.match(commandCenter, /فواتير تجاوزت 30 يومًا/);
-  assert.match(commandCenter, /عرض النتائج واتخاذ إجراء/);
+  assert.match(commandCenter, /\/customer-money\?worklist=1&returnTo=%2Foverview/);
+  assert.match(commandCenter, /أنشئ قائمة تنفيذ بشروطك/);
+  assert.match(commandCenter, /لا توجد شروط مفروضة/);
+  assert.doesNotMatch(commandCenter, /WORKLIST_DEFAULTS/);
   assert.match(customerMoney, /searchParams\.get\('worklist'\) !== '1'/);
   assert.match(customerMoney, /\.aging-operations/);
+  assert.match(customerMoney, /matchesCustomerOperationalQuery\(row, agingFilterState\)/);
   assert.match(zohoData, /einvoice_status \|\| ''/);
   assert.match(zohoData, /yet_to_be_pushed/);
   assert.match(customerWatch, /recentShipmentRows/);

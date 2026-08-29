@@ -494,7 +494,7 @@ test('phase one financial and work-list contracts expose source truth and URL st
   assert.match(commandCenter, /label="القابل للتحصيل تشغيليًا"/);
   assert.match(commandCenter, /label="الرصيد الهامشي \/ غير التشغيلي"/);
   assert.match(commandCenter, /sourceState=\{states\.customerMoney \|\| states\.zohoInvoices\}/);
-  assert.match(commandCenter, /worklist: '1'/);
+  assert.match(commandCenter, /\/customer-money\?worklist=1/);
   assert.match(customerMoney, /searchParams\.get\('aging'\)/);
   assert.match(customerMoney, /params\.set\('aging'/);
   assert.match(bank, /defaultSavedClass = 'all'/);

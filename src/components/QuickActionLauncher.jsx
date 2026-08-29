@@ -18,10 +18,10 @@ const ACTIONS = [
   },
   {
     id: 'collection',
-    title: 'بدء إجراء تحصيل',
-    description: 'فتح مديونيات العملاء والحملة المناسبة.',
+    title: 'إنشاء قائمة تنفيذ',
+    description: 'ضع شروطك المتغيرة، شاهد النتائج، ثم نفّذ إجراءً فرديًا أو جماعيًا.',
     icon: HandCoins,
-    path: '/customer-money',
+    path: '/customer-money?worklist=1',
   },
   {
     id: 'bank',

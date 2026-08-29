@@ -63,7 +63,8 @@ import { loadLamhaWalletSources, summarizeLamhaWalletSources } from '../lib/lamh
 import { readWorkspaceState, restoreWorkspaceScroll, saveWorkspaceState } from '../lib/workspaceState.js';
 import CustomerContextDrawer from '../components/CustomerContextDrawer.jsx';
 import {
-  filterCustomerOperationalRows, hasExtendedOperationalFilters, operationalSuspensionReview,
+  filterCustomerOperationalRows, hasExtendedOperationalFilters, matchesCustomerOperationalQuery,
+  operationalSuspensionReview,
 } from '../lib/customerOperationalQuery.js';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
@@ -810,6 +811,9 @@ export default function CustomerMoney({ isActive = true }) {
           || !task.snooze_until || new Date(task.snooze_until).getTime() <= now;
         if (!actionable) return false;
       }
+      // مسار القراءة الاحتياطي يجب أن يحترم نفس شروط القائمة المرنة.
+      // تعطل RPC المركزي لا يبرر عرض جمهور مختلف ثم إتاحة إجراء جماعي عليه.
+      if (!matchesCustomerOperationalQuery(row, agingFilterState)) return false;
       return true;
     });
     return [...list].sort((a, b) => {

@@ -128,47 +128,15 @@ function ActionCard({ tone, icon: Icon, title, count, value, note, action, onCli
   );
 }
 
-const WORKLIST_DEFAULTS = Object.freeze({
-  aging: 'all', minDays: '', minAmount: '', billing: 'all', wallet: 'all', invoices: 'all', status: 'all',
-});
-
 function WorklistBuilder({ navigate }) {
-  const [open, setOpen] = useState(false);
-  const [filters, setFilters] = useState(WORKLIST_DEFAULTS);
-  const activeCount = Object.entries(filters)
-    .filter(([key, value]) => value !== '' && !(key !== 'minDays' && key !== 'minAmount' && value === 'all')).length;
-  const change = (key, value) => setFilters(current => ({ ...current, [key]: value }));
-  const openResults = () => {
-    const params = new URLSearchParams({ worklist: '1', returnTo: '/overview' });
-    for (const [key, value] of Object.entries(filters)) {
-      if (value !== '' && value !== 'all') params.set(key, value);
-    }
-    navigate(`/customer-money?${params.toString()}`);
-  };
-
   return (
-    <div className={`fco-worklist-builder${open ? ' is-open' : ''}`}>
-      <button className="fco-worklist-builder__trigger" type="button" onClick={() => setOpen(value => !value)} aria-expanded={open}>
+    <div className="fco-worklist-builder">
+      <button className="fco-worklist-builder__trigger" type="button" onClick={() => navigate('/customer-money?worklist=1&returnTo=%2Foverview')}>
         <span className="fco-worklist-builder__icon"><SlidersHorizontal size={19}/></span>
-        <span><strong>ابنِ قائمة عمل بشروطك</strong><small>ضع شروطًا متغيرة، شاهد النتائج، ثم نفّذ الإجراء الفردي أو الجماعي من القائمة نفسها.</small></span>
-        <em>{activeCount ? `${activeCount} شروط` : 'بدون شروط مسبقة'}</em>
-        <span className="fco-worklist-builder__cta">{open ? 'إخفاء الشروط' : 'بناء القائمة'}</span>
+        <span><strong>أنشئ قائمة تنفيذ بشروطك</strong><small>أضف أو احذف أي شرط، شاهد النتائج فورًا، ثم حدد ونفّذ الإجراء من الشاشة نفسها.</small></span>
+        <em>لا توجد شروط مفروضة</em>
+        <span className="fco-worklist-builder__cta">فتح قائمة التنفيذ</span>
       </button>
-      {open ? <form className="fco-worklist-builder__form" onSubmit={event => { event.preventDefault(); openResults(); }}>
-        <div className="fco-worklist-builder__fields">
-          <label><span>احتسب مبلغ النتائج من</span><select value={filters.aging} onChange={event => change('aging', event.target.value)}><option value="all">كل المستحقات المتأخرة</option><option value="inv16_30,inv31_60,inv61_90,inv90p">فواتير تجاوزت 15 يومًا</option><option value="inv31_60,inv61_90,inv90p">فواتير تجاوزت 30 يومًا</option><option value="inv61_90,inv90p">فواتير تجاوزت 60 يومًا</option><option value="inv90p">فواتير تجاوزت 90 يومًا</option></select></label>
-          <label><span>عمر أقدم فاتورة أكبر من</span><div><input inputMode="numeric" type="number" min="0" value={filters.minDays} onChange={event => change('minDays', event.target.value)} placeholder="اختياري"/><b>يوم</b></div></label>
-          <label><span>المبلغ أكبر من</span><div><input inputMode="decimal" type="number" min="0" step="0.01" value={filters.minAmount} onChange={event => change('minAmount', event.target.value)} placeholder="مثال: 100"/><b>ر.س</b></div></label>
-          <label><span>نوع الدفع</span><select value={filters.billing} onChange={event => change('billing', event.target.value)}><option value="all">الكل</option><option value="prepaid">مسبق الدفع</option><option value="postpaid">دفع لاحق</option><option value="unknown">غير متاح</option></select></label>
-          <label><span>رصيد المحفظة</span><select value={filters.wallet} onChange={event => change('wallet', event.target.value)}><option value="all">الكل</option><option value="positive">موجب</option><option value="negative">سالب</option><option value="zero">صفري / هامشي</option></select></label>
-          <label><span>الفواتير</span><select value={filters.invoices} onChange={event => change('invoices', event.target.value)}><option value="all">الكل</option><option value="open">لديه فواتير مفتوحة</option><option value="none">بلا فواتير مفتوحة</option></select></label>
-          <label><span>تشغيل حساب لمحة</span><select value={filters.status} onChange={event => change('status', event.target.value)}><option value="all">كل الحالات</option><option value="active">يعمل</option><option value="inactive">موقوف</option><option value="unknown">غير متاح</option></select></label>
-        </div>
-        <div className="fco-worklist-builder__actions">
-          <button type="button" onClick={() => setFilters(WORKLIST_DEFAULTS)} disabled={!activeCount}>مسح الشروط</button>
-          <button type="submit">عرض النتائج واتخاذ إجراء <ArrowLeft size={15}/></button>
-        </div>
-      </form> : null}
     </div>
   );
 }
@@ -371,7 +339,7 @@ export default function FigmaCommandCenter({
       <section className="fco-section fco-command-grid__worklists">
         <div className="fco-section__heading"><div><h2>قائمة العمل والقرارات</h2><span>ابدأ بشروطك أو افتح قائمة جاهزة من استثناء حقيقي</span></div><small>النتائج والتحديد والإجراء في مساحة واحدة</small></div>
         <WorklistBuilder navigate={navigate}/>
-        <div className="fco-saved-worklists"><strong>قوائم جاهزة من البيانات الحالية</strong><small>اختصارات متكررة وليست شروطًا مفروضة عليك</small></div>
+        <div className="fco-saved-worklists"><strong>تنبيهات آلية</strong><small>تكشف الاستثناءات فقط؛ التنفيذ المرن يبدأ من قائمة التنفيذ أعلاه</small></div>
         <div className="fco-actions-list">
           <ActionCard tone="red" icon={UserRoundX} title="حسابات مرشحة للإيقاف" count={stopCount} value={`${compactMoney(stopAmount)} ر.س`} note={`دفع لاحق · الحساب يعمل · تجاوز 30 يومًا · أكثر من ${money(DEFAULT_SUSPENSION_MIN_OVERDUE)} ر.س`} action="عرض النتائج" onClick={() => navigate(`/customer-money?decision=stop&decisionMin=${DEFAULT_SUSPENSION_MIN_OVERDUE}&returnTo=%2Foverview`)} unavailable={decisionGuard.status === 'unavailable'} statusMessage={stopStatusLoading ? 'جارٍ التحقق الحي' : stopStatusError ? 'يُعاد الفحص داخل النتائج' : decisionGuard.message} source={states.customerMoney || states.finance || states.zohoInvoices}/>
           <ActionCard tone="blue" icon={WalletCards} title="محفظة موجبة مع فواتير غير مسددة" count={deductCount} value={`${compactMoney(deductAmount)} ر.س`} note="مراجعة تشغيلية للإيقاف؛ تسوية Zoho إجراء مستقل" action="عرض النتائج" onClick={() => navigate('/customer-money?decision=deduct&returnTo=%2Foverview')} unavailable={decisionGuard.status === 'unavailable'} statusMessage={decisionGuard.message} source={states.customerMoney || states.finance || states.zohoInvoices}/>
