@@ -1,18 +1,99 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowLeft, CalendarClock, Download, FileText, Megaphone, PhoneCall,
-  Search, ShieldAlert, UserRoundCog, WalletCards,
+  ArrowLeft, CalendarClock, Download, FileText, Megaphone, PhoneCall, Plus,
+  Search, ShieldAlert, Trash2, UserRoundCog, WalletCards,
 } from 'lucide-react';
 import { CUSTOMER_CAMPAIGN_BUCKETS } from '../../lib/customerCampaignBuckets.js';
 import { AGING_PAGE_SIZE } from '../../lib/agingOperations.js';
 import useMobileLayout from '../../lib/useMobileLayout.js';
 import { useWindowedRows } from '../../hooks/useWindowedRows.js';
-import { MobileFilterBar, ProgressiveListFooter } from '../MobileUX.jsx';
+import { ProgressiveListFooter } from '../MobileUX.jsx';
 import OperationalResultSet from './OperationalResultSet.jsx';
 import './aging-operations-queue.css';
 
 const MONEY = value => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const DATE = value => value ? new Date(value).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short', year: 'numeric' }) : 'غير متاح';
 const STAGE = { todo: 'جديدة', contacted: 'تم التواصل', promised: 'وعد دفع', snoozed: 'مؤجلة' };
+
+const CONDITION_ORDER = [
+  'aging', 'minDays', 'maxDays', 'minAmount', 'maxAmount', 'billing', 'wallet',
+  'invoices', 'status', 'owner', 'collection', 'promise', 'contact', 'actionOnly',
+];
+
+function conditionIsActive(key, filters) {
+  if (key === 'aging') return filters.aging?.size > 0;
+  if (key === 'actionOnly') return filters.actionOnly === true;
+  if (['minDays', 'maxDays', 'minAmount', 'maxAmount'].includes(key)) return filters[key] !== '' && filters[key] != null;
+  return !['', 'all', null, undefined].includes(filters[key]);
+}
+
+function NumericConditionInput({ value, onCommit, ...props }) {
+  const [draft, setDraft] = useState(value ?? '');
+  const timerRef = useRef(null);
+  useEffect(() => setDraft(value ?? ''), [value]);
+  useEffect(() => () => window.clearTimeout(timerRef.current), []);
+  const schedule = next => {
+    setDraft(next);
+    window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => onCommit(next), 450);
+  };
+  const flush = () => {
+    window.clearTimeout(timerRef.current);
+    if (String(draft) !== String(value ?? '')) onCommit(draft);
+  };
+  return <input {...props} value={draft} onChange={event => schedule(event.target.value)} onBlur={flush} onKeyDown={event => { if (event.key === 'Enter') { flush(); event.currentTarget.blur(); } }}/>
+}
+
+function ConditionBuilder({ filters, assignees, onFilter }) {
+  const [visible, setVisible] = useState(() => new Set(CONDITION_ORDER.filter(key => conditionIsActive(key, filters))));
+  const [addKey, setAddKey] = useState('');
+  useEffect(() => {
+    const active = CONDITION_ORDER.filter(key => conditionIsActive(key, filters));
+    if (!active.length) return;
+    setVisible(current => {
+      const next = new Set(current);
+      active.forEach(key => next.add(key));
+      return next.size === current.size ? current : next;
+    });
+  }, [filters]);
+  const definitions = useMemo(() => ({
+    aging: { label: 'عمر الفواتير المكوّنة للمبلغ', operator: 'ضمن', reset: () => onFilter('agingClear', true), control: <div className="aoq-condition__buckets">{CUSTOMER_CAMPAIGN_BUCKETS.map(bucket => <button type="button" key={bucket.key} aria-pressed={filters.aging.has(bucket.key)} onClick={() => onFilter('agingToggle', bucket.key)}><i style={{ background: bucket.color }}/>{bucket.label}</button>)}</div> },
+    minDays: { label: 'أقدم استحقاق', operator: 'أكبر من', reset: '', control: <div className="aoq-unit-input"><NumericConditionInput aria-label="الحد الأدنى لعمر الاستحقاق" type="number" min="0" value={filters.minDays} onCommit={value => onFilter('minDays', value)} placeholder="30"/><b>يوم</b></div> },
+    maxDays: { label: 'أقدم استحقاق', operator: 'حتى', reset: '', control: <div className="aoq-unit-input"><NumericConditionInput aria-label="الحد الأعلى لعمر الاستحقاق" type="number" min="0" value={filters.maxDays} onCommit={value => onFilter('maxDays', value)}/><b>يوم</b></div> },
+    minAmount: { label: 'مبلغ النتائج', operator: 'من', reset: '', control: <div className="aoq-unit-input"><NumericConditionInput aria-label="الحد الأدنى للمبلغ" type="number" min="0" step="0.01" value={filters.minAmount} onCommit={value => onFilter('minAmount', value)} placeholder="100"/><b>ر.س</b></div> },
+    maxAmount: { label: 'مبلغ النتائج', operator: 'حتى', reset: '', control: <div className="aoq-unit-input"><NumericConditionInput aria-label="الحد الأعلى للمبلغ" type="number" min="0" step="0.01" value={filters.maxAmount} onCommit={value => onFilter('maxAmount', value)}/><b>ر.س</b></div> },
+    billing: { label: 'نوع الدفع', operator: 'يساوي', reset: 'all', control: <select aria-label="نوع الدفع" value={filters.billing} onChange={event => onFilter('billing', event.target.value)}><option value="all">اختر…</option><option value="prepaid">مسبق الدفع</option><option value="postpaid">دفع لاحق</option><option value="unknown">غير متاح</option></select> },
+    wallet: { label: 'رصيد المحفظة', operator: 'حالته', reset: 'all', control: <select aria-label="حالة رصيد المحفظة" value={filters.wallet} onChange={event => onFilter('wallet', event.target.value)}><option value="all">اختر…</option><option value="positive">موجب (أكثر من 0.50)</option><option value="negative">سالب (أقل من -0.50)</option><option value="zero">صفري / هامشي</option></select> },
+    invoices: { label: 'الفواتير', operator: 'حالته', reset: 'all', control: <select aria-label="حالة الفواتير" value={filters.invoices} onChange={event => onFilter('invoices', event.target.value)}><option value="all">اختر…</option><option value="open">لديه فواتير مفتوحة</option><option value="none">بلا فواتير مفتوحة</option></select> },
+    status: { label: 'تشغيل حساب لمحة', operator: 'حالته', reset: 'all', control: <select aria-label="حالة تشغيل حساب لمحة" value={filters.status} onChange={event => onFilter('status', event.target.value)}><option value="all">اختر…</option><option value="active">يعمل حسب آخر مزامنة</option><option value="inactive">موقوف حسب آخر مزامنة</option><option value="unknown">غير متاح</option></select> },
+    owner: { label: 'المحصل', operator: 'مُسند إلى', reset: 'all', control: <select aria-label="المحصل" value={filters.owner} onChange={event => onFilter('owner', event.target.value)}><option value="all">اختر…</option><option value="unassigned">بلا مسؤول</option>{assignees.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select> },
+    collection: { label: 'حالة التحصيل', operator: 'تساوي', reset: 'all', control: <select aria-label="حالة التحصيل" value={filters.collection} onChange={event => onFilter('collection', event.target.value)}><option value="all">اختر…</option><option value="no_task">بلا مهمة</option>{Object.entries(STAGE).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</select> },
+    promise: { label: 'وعد السداد', operator: 'حالته', reset: 'all', control: <select aria-label="حالة الوعد" value={filters.promise} onChange={event => onFilter('promise', event.target.value)}><option value="all">اختر…</option><option value="today">وعد اليوم</option><option value="overdue">وعد متأخر</option><option value="none">بلا وعد</option></select> },
+    contact: { label: 'آخر تواصل', operator: 'كان', reset: 'all', control: <select aria-label="آخر تواصل" value={filters.contact} onChange={event => onFilter('contact', event.target.value)}><option value="all">اختر…</option><option value="7d">خلال 7 أيام</option><option value="30d">خلال 30 يومًا</option><option value="none">غير متاح</option></select> },
+    actionOnly: { label: 'الحالة التشغيلية', operator: 'تساوي', reset: false, control: <button type="button" className={`aoq-condition__toggle${filters.actionOnly ? ' is-active' : ''}`} aria-pressed={filters.actionOnly} onClick={() => onFilter('actionOnly', !filters.actionOnly)}>يحتاج إجراء الآن</button> },
+  }), [assignees, filters, onFilter]);
+  const remove = key => {
+    const definition = definitions[key];
+    if (typeof definition.reset === 'function') definition.reset();
+    else onFilter(key, definition.reset);
+    setVisible(current => { const next = new Set(current); next.delete(key); return next; });
+  };
+  const available = CONDITION_ORDER.filter(key => !visible.has(key));
+  return <section className="aoq-query-builder" aria-labelledby="aoq-query-title">
+    <div className="aoq-query-builder__heading">
+      <div><strong id="aoq-query-title">ضع شروطك وأنشئ قائمة التنفيذ</strong><span>لا توجد سيناريوهات مفروضة: أضف الشروط التي تحتاجها، وكلها تُطبّق معًا على النتائج أدناه.</span></div>
+      <span className="aoq-query-builder__live"><i/> النتائج تتحدث تلقائيًا</span>
+    </div>
+    {visible.size ? <div className="aoq-condition-list">{CONDITION_ORDER.filter(key => visible.has(key)).map(key => <div className="aoq-condition" key={key}>
+      <strong>{definitions[key].label}</strong><span>{definitions[key].operator}</span><div>{definitions[key].control}</div>
+      <button type="button" className="aoq-condition__remove" onClick={() => remove(key)} aria-label={`حذف شرط ${definitions[key].label}`}><Trash2 size={15}/></button>
+    </div>)}</div> : <div className="aoq-query-builder__empty">لا توجد شروط حاليًا؛ تعرض القائمة كل المبالغ القابلة للتحصيل. أضف أول شرط للبدء.</div>}
+    <div className="aoq-query-builder__footer">
+      <label className="aoq-add-condition"><Plus size={15}/><select value={addKey} onChange={event => { const key = event.target.value; setAddKey(''); if (key) setVisible(current => new Set(current).add(key)); }}><option value="">أضف شرطًا…</option>{available.map(key => <option key={key} value={key}>{definitions[key].label} — {definitions[key].operator}</option>)}</select></label>
+      {visible.size ? <button type="button" onClick={() => { onFilter('clearAll', true); setVisible(new Set()); }}>مسح كل الشروط</button> : null}
+    </div>
+  </section>;
+}
 
 function RowCard({ row, selected, onSelect, onOpen, onInvoices }) {
   const { customer, summary, task } = row;
@@ -58,26 +139,9 @@ export default function AgingOperationsQueue({
   const rowWindow = useWindowedRows(rows, { batch: isMobile ? 10 : Math.max(rows.length, 1) });
   const pages = Math.max(1, Math.ceil(totalRows / AGING_PAGE_SIZE));
   const allSelected = rows.length > 0 && rows.every(row => selected.has(row.identityKey));
-  const searchControl = <label className="aoq-search"><Search size={15}/><input value={filters.search} onChange={e => onFilter('search', e.target.value)} placeholder="المتجر، رقم المتجر أو حساب Zoho" aria-label="البحث في قائمة Aging"/></label>;
-  const renderOperationalConditions = () => <>
-    <label><span>مبلغ النتائج أكبر من</span><input aria-label="الحد الأدنى للمبلغ" type="number" min="0" value={filters.minAmount} onChange={e => onFilter('minAmount', e.target.value)} placeholder="مثال: 100" /></label>
-    <label><span>مبلغ النتائج حتى</span><input aria-label="الحد الأعلى للمبلغ" type="number" min="0" value={filters.maxAmount} onChange={e => onFilter('maxAmount', e.target.value)} /></label>
-    <label><span>أقدم استحقاق أكبر من</span><div className="aoq-unit-input"><input aria-label="الحد الأدنى لعمر الاستحقاق" type="number" min="0" value={filters.minDays} onChange={e => onFilter('minDays', e.target.value)} placeholder="مثال: 30"/><b>يوم</b></div></label>
-    <label><span>أقدم استحقاق حتى</span><div className="aoq-unit-input"><input aria-label="الحد الأعلى لعمر الاستحقاق" type="number" min="0" value={filters.maxDays} onChange={e => onFilter('maxDays', e.target.value)}/><b>يوم</b></div></label>
-    <label><span>نوع الدفع</span><select aria-label="نوع الدفع" value={filters.billing} onChange={e => onFilter('billing', e.target.value)}><option value="all">الكل</option><option value="prepaid">مسبق الدفع</option><option value="postpaid">دفع لاحق</option><option value="unknown">غير متاح</option></select></label>
-    <label><span>رصيد المحفظة</span><select aria-label="حالة رصيد المحفظة" value={filters.wallet} onChange={e => onFilter('wallet', e.target.value)}><option value="all">الكل</option><option value="positive">موجب (أكثر من 0.50)</option><option value="negative">سالب (أقل من -0.50)</option><option value="zero">صفري / هامشي</option></select></label>
-    <label><span>الفواتير</span><select aria-label="حالة الفواتير" value={filters.invoices} onChange={e => onFilter('invoices', e.target.value)}><option value="all">الكل</option><option value="open">لديه فواتير مفتوحة</option><option value="none">بلا فواتير مفتوحة</option></select></label>
-    <label><span>تشغيل حساب لمحة</span><select aria-label="حالة تشغيل حساب لمحة" value={filters.status} onChange={e => onFilter('status', e.target.value)}><option value="all">كل الحالات</option><option value="active">يعمل حسب آخر مزامنة</option><option value="inactive">موقوف حسب آخر مزامنة</option><option value="unknown">غير متاح</option></select></label>
-  </>;
-  const renderSecondaryFilters = () => <>
-    <label><span>المحصل</span><select aria-label="المحصل" value={filters.owner} onChange={e => onFilter('owner', e.target.value)}><option value="all">الكل</option><option value="unassigned">بلا مسؤول</option>{assignees.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-    <label><span>حالة التحصيل</span><select aria-label="حالة التحصيل" value={filters.collection} onChange={e => onFilter('collection', e.target.value)}><option value="all">كل الحالات</option><option value="no_task">بلا مهمة</option>{Object.entries(STAGE).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</select></label>
-    <label><span>الوعد</span><select aria-label="حالة الوعد" value={filters.promise} onChange={e => onFilter('promise', e.target.value)}><option value="all">الكل</option><option value="today">وعد اليوم</option><option value="overdue">وعد متأخر</option><option value="none">بلا وعد</option></select></label>
-    <label><span>آخر تواصل</span><select aria-label="آخر تواصل" value={filters.contact} onChange={e => onFilter('contact', e.target.value)}><option value="all">الكل</option><option value="7d">خلال 7 أيام</option><option value="30d">خلال 30 يومًا</option><option value="none">غير متاح</option></select></label>
-    <label><span>الترتيب</span><select aria-label="ترتيب النتائج" value={filters.sort} onChange={e => onFilter('sort', e.target.value)}><option value="amount">الأعلى مبلغًا</option><option value="oldest">الأقدم</option><option value="promise">موعد الوعد</option><option value="last_contact">آخر تواصل</option></select></label>
-    <button type="button" className={filters.actionOnly ? 'is-active' : ''} aria-pressed={filters.actionOnly} onClick={() => onFilter('actionOnly', !filters.actionOnly)}>يحتاج إجراء فقط</button>
-  </>;
   const activeFilters = [
+    ...(filters.aging.size ? [{ key: 'aging', label: `أعمار الفواتير: ${CUSTOMER_CAMPAIGN_BUCKETS.filter(bucket => filters.aging.has(bucket.key)).map(bucket => bucket.label).join(' + ')}`, onRemove: () => onFilter('agingClear', true) }] : []),
+    ...(filters.search ? [{ key: 'search', label: `بحث: ${filters.search}`, onRemove: () => onFilter('search', '') }] : []),
     ...(filters.minAmount ? [{ key: 'min', label: `من ${filters.minAmount} ر.س`, onRemove: () => onFilter('minAmount', '') }] : []),
     ...(filters.maxAmount ? [{ key: 'max', label: `إلى ${filters.maxAmount} ر.س`, onRemove: () => onFilter('maxAmount', '') }] : []),
     ...(filters.minDays ? [{ key: 'minDays', label: `أقدم استحقاق > ${filters.minDays} يوم`, onRemove: () => onFilter('minDays', '') }] : []),
@@ -93,7 +157,6 @@ export default function AgingOperationsQueue({
     ...(filters.sort !== 'amount' ? [{ key: 'sort', label: 'ترتيب مخصص', onRemove: () => onFilter('sort', 'amount') }] : []),
     ...(filters.actionOnly ? [{ key: 'action', label: 'يحتاج إجراء', onRemove: () => onFilter('actionOnly', false) }] : []),
   ];
-  const clearSecondaryFilters = () => onFilter('clearSecondary', true);
   const context = {
     title: 'قائمة عمل أعمار المستحقات',
     description: 'افتح السجلات المكوّنة للمبلغ، حافظ على سياق العميل، ثم نفّذ الإجراء من نفس مجموعة النتائج.',
@@ -114,29 +177,12 @@ export default function AgingOperationsQueue({
     activeFilters,
   };
   const toolbar = <>
-    <section className="aoq-query-builder" aria-labelledby="aoq-query-title">
-      <div className="aoq-query-builder__heading"><div><strong id="aoq-query-title">ابنِ قائمة العمل بشروطك</strong><span>كل الشروط أدناه تُطبق معًا، والنتائج والإجراءات تبقى في هذه الصفحة.</span></div><button type="button" onClick={clearSecondaryFilters} disabled={!activeFilters.length}>مسح الشروط</button></div>
-      <div className="aoq-query-builder__grid">{renderOperationalConditions()}</div>
-    </section>
-    <div className="aoq-bucket-scope"><strong>نطاق المبلغ حسب عمر الفاتورة</strong><span>اختيار أكثر من شريحة يجمعها في نتيجة واحدة.</span></div>
-    <div className="aoq-buckets" aria-label="شرائح أعمار المستحقات">
-      {CUSTOMER_CAMPAIGN_BUCKETS.map(bucket => <button type="button" key={bucket.key} aria-pressed={filters.aging.has(bucket.key)} onClick={() => {
-        onFilter('agingToggle', bucket.key);
-        if (isMobile) window.setTimeout(() => document.querySelector('.aoq-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 40);
-      }}>
-        <i style={{ background: bucket.color }}/><span>{bucket.label}</span>
-      </button>)}
+    <ConditionBuilder filters={filters} assignees={assignees} onFilter={onFilter}/>
+    <div className="aoq-result-tools">
+      <label className="aoq-search"><Search size={15}/><input value={filters.search} onChange={event => onFilter('search', event.target.value)} placeholder="ابحث داخل النتائج بالمتجر أو الرقم أو حساب Zoho" aria-label="البحث داخل النتائج"/></label>
+      <label><span>ترتيب النتائج</span><select aria-label="ترتيب النتائج" value={filters.sort} onChange={event => onFilter('sort', event.target.value)}><option value="amount">الأعلى مبلغًا</option><option value="oldest">الأقدم</option><option value="promise">موعد الوعد</option><option value="last_contact">آخر تواصل</option></select></label>
+      <span>{totalRows.toLocaleString('en-US')} نتيجة مطابقة</span>
     </div>
-
-    <MobileFilterBar
-      search={searchControl}
-      title="فلترة قائمة المستحقات"
-      activeFilters={activeFilters}
-      onClear={clearSecondaryFilters}
-      desktop={<div className="aoq-filters workspace-filter-bar">{searchControl}{renderSecondaryFilters()}</div>}
-    >
-      {renderSecondaryFilters()}
-    </MobileFilterBar>
     {!sourceHealthy ? <div className="aoq-source-error" role="alert"><strong>مصدر التفاصيل غير متاح</strong><span>تبقى آخر بيانات ناجحة ظاهرة، لكن الإجراءات الجماعية متوقفة حتى تعود قراءة سطور التحصيل.</span></div> : null}
     <small className="aoq-identity-note">* سجل التواصل مرتبط برقم التواصل للعرض فقط، ولا يُستخدم لإثبات هوية المتجر أو احتساب مديونيته.</small>
   </>;
@@ -151,7 +197,7 @@ export default function AgingOperationsQueue({
     onClear: () => onToggleAll(false),
     disabled: loading || !sourceHealthy || !reconciliation?.ok,
     actions: [
-      ...(canSuspend ? [{ key: 'suspend', label: 'مراجعة الإيقاف', icon: <ShieldAlert size={14}/>, variant: 'primary', onClick: () => onBulk('suspend') }] : []),
+      ...(canSuspend ? [{ key: 'suspend', label: 'إيقاف الحسابات', icon: <ShieldAlert size={14}/>, variant: 'primary', onClick: () => onBulk('suspend') }] : []),
       { key: 'assign', label: 'إسناد', icon: <UserRoundCog size={14}/>, onClick: () => onBulk('assign') },
       { key: 'followup', label: 'متابعة', icon: <CalendarClock size={14}/>, onClick: () => onBulk('followup') },
       { key: 'campaign', label: 'حملة WhatsApp', icon: <Megaphone size={14}/>, variant: 'accent', onClick: () => onBulk('campaign') },

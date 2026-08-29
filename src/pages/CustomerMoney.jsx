@@ -878,12 +878,17 @@ export default function CustomerMoney({ isActive = true }) {
       toggleBucket(value);
       return;
     }
-    if (key === 'clearSecondary') {
+    if (key === 'agingClear') {
+      clearBuckets();
+      return;
+    }
+    if (key === 'clearAll' || key === 'clearSecondary') {
       updateUrlFilters({
-        minAmount: null, maxAmount: null, owner: null, collection: null,
+        aging: null, search: null, minAmount: null, maxAmount: null, owner: null, collection: null,
         minDays: null, maxDays: null, billing: null, wallet: null, invoices: null,
         status: null, promise: null, contact: null, sort: null, action: null, page: null,
       });
+      setBuckets(new Set());
       return;
     }
     const urlKey = key === 'actionOnly' ? 'action' : key;
@@ -1289,7 +1294,33 @@ export default function CustomerMoney({ isActive = true }) {
     <div className="customer-money-page workspace-page">
       <PageHeader icon={<HandCoins size={22}/>} iconColor="var(--green)"
         title="مركز العملاء المالي"
-        subtitle="الرصيد والنشاط والتحصيل والتواصل — افتح العميل مرة واحدة ونفّذ الإجراء من نفس السياق"/>
+        subtitle="ضع شروطك، افحص النتائج، ثم نفّذ الإجراء الفردي أو الجماعي من المساحة نفسها"/>
+
+      <AgingOperationsQueue
+        rows={agingPageRows}
+        totalRows={centralReadActive ? Number(currentReceivablesPage?.totalRows || 0) : agingRows.length}
+        totalAmount={agingFilteredTotal}
+        filters={agingFilterState}
+        onFilter={handleAgingFilter}
+        assignees={collectionAssignees}
+        selected={selectedAging}
+        onToggle={toggleAgingSelection}
+        onTogglePage={toggleAgingPage}
+        onToggleAll={toggleAllAgingResults}
+        allResultsSelected={allAgingSelected}
+        selectedCount={allResultsSelected ? Number(currentReceivablesPage?.totalRows || agingRows.length) : selectedAging.size}
+        page={agingPage}
+        onPage={(value) => updateUrlFilters({ page: value <= 1 ? null : value })}
+        onOpen={row => openStoreFromAging(row, false)}
+        onInvoices={row => openStoreFromAging(row, true)}
+        onBulk={openBulkReview}
+        canSuspend={isAdmin}
+        reconciliation={agingReconciliation}
+        loading={receivablesContextPending}
+        sourceHealthy={centralReadActive || (!agingLinesError && !loadError)}
+        sourceUpdatedAt={viewUpdatedAt}
+        campaignPanel={campaignSegmentsPanel}
+      />
 
       <section className="customer-finance-command" aria-label="مركز إجراءات مال العملاء">
         <div className="customer-finance-command__head">
@@ -1328,32 +1359,6 @@ export default function CustomerMoney({ isActive = true }) {
         ) : null}
         {growthPulse.status === 'unavailable' ? <div className="customer-finance-command__warning" role="status">تعذر تحميل نشاط عملاء لمحة: {growthPulse.error}. بقيت الأرقام المالية وإجراءات التحصيل متاحة.</div> : null}
       </section>
-
-      <AgingOperationsQueue
-        rows={agingPageRows}
-        totalRows={centralReadActive ? Number(currentReceivablesPage?.totalRows || 0) : agingRows.length}
-        totalAmount={agingFilteredTotal}
-        filters={agingFilterState}
-        onFilter={handleAgingFilter}
-        assignees={collectionAssignees}
-        selected={selectedAging}
-        onToggle={toggleAgingSelection}
-        onTogglePage={toggleAgingPage}
-        onToggleAll={toggleAllAgingResults}
-        allResultsSelected={allAgingSelected}
-        selectedCount={allResultsSelected ? Number(currentReceivablesPage?.totalRows || agingRows.length) : selectedAging.size}
-        page={agingPage}
-        onPage={(value) => updateUrlFilters({ page: value <= 1 ? null : value })}
-        onOpen={row => openStoreFromAging(row, false)}
-        onInvoices={row => openStoreFromAging(row, true)}
-        onBulk={openBulkReview}
-        canSuspend={isAdmin}
-        reconciliation={agingReconciliation}
-        loading={receivablesContextPending}
-        sourceHealthy={centralReadActive || (!agingLinesError && !loadError)}
-        sourceUpdatedAt={viewUpdatedAt}
-        campaignPanel={campaignSegmentsPanel}
-      />
 
       {loadError && (
         <div className="data-load-error is-inline" role="status">

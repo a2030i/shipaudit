@@ -48,6 +48,7 @@ const MonthlyReport = lazy(() => import('./pages/MonthlyReport.jsx'));
 const ReportsCenter = lazy(() => import('./pages/ReportsCenter.jsx'));
 const ZohoCallback = lazy(() => import('./pages/ZohoCallback.jsx'));
 const FinancialPosition = lazy(() => import('./pages/FinancialPosition.jsx'));
+const FinanceExecutive = lazy(() => import('./pages/FinanceExecutive.jsx'));
 const ZohoData = lazy(() => import('./pages/ZohoData.jsx'));
 const CollectionsHub = lazy(() => import('./pages/CollectionsHub.jsx'));
 const SalesHub = lazy(() => import('./pages/SalesHub.jsx'));
@@ -527,7 +528,7 @@ function AppInner({ theme, toggleTheme }) {
   const goto = (path) => {
     const center = NAV_SECTIONS.find(section => section.path === path);
     let destination = path;
-    if (center) {
+    if (center && center.id !== 'finance') {
       try {
         const saved = localStorage.getItem(`${LAST_CENTER_ROUTE_PREFIX}${center.id}`);
         if (saved?.startsWith('/')) {
@@ -997,6 +998,9 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={pathname==='/whatsapp-settings'} scroll>
               <WhatsAppSettings isActive={pathname==='/whatsapp-settings'}/>
             </PageSlot>
+            <PageSlot active={pathname==='/workspace/finance'} scroll>
+              <FinanceExecutive carriers={carriers} isActive={pathname==='/workspace/finance'}/>
+            </PageSlot>
             <PageSlot active={ACCOUNTING_WORKSPACE_PATHS.includes(pathname)} scroll>
               <CenterWorkspace
                 scope="finance-accounting"
@@ -1225,7 +1229,7 @@ function AppInner({ theme, toggleTheme }) {
           const Icon = it.icon;
           const active = it.sectionId ? contextSection?.id === it.sectionId : location.pathname === it.path;
           return (
-            <button key={it.path} onClick={() => it.sectionId ? openNavigation(it.sectionId) : goto(it.path)} aria-current={active ? 'page' : undefined}
+            <button key={it.path} onClick={() => goto(it.path)} aria-current={active ? 'page' : undefined}
               className={`bottom-nav-btn ${active ? 'active' : ''}`}>
               <Icon size={19}/>
               <span>{it.label}</span>
