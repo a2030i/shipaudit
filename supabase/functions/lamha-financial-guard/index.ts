@@ -14,6 +14,7 @@ import {
   parseLamhaAccountActive,
 } from '../_shared/lamhaFinancialGuard.ts';
 import { parseLamhaStoreExportRows } from '../_shared/lamhaStoreExport.ts';
+import { parseLamhaStatementExportRows } from '../_shared/lamhaStatementExport.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
@@ -156,6 +157,36 @@ async function lamhaExportFetch(token: string) {
   };
 }
 
+async function lamhaStatementExportFetch(token: string) {
+  const path = '/stores/statements/export';
+  await waitForLamhaApiSlot(db, token, 'lamha-financial-guard:GET:/stores/statements/export', 75_000);
+  const startedAt = performance.now();
+  const result = await fetch(`${LAMHA_BASE}${path}`, {
+    headers: {
+      Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/octet-stream',
+      'Accept-Language': 'ar',
+      'X-Requested-With': 'XMLHttpRequest',
+      Authorization: `Bearer ${token}`,
+    },
+    signal: AbortSignal.timeout(45_000),
+  });
+  const bytes = new Uint8Array(await result.arrayBuffer());
+  const rateLimitLimit = Number(result.headers.get('x-ratelimit-limit')) || null;
+  const rateLimitRemaining = Number(result.headers.get('x-ratelimit-remaining'));
+  return {
+    ok: result.ok,
+    status: result.status,
+    bytes,
+    contentType: result.headers.get('content-type') || '',
+    contentDisposition: result.headers.get('content-disposition') || '',
+    rateLimit: {
+      limit: rateLimitLimit,
+      remaining: Number.isFinite(rateLimitRemaining) ? rateLimitRemaining : null,
+    },
+    latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
+  };
+}
+
 function parseLamhaExport(bytes: Uint8Array) {
   let workbook;
   try {
@@ -171,6 +202,62 @@ function parseLamhaExport(bytes: Uint8Array) {
     defval: null,
   }) as unknown[][];
   return { sheetName: firstSheet, ...parseLamhaStoreExportRows(rows) };
+}
+
+function inspectLamhaStatementExport(bytes: Uint8Array) {
+  let workbook;
+  try {
+    workbook = XLSX.read(bytes, { type: 'array', cellDates: true });
+  } catch (error) {
+    throw new Error(`lamha_statement_export_workbook_invalid:${String((error as Error).message || error)}`);
+  }
+  const firstSheet = workbook.SheetNames[0];
+  if (!firstSheet) throw new Error('lamha_statement_export_workbook_empty');
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], {
+    header: 1,
+    raw: true,
+    defval: null,
+  }) as unknown[][];
+  const parsed = parseLamhaStatementExportRows(rows);
+  return {
+    sheetName: firstSheet,
+    headers: parsed.headers,
+    storeCount: parsed.rows.length,
+    balancesPresent: parsed.rows.filter(row => row.balance != null).length,
+  };
+}
+
+async function probeStatementExport(token: string) {
+  const exported = await lamhaStatementExportFetch(token);
+  if (!exported.ok) {
+    return {
+      ok: false,
+      readOnly: true,
+      endpoint: '/stores/statements/export',
+      httpStatus: exported.status,
+      errorClass: exported.status === 401
+        ? 'token_authentication'
+        : exported.status === 403
+          ? 'authorization_scope'
+          : `http_${exported.status}`,
+      latencyMs: exported.latencyMs,
+      rateLimit: exported.rateLimit,
+    };
+  }
+  const inspected = inspectLamhaStatementExport(exported.bytes);
+  return {
+    ok: true,
+    readOnly: true,
+    endpoint: '/stores/statements/export',
+    httpStatus: exported.status,
+    responseContract: 'xlsx',
+    contentType: exported.contentType,
+    contentDispositionPresent: Boolean(exported.contentDisposition),
+    byteLength: exported.bytes.byteLength,
+    latencyMs: exported.latencyMs,
+    rateLimit: exported.rateLimit,
+    ...inspected,
+  };
 }
 
 function nestedStoreRecords(payload: unknown): Json[] {
@@ -773,7 +860,7 @@ Deno.serve(async req => {
   try {
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || 'preview');
-    if (auth.kind === 'cron' && !['sync-directory', 'sync-profile-details'].includes(action)) {
+    if (auth.kind === 'cron' && !['sync-directory', 'sync-profile-details', 'probe-statement-export'].includes(action)) {
       return response(req, { ok: false, error: 'cron_read_only' }, 403);
     }
     if (action === 'sync-directory') {
@@ -781,6 +868,10 @@ Deno.serve(async req => {
     }
     if (action === 'sync-profile-details') {
       return response(req, { ok: true, action, data: await syncProfileDetails(token, auth.userId) });
+    }
+    if (action === 'probe-statement-export') {
+      const data = await probeStatementExport(token);
+      return response(req, { action, data }, data.ok ? 200 : data.httpStatus);
     }
     if (action === 'preview') {
       return response(req, { action, ...(await runPolicy(token, auth.userId, false)) });
