@@ -150,3 +150,13 @@ test('Customer 360 never promotes the visual merchant snapshot to a verified Lam
   assert.match(store360, /'فحص مباشر'\}<\/button>/);
   assert.doesNotMatch(store360, /source: 'local' \}\);\s*return undefined/);
 });
+
+test('Customer 360 resolves financial identity from the authoritative Lamha Zoho ID without tolerance', async () => {
+  const migration = await read('supabase/migrations/20260829224500_store_360_authoritative_lamha_zoho_link.sql');
+  assert.match(migration, /from public\.lamha_zoho_store_links authority/);
+  assert.match(migration, /join public\.zoho_contacts contact on contact\.zoho_id = authority\.zoho_contact_id/);
+  assert.match(migration, /'source','lamha_zoho_store_links'/);
+  assert.match(migration, /round\(ar\.collectible_due,2\) = round/);
+  assert.match(migration, /v_definition := replace\([\s\S]*abs\(ar\.collectible_due-coalesce\(a\.bucket_sum,0\)\) <= 0\.01[\s\S]*round\(ar\.collectible_due,2\) = round/);
+  assert.match(migration, /v_definition like '%abs\(ar\.collectible_due-coalesce\(a\.bucket_sum,0\)\) <= 0\.01%'/);
+});

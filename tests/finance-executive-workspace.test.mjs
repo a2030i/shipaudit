@@ -62,4 +62,5 @@ test('finance visualizations keep direct values and a compact mobile reading pat
   assert.match(css, /\.fex-metrics\{display:flex;overflow-x:auto;scroll-snap-type:x mandatory/);
   assert.match(css, /calc\(105px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(css, /@media\(max-width:460px\)/);
+  assert.match(css, /\.fex-cash-chart>span svg\{width:13px;height:13px/);
 });

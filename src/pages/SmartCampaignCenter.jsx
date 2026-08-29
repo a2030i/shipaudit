@@ -397,6 +397,7 @@ export default function SmartCampaignCenter({ isActive = true }) {
       ...defaultAudienceDefinition('collection'),
       buckets: Array.isArray(context.aging) ? context.aging : [],
       selectionKeys: Array.isArray(context.selectionKeys) ? context.selectionKeys : [],
+      selectionAmounts: Array.isArray(context.selectionAmounts) ? context.selectionAmounts : [],
       audienceContext: {
         source: context.source,
         filters: context.filters || {},

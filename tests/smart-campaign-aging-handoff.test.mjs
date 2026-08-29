@@ -18,6 +18,7 @@ test('collection campaign handoff preserves the full selection equation', async 
   assert.match(page, /eligibleCount:\s*rows\.length/);
   assert.match(page, /excludedBeforeChannelCount:\s*excludedRows\.length/);
   assert.match(page, /eligibilityExclusions:/);
+  assert.match(page, /selectionAmounts:\s*rows\.map/);
   assert.match(page, /handoffContext\(bulkAction,\s*eligibleBulkRows,\s*bulkReview\)/);
 });
 
@@ -32,7 +33,10 @@ test('smart campaign renders pre-channel exclusions and Arabic period names', as
   assert.match(page, /!audienceSummary\.ready\.length/);
   assert.match(page, /لا يوجد جمهور جاهز بعد تطبيق فحوص الحماية/);
   assert.match(page, /campaignBucketLabel\(new Set\(Array\.isArray\(context\.aging\)/);
+  assert.match(page, /selectionAmounts:\s*Array\.isArray\(context\.selectionAmounts\)/);
   assert.match(service, /describeCollectionAgingFilter\(buckets\)/);
+  assert.match(service, /selectionAmounts\.get\(String\(row\.key\)\)/);
+  assert.match(service, /handedOff \? handedOff\.amount : campaignAmount\(row, buckets\)/);
   assert.match(service, /aging_filter:\s*agingLabel/);
   assert.doesNotMatch(service, /aging_filter:\s*buckets\.join/);
 });

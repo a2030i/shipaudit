@@ -237,6 +237,12 @@ export function filterSmartAudience(universe, objective, definition) {
     const buckets = Array.isArray(definition?.buckets) ? definition.buckets : [];
     const agingLabel = describeCollectionAgingFilter(buckets);
     const selectionKeys = new Set(Array.isArray(definition?.selectionKeys) ? definition.selectionKeys : []);
+    const selectionAmounts = new Map((Array.isArray(definition?.selectionAmounts) ? definition.selectionAmounts : [])
+      .filter(item => item?.key)
+      .map(item => [String(item.key), {
+        amount: Math.max(0, Number(item.amount) || 0),
+        count: Math.max(0, Number(item.count) || 0),
+      }]));
     return rows.flatMap(row => {
       if (selectionKeys.size && !selectionKeys.has(row.key)) return [];
       if (definition?.platformStatus && definition.platformStatus !== 'all') {
@@ -244,13 +250,14 @@ export function filterSmartAudience(universe, objective, definition) {
           : row.platformStatus === 'غير نشط' || row.platformStatus === 'inactive' ? 'inactive' : 'unknown';
         if (status !== definition.platformStatus) return [];
       }
-      const amount = campaignAmount(row, buckets);
+      const handedOff = selectionAmounts.get(String(row.key));
+      const amount = handedOff ? handedOff.amount : campaignAmount(row, buckets);
       if (amount <= 0.5) return [];
       return [{
         ...row,
         amount: +amount.toFixed(2),
-        count: row.invoiceCount,
-        vars: [row.name, amount.toLocaleString('en-US', { maximumFractionDigits: 2 }), String(row.invoiceCount || 0)],
+        count: handedOff?.count || row.invoiceCount,
+        vars: [row.name, amount.toLocaleString('en-US', { maximumFractionDigits: 2 }), String(handedOff?.count || row.invoiceCount || 0)],
         fields: { ...row.fields, filtered_overdue_amount: +amount.toFixed(2), aging_filter: agingLabel },
       }];
     });

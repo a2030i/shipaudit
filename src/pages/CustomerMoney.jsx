@@ -1091,6 +1091,14 @@ export default function CustomerMoney({ isActive = true }) {
       totalAmount: selectedTotalAmount,
       eligibleTotalAmount,
       selectionKeys: rows.map(row => row.identityKey),
+      // الشروط الحرة (مثل >30 يوم + حد مبلغ) لا تقابل دائمًا شرائح
+      // الحملات الثابتة. احفظ مبلغ كل صف كما ظهر في نتيجة القرار حتى لا
+      // يعاد احتساب جمهور صحيح إلى صفر عند التسليم لمركز الحملات.
+      selectionAmounts: rows.map(row => ({
+        key: row.identityKey,
+        amount: Number(row.summary?.amount) || 0,
+        count: Number(row.summary?.invoiceCount) || 0,
+      })),
       returnTo: `${location.pathname}${location.search}`,
     };
   };
