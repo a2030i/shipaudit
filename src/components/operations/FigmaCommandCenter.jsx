@@ -21,6 +21,8 @@ import {
   UsersRound,
   WalletCards,
   Workflow,
+  TrendingDown,
+  TrendingUp,
 } from 'lucide-react';
 import {
   DEFAULT_SUSPENSION_MIN_OVERDUE, filterActionableSuspensionRows, suspensionDecisionAmount,
@@ -151,6 +153,50 @@ function FinancialMetric({ label, value, note, icon: Icon, onClick, tone = 'neut
   );
 }
 
+function ProfitMicro({ snapshot, loading, onClick }) {
+  if (loading) return <div className="fco-insight-empty">جارٍ قراءة قائمة الدخل…</div>;
+  if (!snapshot) return <button type="button" className="fco-insight-empty" onClick={onClick}>قائمة الدخل غير متاحة لهذه الفترة</button>;
+  const rows = [
+    { label: 'الدخل', value: Number(snapshot.income) || 0, tone: 'green' },
+    { label: 'تكلفة المبيعات', value: Number(snapshot.cogs) || 0, tone: 'red' },
+    { label: 'المصروفات', value: Number(snapshot.opex) || 0, tone: 'amber' },
+    { label: 'صافي الربح', value: Number(snapshot.net) || 0, tone: Number(snapshot.net) >= 0 ? 'blue' : 'red' },
+  ];
+  const max = Math.max(1, ...rows.map(row => Math.abs(row.value)));
+  return <div className="fco-profit-micro" aria-label="تركيب صافي الربح">
+    {rows.map(row => <button type="button" key={row.label} onClick={onClick} className={`is-${row.tone}`}>
+      <span>{row.label}</span><i><b style={{ '--share': `${Math.max(3, Math.abs(row.value) / max * 100)}%` }}/></i><strong>{compactMoney(row.value)} ر.س</strong>
+    </button>)}
+  </div>;
+}
+
+function CashflowMicro({ forecast, loading, currentOnly, onClick }) {
+  const points = forecast?.bankBalance == null ? [] : [
+    Number(forecast.bankBalance) || 0,
+    ...(forecast.dailyFlow || []).map(row => Number(row.runningBalance) || 0),
+  ];
+  if (loading) return <div className="fco-insight-empty">جارٍ قراءة تدفقات الأيام القادمة…</div>;
+  if (currentOnly) return <button type="button" className="fco-insight-empty" onClick={onClick}>توقع السيولة يعرض للشهر الحالي فقط</button>;
+  if (points.length < 2) return <button type="button" className="fco-insight-empty" onClick={onClick}>لا توجد أحداث مؤرخة تكفي لرسم السيولة</button>;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const range = Math.max(1, max - min);
+  const plot = points.map((value, index) => ({
+    value,
+    x: 16 + index * (268 / Math.max(1, points.length - 1)),
+    y: 15 + ((max - value) / range) * 58,
+  }));
+  const path = plot.map(point => `${point.x},${point.y}`).join(' ');
+  return <button type="button" className={`fco-cashflow-micro${min < 0 ? ' is-danger' : ''}`} onClick={onClick}>
+    <svg viewBox="0 0 300 94" role="img" aria-labelledby="fco-cashflow-title" preserveAspectRatio="none">
+      <title id="fco-cashflow-title">توقع رصيد السيولة خلال سبعة أيام</title>
+      <line x1="16" y1="74" x2="284" y2="74"/><polyline points={path}/>
+      {plot.map((point, index) => <circle key={index} cx={point.x} cy={point.y} r="3"/>)}
+    </svg>
+    <span><b>اليوم {compactMoney(points[0])}</b><b>متوقع {compactMoney(points.at(-1))}</b></span>
+  </button>;
+}
+
 function TaskRow({ icon: Icon, title, note, status, tone, onClick }) {
   return (
     <button className="fco-task" type="button" onClick={onClick}>
@@ -188,6 +234,7 @@ function IntegrationItem({ name, state, note, onClick, icon: Icon = Database }) 
 export default function FigmaCommandCenter({
   data,
   vat,
+  executiveFinance,
   period,
   refreshing,
   onRefresh,
@@ -297,6 +344,14 @@ export default function FigmaCommandCenter({
       ? 'تعذر التحقق من أحد المصدرين'
       : data?.customerDecisionFresh ? 'جاهز للقرار' : 'للعرض فقط · يُعاد التحقق داخل النتائج',
   };
+  const financePulse = executiveFinance?.period === period ? executiveFinance : { loading: true };
+  const netProfit = financePulse.snapshot ? Number(financePulse.snapshot.net) : null;
+  const showStopSignal = stopCount > 0 || decisionGuard.status === 'unavailable';
+  const showDeductSignal = deductCount > 0 || decisionGuard.status === 'unavailable';
+  const showNegativeSignal = negativeCount > 0 || !negativeAvailable;
+  const showZatcaSignal = zatcaCount > 0 || !invoiceOps.zatcaAvailable;
+  const showLamhaSignal = merchantNeedsUpdate || (!merchantPulse.loading && !merchantPulse.available);
+  const hasAutomatedSignals = showStopSignal || showDeductSignal || showNegativeSignal || showZatcaSignal || showLamhaSignal;
 
   return (
     <div className="figma-command-center" dir="rtl">
@@ -341,27 +396,36 @@ export default function FigmaCommandCenter({
         <WorklistBuilder navigate={navigate}/>
         <div className="fco-saved-worklists"><strong>تنبيهات آلية</strong><small>تكشف الاستثناءات فقط؛ التنفيذ المرن يبدأ من قائمة التنفيذ أعلاه</small></div>
         <div className="fco-actions-list">
-          <ActionCard tone="red" icon={UserRoundX} title="حسابات مرشحة للإيقاف" count={stopCount} value={`${compactMoney(stopAmount)} ر.س`} note={`دفع لاحق · الحساب يعمل · تجاوز 30 يومًا · أكثر من ${money(DEFAULT_SUSPENSION_MIN_OVERDUE)} ر.س`} action="عرض النتائج" onClick={() => navigate(`/customer-money?decision=stop&decisionMin=${DEFAULT_SUSPENSION_MIN_OVERDUE}&returnTo=%2Foverview`)} unavailable={decisionGuard.status === 'unavailable'} statusMessage={stopStatusLoading ? 'جارٍ التحقق الحي' : stopStatusError ? 'يُعاد الفحص داخل النتائج' : decisionGuard.message} source={states.customerMoney || states.finance || states.zohoInvoices}/>
-          <ActionCard tone="blue" icon={WalletCards} title="محفظة موجبة مع فواتير غير مسددة" count={deductCount} value={`${compactMoney(deductAmount)} ر.س`} note="مراجعة تشغيلية للإيقاف؛ تسوية Zoho إجراء مستقل" action="عرض النتائج" onClick={() => navigate('/customer-money?decision=deduct&returnTo=%2Foverview')} unavailable={decisionGuard.status === 'unavailable'} statusMessage={decisionGuard.message} source={states.customerMoney || states.finance || states.zohoInvoices}/>
-          <ActionCard tone="red" icon={CircleAlert} title="محافظ سالبة تحتاج قرارًا" count={negativeCount} value={`${compactMoney(negativeAmount)} ر.س`} note="إشارة من محفظة لمحة؛ حالة تشغيل الحساب تُفحص حيًا قبل أي إيقاف" action="عرض النتائج" onClick={() => navigate('/customer-money?decision=negative&returnTo=%2Foverview')} unavailable={!negativeAvailable} source={states.merchants}/>
-          <ActionCard tone={zatcaCount ? 'amber' : 'green'} icon={ReceiptText} title="فواتير زاتكا تحتاج إجراء" count={zatcaCount} value={`${compactMoney(zatcaAmount)} ر.س`} note={`${invoiceOps.draftCount || 0} مسودة في Zoho Books`} action="عرض الفواتير" onClick={() => navigate('/zoho-data?tab=customers&type=invoices&focus=zatca')} unavailable={!invoiceOps.zatcaAvailable} source={states.zatcaPending}/>
-          <ActionCard tone={merchantNeedsUpdate ? 'amber' : 'green'} icon={FileSpreadsheet} title="مصدر Lamha يحتاج مراجعة" count={merchantNeedsUpdate ? 1 : 0} value={merchantPulse.total ? `${money(merchantPulse.total)} متجر` : ''} note={apiNeedsUpdate ? 'مزامنة Lamha API تحتاج مراجعة' : merchantExcelMissing ? 'ملف إثراء المتاجر من Excel غير مرفوع لهذه الفترة' : 'API محدث وملفات الإثراء مسجلة'} action={apiNeedsUpdate ? 'مراقبة المزامنة' : 'فتح مرحلة الرفع'} onClick={() => navigate(apiNeedsUpdate ? '/operations' : `/accounting-cycle?period=${period}&stage=lamha_sources`)} unavailable={!merchantPulse.loading && !merchantPulse.available} source={states.merchants}/>
+          {showStopSignal ? <ActionCard tone="red" icon={UserRoundX} title="حسابات مرشحة للإيقاف" count={stopCount} value={`${compactMoney(stopAmount)} ر.س`} note={`دفع لاحق · الحساب يعمل · تجاوز 30 يومًا · أكثر من ${money(DEFAULT_SUSPENSION_MIN_OVERDUE)} ر.س`} action="عرض النتائج" onClick={() => navigate(`/customer-money?decision=stop&decisionMin=${DEFAULT_SUSPENSION_MIN_OVERDUE}&returnTo=%2Foverview`)} unavailable={decisionGuard.status === 'unavailable'} statusMessage={stopStatusLoading ? 'جارٍ التحقق الحي' : stopStatusError ? 'يُعاد الفحص داخل النتائج' : decisionGuard.message} source={states.customerMoney || states.finance || states.zohoInvoices}/> : null}
+          {showDeductSignal ? <ActionCard tone="blue" icon={WalletCards} title="محفظة موجبة مع فواتير غير مسددة" count={deductCount} value={`${compactMoney(deductAmount)} ر.س`} note="مراجعة تشغيلية للإيقاف؛ تسوية Zoho إجراء مستقل" action="عرض النتائج" onClick={() => navigate('/customer-money?decision=deduct&returnTo=%2Foverview')} unavailable={decisionGuard.status === 'unavailable'} statusMessage={decisionGuard.message} source={states.customerMoney || states.finance || states.zohoInvoices}/> : null}
+          {showNegativeSignal ? <ActionCard tone="red" icon={CircleAlert} title="محافظ سالبة تحتاج قرارًا" count={negativeCount} value={`${compactMoney(negativeAmount)} ر.س`} note="إشارة من محفظة لمحة؛ حالة تشغيل الحساب تُفحص حيًا قبل أي إيقاف" action="عرض النتائج" onClick={() => navigate('/customer-money?decision=negative&returnTo=%2Foverview')} unavailable={!negativeAvailable} source={states.merchants}/> : null}
+          {showZatcaSignal ? <ActionCard tone={zatcaCount ? 'amber' : 'red'} icon={ReceiptText} title="فواتير زاتكا تحتاج إجراء" count={zatcaCount} value={`${compactMoney(zatcaAmount)} ر.س`} note={`${invoiceOps.draftCount || 0} مسودة في Zoho Books`} action="عرض الفواتير" onClick={() => navigate('/zoho-data?tab=customers&type=invoices&focus=zatca')} unavailable={!invoiceOps.zatcaAvailable} source={states.zatcaPending}/> : null}
+          {showLamhaSignal ? <ActionCard tone="amber" icon={FileSpreadsheet} title="مصدر Lamha يحتاج مراجعة" count={merchantNeedsUpdate ? 1 : 0} value={merchantPulse.total ? `${money(merchantPulse.total)} متجر` : ''} note={apiNeedsUpdate ? 'مزامنة Lamha API تحتاج مراجعة' : merchantExcelMissing ? 'ملف إثراء المتاجر من Excel غير مرفوع لهذه الفترة' : 'API يحتاج فحصًا'} action={apiNeedsUpdate ? 'مراقبة المزامنة' : 'فتح مرحلة الرفع'} onClick={() => navigate(apiNeedsUpdate ? '/operations' : `/accounting-cycle?period=${period}&stage=lamha_sources`)} unavailable={!merchantPulse.loading && !merchantPulse.available} source={states.merchants}/> : null}
+          {!hasAutomatedSignals ? <div className="fco-no-exceptions"><CheckCircle2 size={18}/><span><strong>لا توجد استثناءات حرجة حاليًا</strong><small>ابنِ قائمة بشروطك لإجراء مراجعة أو تنفيذ مخصص.</small></span></div> : null}
         </div>
       </section>
 
       <section className="fco-section fco-command-grid__finance">
         <div className="fco-section__heading"><div><span>المركز المالي الآن</span><h2>أين المال وما الذي يغيّر القرار؟</h2></div><button type="button" onClick={() => navigate('/workspace/finance')}>فتح المالية <ArrowLeft size={14}/></button></div>
-        <div className={`fco-financial-strip${residualBalance != null && Math.round(residualBalance * 100) !== 0 ? ' has-residual' : ''}`}>
+        <div className="fco-financial-strip fco-company-strip">
+          <FinancialMetric icon={netProfit != null && netProfit >= 0 ? TrendingUp : TrendingDown} label="صافي الربح" value={netProfit == null ? '—' : `${netProfit >= 0 ? '+' : '−'}${compactMoney(Math.abs(netProfit))} ر.س`} note={monthLabel(period)} sourceState={states.finance} unavailable={netProfit == null && !financePulse.loading} tone={netProfit != null && netProfit < 0 ? 'red' : 'green'} onClick={() => navigate('/pnl')}/>
+          <FinancialMetric icon={ReceiptText} label="فوترنا هذا الشهر" value={financePulse.invoice?.hasData ? `${compactMoney(financePulse.invoice.invoiced)} ر.س` : '—'} note={financePulse.invoice?.hasData ? `${money(financePulse.invoice.invCount)} فاتورة` : 'من مرآة Zoho'} sourceState={states.finance} unavailable={!financePulse.loading && !financePulse.invoice?.hasData} tone="blue" onClick={() => navigate('/zoho-data?tab=customers&type=invoices')}/>
           <FinancialMetric icon={Landmark} label="النقد والبنوك" value={cash.bankBalance == null ? '—' : `${compactMoney(cash.bankBalance)} ر.س`} note={cash.bankBalanceComplete ? 'أرصدة ختامية مكتملة' : 'من الحسابات المتاحة'} sourceState={states.banks} unavailable={cash.bankBalance == null} tone="blue" onClick={() => navigate('/money?tab=banks')}/>
-          <FinancialMetric icon={ReceiptText} label="إجمالي الرصيد المحاسبي" value={`${compactMoney(accountingOutstanding)} ر.س`} note="Zoho outstanding_receivable · رقم خام" sourceState={states.customerMoney || states.zohoInvoices} unavailable={!Number.isFinite(accountingOutstanding)} onClick={() => navigate('/customer-money')}/>
+          <FinancialMetric icon={ReceiptText} label="إجمالي الرصيد المحاسبي" value={`${compactMoney(accountingOutstanding)} ر.س`} note="Zoho outstanding_receivable · رقم محاسبي خام" sourceState={states.customerMoney || states.zohoInvoices} unavailable={!Number.isFinite(accountingOutstanding)} onClick={() => navigate('/customer-money')}/>
           <FinancialMetric icon={WalletCards} label="القابل للتحصيل تشغيليًا" value={`${compactMoney(operationalCollectible)} ر.س`} note={`${compactMoney(overdue30)} ر.س تجاوزت 30 يومًا`} sourceState={states.customerMoney || states.zohoInvoices} unavailable={!Number.isFinite(operationalCollectible)} tone="green" onClick={() => navigate('/customer-money?worklist=1')}/>
-          {residualBalance != null && Math.round(residualBalance * 100) !== 0 ? <FinancialMetric icon={CircleAlert} label="الرصيد الهامشي / غير التشغيلي" value={`${compactMoney(residualBalance)} ر.س`} note="محاسبي فقط · لا يدخل الإيقاف أو التحصيل" sourceState={states.customerMoney || states.zohoInvoices} tone="neutral" onClick={() => navigate('/customer-money')}/> : null}
+          {residualBalance != null && Math.round(residualBalance * 100) !== 0 ? <FinancialMetric icon={CircleAlert} label="الرصيد الهامشي / غير التشغيلي" value={`${money(residualBalance, 2)} ر.س`} note="محاسبي فقط · لا يدخل الإيقاف أو التحصيل" sourceState={states.customerMoney || states.zohoInvoices} tone="neutral" onClick={() => navigate('/customer-money')}/> : null}
           <FinancialMetric icon={ArrowDownCircle} label="التزامات علينا" value={`${compactMoney(cash.totalAP)} ر.س`} note="موردون وشركات شحن" sourceState={states.finance} tone="red" onClick={() => navigate('/pnl')}/>
           <FinancialMetric icon={ReceiptText} label={`ضريبة ${vat?.quarter || 'الربع الحالي'}`} value={vat ? `${compactMoney(vat.netDue)} ر.س` : '—'} note={vat ? `${vat.from} — ${vat.to} · مخرجات ${compactMoney(vat.outputTax)} · مدخلات ${compactMoney(vat.inputTax)}` : 'تحتاج قراءة Zoho'} sourceState={states.zatcaPending} unavailable={!vat} tone="amber" onClick={() => navigate('/zoho-data?tab=reports')}/>
+        </div>
+        <div className="fco-finance-insights">
+          <article><header><span>من الدخل إلى صافي الربح</span><button type="button" onClick={() => navigate('/pnl')}>التفاصيل</button></header><ProfitMicro snapshot={financePulse.snapshot} loading={financePulse.loading} onClick={() => navigate('/pnl')}/></article>
+          <article><header><span>رصيد السيولة خلال 7 أيام</span><button type="button" onClick={() => navigate('/forecast')}>الأحداث</button></header><CashflowMicro forecast={financePulse.forecast} loading={financePulse.loading} currentOnly={financePulse.forecastCurrentOnly} onClick={() => navigate('/forecast')}/></article>
         </div>
       </section>
       </div>
 
+      <details className="fco-operations-disclosure">
+        <summary><span><Database size={16}/><strong>مصادر Lamha وملفات الدورة</strong><small>المزامنة، آخر رفع، والملفات الناقصة</small></span><em>{missingUploadCount == null ? 'الحالة غير متاحة' : missingUploadCount ? `${missingUploadCount} عناصر تحتاج رفعًا` : 'الملفات مكتملة'}</em><ArrowLeft size={15}/></summary>
       <section className="fco-section fco-lamha-upload">
         <div className="fco-section__heading">
           <div><span>مصادر Lamha الأساسية</span><h2>مزامنة API يومية وملفات Excel للإثراء فقط</h2></div>
@@ -400,6 +464,7 @@ export default function FigmaCommandCenter({
           ) : <p className="fco-upload-evidence__error">تعذر قراءة سجل الملفات؛ افتح دورة المحاسب للتحقق دون افتراض أن الملفات ناقصة.</p>}
         </div>
       </section>
+      </details>
 
       <div className="fco-dashboard-grid">
         <section className="fco-panel fco-movement">
@@ -413,16 +478,6 @@ export default function FigmaCommandCenter({
           <div className="fco-movement__summary"><UserPlus size={17}/><span><b>{activateCount}</b> حساب دفع لاحق جاهز لإعادة التشغيل الآن</span><button type="button" onClick={() => navigate('/merchants?decision=activate')}>فتح القائمة</button></div>
         </section>
 
-        <section className="fco-panel fco-routine">
-          <div className="fco-card-heading"><span><Workflow size={18}/> مهام التشغيل الروتينية</span><small>لا تعتمد على الذاكرة</small></div>
-          <div className="fco-task-list">
-            <TaskRow icon={UploadCloud} title="ملفات إثراء Lamha" note="Excel للحقول غير المتاحة في API · المرحلة 4" status={merchantNeedsUpdate ? 'مطلوب' : 'محدّث'} tone={merchantNeedsUpdate ? 'amber' : 'green'} onClick={() => navigate(`/accounting-cycle?period=${period}&stage=lamha_sources`)}/>
-            <TaskRow icon={ReceiptText} title="إرسال الفواتير إلى زاتكا" note={`${zatcaCount} معلقة · ${invoiceOps.draftCount || 0} مسودة`} status={zatcaCount ? 'يحتاج إجراء' : 'سليم'} tone={zatcaCount ? 'red' : 'green'} onClick={() => navigate('/work-agents')}/>
-            <TaskRow icon={Landmark} title="مطابقة البنوك" note="اقرأ زوهو وصدّر النواقص فقط" status={sourceLabel(states.banks)} tone={sourceTone(states.banks)} onClick={() => navigate('/bank')}/>
-            <TaskRow icon={CheckCircle2} title="إقفال الفترة المحاسبية" note={closeReadiness.ready ? `${closeReadiness.required} من ${closeReadiness.required} مراحل حرجة مكتملة` : `${firstCloseBlocker?.source || 'مصدر حرج'} — ${operationalBlockerReason(firstCloseBlocker?.reason)}`} status={closeReadiness.ready ? 'جاهز' : 'متوقف'} tone={closeReadiness.ready ? 'green' : 'red'} onClick={() => navigate(`/accounting-cycle?period=${period}`)}/>
-          </div>
-        </section>
-
         <section className="fco-panel fco-aging">
           <div className="fco-card-heading"><span>أعمار مديونيات العملاء</span><button type="button" onClick={() => navigate('/customer-money')}>فتح التحصيل <ArrowLeft size={14}/></button></div>
           <div className="fco-aging__total"><small>إجمالي الرصيد المستحق</small><strong>{compactMoney(aging.total)} <span>ر.س</span></strong></div>
@@ -430,23 +485,36 @@ export default function FigmaCommandCenter({
           <div className="fco-aging__bands"><AgingBand label="0–15 يوم" value={aging.b0_15} tone="green"/><AgingBand label="16–30 يوم" value={aging.b16_30} tone="olive"/><AgingBand label="31–60 يوم" value={aging.b31_60} tone="amber"/><AgingBand label="61–90 يوم" value={aging.b61_90} tone="orange"/><AgingBand label="أكثر من 90 يوم" value={aging.b90p} tone="red"/></div>
         </section>
 
-        <section className="fco-panel fco-cash">
-          <div className="fco-card-heading fco-card-heading--light"><span><Landmark size={18}/> السيولة والبنوك</span><button type="button" onClick={() => navigate('/bank')}>فتح البنوك <ArrowLeft size={14}/></button></div>
-          <div className="fco-cash__amount"><strong>{cash.loading ? 'جارٍ التحميل…' : cash.bankBalance == null ? 'غير متاح' : money(cash.bankBalance, 2)}</strong>{!cash.loading && cash.bankBalance != null && <span>ر.س</span>}</div>
-          <p>{cash.loading ? 'يُحمّل ملخص البنوك بعد ظهور الصفحة' : cash.bankBalanceComplete ? 'رصيد ختامي مكتمل من الحسابات المرتبطة' : 'الرصيد المقروء من الحسابات المتاحة فقط'}</p>
-          <div className="fco-cash__footer"><span>الذمم القابلة للتحصيل <b>{compactMoney(cash.totalAR)} ر.س</b></span><span>صافي المركز <b>{cash.net == null ? '—' : `${compactMoney(cash.net)} ر.س`}</b></span></div>
-        </section>
       </div>
 
-      <section className="fco-integrations">
-        <div className="fco-integrations__heading"><span><ShieldCheck size={18}/> حالة التكاملات</span><small>اللون يعكس آخر قراءة فعلية؛ لا توجد حالة نجاح افتراضية</small></div>
-        <div className="fco-integrations__grid">
-          <IntegrationItem name="Zoho Books" state={states.zohoInvoiceSync || states.zohoInvoices} note={sourceLabel(states.zohoInvoiceSync || states.zohoInvoices)} onClick={() => navigate('/zoho-data')} />
-          <IntegrationItem name="لمحة" state={states.merchants} note={sourceLabel(states.merchants)} onClick={() => navigate(`/accounting-cycle?period=${period}`)} icon={FileSpreadsheet}/>
-          <IntegrationItem name="البنوك" state={states.banks} note={sourceLabel(states.banks)} onClick={() => navigate('/bank')} icon={Landmark}/>
-          <IntegrationItem name="هاتف" state={null} note="افتح مراقبة القنوات والوكلاء" onClick={() => navigate('/work-agents')} icon={PhoneCall}/>
+      <details className="fco-operations-disclosure fco-secondary-disclosure">
+        <summary>
+          <span><Workflow size={17}/><strong>التشغيل والتكاملات</strong><small>المهام الدورية وصحة مصادر البيانات</small></span>
+          <em>{closeReadiness.ready ? 'الدورة جاهزة' : 'توجد مهام تحتاج مراجعة'}</em>
+          <ArrowLeft size={15}/>
+        </summary>
+        <div className="fco-secondary-grid">
+          <section className="fco-panel fco-routine">
+            <div className="fco-card-heading"><span><Workflow size={18}/> مهام التشغيل الروتينية</span><small>لا تعتمد على الذاكرة</small></div>
+            <div className="fco-task-list">
+              <TaskRow icon={UploadCloud} title="ملفات إثراء Lamha" note="Excel للحقول غير المتاحة في API · المرحلة 4" status={merchantNeedsUpdate ? 'مطلوب' : 'محدّث'} tone={merchantNeedsUpdate ? 'amber' : 'green'} onClick={() => navigate(`/accounting-cycle?period=${period}&stage=lamha_sources`)}/>
+              <TaskRow icon={ReceiptText} title="إرسال الفواتير إلى زاتكا" note={`${zatcaCount} معلقة · ${invoiceOps.draftCount || 0} مسودة`} status={zatcaCount ? 'يحتاج إجراء' : 'سليم'} tone={zatcaCount ? 'red' : 'green'} onClick={() => navigate('/work-agents')}/>
+              <TaskRow icon={Landmark} title="مطابقة البنوك" note="اقرأ زوهو وصدّر النواقص فقط" status={sourceLabel(states.banks)} tone={sourceTone(states.banks)} onClick={() => navigate('/bank')}/>
+              <TaskRow icon={CheckCircle2} title="إقفال الفترة المحاسبية" note={closeReadiness.ready ? `${closeReadiness.required} من ${closeReadiness.required} مراحل حرجة مكتملة` : `${firstCloseBlocker?.source || 'مصدر حرج'} — ${operationalBlockerReason(firstCloseBlocker?.reason)}`} status={closeReadiness.ready ? 'جاهز' : 'متوقف'} tone={closeReadiness.ready ? 'green' : 'red'} onClick={() => navigate(`/accounting-cycle?period=${period}`)}/>
+            </div>
+          </section>
+
+          <section className="fco-integrations">
+            <div className="fco-integrations__heading"><span><ShieldCheck size={18}/> حالة التكاملات</span><small>اللون يعكس آخر قراءة فعلية؛ لا توجد حالة نجاح افتراضية</small></div>
+            <div className="fco-integrations__grid">
+              <IntegrationItem name="Zoho Books" state={states.zohoInvoiceSync || states.zohoInvoices} note={sourceLabel(states.zohoInvoiceSync || states.zohoInvoices)} onClick={() => navigate('/zoho-data')} />
+              <IntegrationItem name="لمحة" state={states.merchants} note={sourceLabel(states.merchants)} onClick={() => navigate(`/accounting-cycle?period=${period}`)} icon={FileSpreadsheet}/>
+              <IntegrationItem name="البنوك" state={states.banks} note={sourceLabel(states.banks)} onClick={() => navigate('/bank')} icon={Landmark}/>
+              <IntegrationItem name="هاتف" state={null} note="افتح مراقبة القنوات والوكلاء" onClick={() => navigate('/work-agents')} icon={PhoneCall}/>
+            </div>
+          </section>
         </div>
-      </section>
+      </details>
     </div>
   );
 }

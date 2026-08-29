@@ -34,6 +34,10 @@ import {
 import {
   loadOverviewRead, loadOverviewLiteLazy, mergeOverviewLiteLazy, currentPeriod, prevPeriodOf,
 } from '../lib/overviewService.js';
+import {
+  isUsablePnlSnapshot, loadInvoicedVsCollected, loadPnlSnapshots,
+} from '../lib/pnlService.js';
+import { loadCashflowForecast } from '../lib/forecastService.js';
 import { scoreLevel } from '../lib/carrierScore.js';
 import TeamReadinessPanel from '../components/TeamReadinessPanel.jsx';
 import SourceStatusStrip from '../components/SourceStatusStrip.jsx';
@@ -67,6 +71,7 @@ export default function Overview({ carriers = [], isActive = true }) {
   const [data, setData]       = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [vat, setVat]         = useState(null);   // ضريبة الربع الجاري (كاش زوهو)
+  const [executiveFinance, setExecutiveFinance] = useState({ period: null, loading: true });
   // Selected month persists for the session (sessionStorage) so a
   // historical month being examined survives a refresh / navigating
   // away and back — but resets to the current month on a fresh login.
@@ -107,6 +112,48 @@ export default function Overview({ carriers = [], isActive = true }) {
   }, [period]);
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
+
+  // الربحية والفوترة وتوقع السيولة موجودة أصلاً في مصادر المالية. نحمّلها بعد
+  // أول رسم لمركز القيادة، وبشكل متوازٍ، حتى لا يؤخر أي مصدر غير متاح بقية الشاشة.
+  const carrierForecastKey = useMemo(() => (carriers || []).map(carrier => carrier.id).filter(Boolean).join(','), [carriers]);
+  useEffect(() => {
+    if (!isActive || data?.period !== period) return undefined;
+    let cancelled = false;
+    setExecutiveFinance(current => ({ ...current, period, loading: true, error: null }));
+    const load = async () => {
+      const [pnlResult, invoiceResult, forecastResult] = await Promise.allSettled([
+        loadPnlSnapshots(),
+        loadInvoicedVsCollected(period),
+        period === currentPeriod() ? loadCashflowForecast({ horizonDays: 7, carriers }) : Promise.resolve(null),
+      ]);
+      if (cancelled) return;
+      const pnlRows = pnlResult.status === 'fulfilled' ? pnlResult.value : [];
+      const snapshot = pnlRows.find(row => row.period === period);
+      const failures = [pnlResult, invoiceResult, forecastResult].filter(result => result.status === 'rejected');
+      setExecutiveFinance({
+        period,
+        loading: false,
+        partial: failures.length > 0,
+        snapshot: isUsablePnlSnapshot(snapshot) ? snapshot : null,
+        invoice: invoiceResult.status === 'fulfilled' ? invoiceResult.value : null,
+        forecast: forecastResult.status === 'fulfilled' ? forecastResult.value : null,
+        forecastCurrentOnly: period !== currentPeriod(),
+        loadedAt: new Date().toISOString(),
+      });
+    };
+    const start = () => { if (!cancelled) load(); };
+    const idleId = typeof window.requestIdleCallback === 'function'
+      ? window.requestIdleCallback(start, { timeout: 900 })
+      : window.setTimeout(start, 0);
+    return () => {
+      cancelled = true;
+      if (typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(idleId);
+      else window.clearTimeout(idleId);
+    };
+    // Forecast events depend on the available carrier inventory, while the
+    // string key avoids refetching merely because the array identity changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carrierForecastKey, data?.period, isActive, period]);
 
   // Refresh quietly when the manager returns to an already-open command
   // center. The current readable snapshot remains visible while the new read
@@ -229,6 +276,7 @@ export default function Overview({ carriers = [], isActive = true }) {
     <FigmaCommandCenter
       data={data}
       vat={vat}
+      executiveFinance={executiveFinance}
       period={period}
       refreshing={loading}
       onRefresh={refresh}

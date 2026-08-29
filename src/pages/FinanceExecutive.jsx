@@ -167,7 +167,7 @@ function MerchantPulse({ pulse, navigate }) {
         <button onClick={() => navigate('/customer-360?view=lists&listGroup=growth')}><strong>{INT.format(Number(pulse.newThisPeriod) || 0)}</strong><span>سجلوا هذا الشهر</span></button>
         <button onClick={() => navigate('/customer-360?view=lists&listGroup=activity&lastShipmentDays=5')}><strong>{INT.format(Number(pulse.recentFiveDays) || 0)}</strong><span>شحنوا خلال 5 أيام</span></button>
         <button onClick={() => navigate('/customer-360?view=overview')}><strong>{INT.format(Number(pulse.neverShipped) || 0)}</strong><span>سجلوا ولم يشحنوا</span></button>
-        <button onClick={() => navigate('/customer-money?decision=activate&returnTo=%2Fworkspace%2Ffinance')}><strong>{INT.format(Number(pulse.stoppedWithWallet) || 0)}</strong><span>موقوفون ولديهم رصيد</span></button>
+        <button onClick={() => navigate('/merchants?decision=activate&returnTo=%2Fworkspace%2Ffinance')}><strong>{INT.format(Number(pulse.stoppedWithWallet) || 0)}</strong><span>موقوفون ولديهم رصيد</span></button>
       </div>
     </div>
   );
