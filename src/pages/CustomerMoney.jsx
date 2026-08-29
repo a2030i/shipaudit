@@ -1726,6 +1726,7 @@ export default function CustomerMoney({ isActive = true }) {
         <div className="customer-money-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(330px,100%),1fr))', gap: 10 }}>
           {visibleCustomerRows.map(c => (
             <CustomerCard key={c.name} c={c} highlight={buckets}
+              lamhaZohoMismatch={lamhaZohoMismatchStoreIds.has(String(c.storeId || ''))}
               wa={waStatus.get(normalizeSaudiPhone(c.phone))}
               onWa={can('campaigns.send') ? openSingleWa : null}
               collectionTask={collectionTaskByCustomer.get(c.name) || null}
@@ -2322,7 +2323,7 @@ function MorningBriefModal({ onClose }) {
 // wa = حالة آخر حملة واتساب لهذا الهاتف (من whatsapp_campaign_status) · onWa = يطلق حملة لعميل واحد
 function CustomerCard({
   c, highlight, wa: waStat, onWa,
-  collectionTask, collectionAssignee, currentUserId, showCollectionWork, returnTo,
+  collectionTask, collectionAssignee, currentUserId, showCollectionWork, returnTo, lamhaZohoMismatch = false,
 }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -2434,7 +2435,7 @@ function CustomerCard({
             اتساق مرآة Zoho: فرق {fmt(Math.max(c.balanceSyncGap || 0, c.balanceSyncOverage || 0))} — محجوب من الحملات
           </Chip>
         )}
-        {!c.balanceSyncIssue && lamhaZohoMismatchStoreIds.has(String(c.storeId || '')) ? (
+        {!c.balanceSyncIssue && lamhaZohoMismatch ? (
           <Chip color="var(--red)">فرق كشف لمحة مع Zoho — محجوب من الإجراءات المالية</Chip>
         ) : null}
         {c.invCnt > 0 ? (

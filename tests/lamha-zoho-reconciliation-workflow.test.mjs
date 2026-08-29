@@ -25,6 +25,9 @@ test('finance separates Zoho mirror integrity from Lamha statement reconciliatio
   assert.match(page, /\/reconciliation\?tab=customers&differences=1&source=customer-finance/);
   assert.match(page, /\/zoho-data\?type=invoices&integrity=1/);
   assert.match(page, /lamhaZohoMismatchStoreIds/);
+  assert.match(page, /lamhaZohoMismatch=\{lamhaZohoMismatchStoreIds\.has\(String\(c\.storeId \|\| ''\)\)\}/);
+  assert.match(page, /function CustomerCard\([\s\S]*lamhaZohoMismatch = false/);
+  assert.doesNotMatch(page, /function CustomerCard\([\s\S]*lamhaZohoMismatchStoreIds\.has/);
   assert.match(page, /financialHold: hasFinancialReconciliationHold\(c\)/);
   assert.match(page, /balanceSyncIssueKind: 'lamha_zoho'/);
 });
@@ -55,4 +58,3 @@ test('reconciliation lazy route recovers once and never exposes the raw module e
   assert.match(app, /لم تتغير بياناتك/);
   assert.doesNotMatch(app, /String\(this\.state\.err\?\.message/);
 });
-
