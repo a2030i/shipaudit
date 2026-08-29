@@ -145,6 +145,9 @@ export async function loadAllCustomerReceivablesResult(filters, client = supabas
   }
   return {
     rows,
+    dashboard: first.dashboard,
+    permissions: first.permissions,
+    assignees: first.assignees,
     sources: first.sources || {},
     generatedAt: first.generatedAt || null,
   };

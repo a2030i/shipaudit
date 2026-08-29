@@ -62,6 +62,9 @@ import { loadCachedLamhaStoreStatuses } from '../lib/lamhaStoreStatusService.js'
 import { loadLamhaWalletSources, summarizeLamhaWalletSources } from '../lib/lamhaStoreProfileService.js';
 import { readWorkspaceState, restoreWorkspaceScroll, saveWorkspaceState } from '../lib/workspaceState.js';
 import CustomerContextDrawer from '../components/CustomerContextDrawer.jsx';
+import {
+  filterCustomerOperationalRows, hasExtendedOperationalFilters, operationalSuspensionReview,
+} from '../lib/customerOperationalQuery.js';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -165,6 +168,7 @@ export default function CustomerMoney({ isActive = true }) {
   const [agingLinesReady, setAgingLinesReady] = useState(false);
   const [collectionAssignees, setCollectionAssignees] = useState([]);
   const [receivablesPage, setReceivablesPage] = useState(null);
+  const [operationalQueryRows, setOperationalQueryRows] = useState(null);
   const [receivablesLoadedFilterKey, setReceivablesLoadedFilterKey] = useState('');
   const [centralReadActive, setCentralReadActive] = useState(false);
   const [allResultsSelected, setAllResultsSelected] = useState(false);
@@ -221,6 +225,7 @@ export default function CustomerMoney({ isActive = true }) {
   const [decisionColumns, setDecisionColumns] = useState(() => new Set(['reason', 'impact']));
   const [decisionScopeRows, setDecisionScopeRows] = useState([]);
   const [decisionScopeType, setDecisionScopeType] = useState(null);
+  const [decisionScopeFinancialPolicy, setDecisionScopeFinancialPolicy] = useState(false);
   const [decisionReviewReturnUrl, setDecisionReviewReturnUrl] = useState('');
   const dashboardRefreshInFlightRef = useRef(false);
   const bulkSubmissionGuardRef = useRef(createSubmissionGuard());
@@ -440,7 +445,7 @@ export default function CustomerMoney({ isActive = true }) {
         try {
           const allowed = new Set(BUCKETS.map(bucket => bucket.key));
           const aging = (searchParams.get('aging') || '').split(',').filter(key => allowed.has(key));
-          const central = await loadCustomerReceivablesWorkQueue({
+          const queueFilters = {
             aging,
             search: searchParams.get('search') || searchParams.get('customer') || searchParams.get('q') || '',
             status: searchParams.get('status') || 'all',
@@ -455,10 +460,47 @@ export default function CustomerMoney({ isActive = true }) {
             sort: searchParams.get('sort') || 'amount',
             page: searchParams.get('page') || 1,
             pageSize: AGING_PAGE_SIZE,
-          });
+          };
+          const operationalFilters = {
+            minDays: searchParams.get('minDays') || '',
+            maxDays: searchParams.get('maxDays') || '',
+            billing: searchParams.get('billing') || 'all',
+            wallet: searchParams.get('wallet') || 'all',
+            invoices: searchParams.get('invoices') || 'all',
+            status: searchParams.get('status') || 'all',
+          };
+          const extendedQuery = hasExtendedOperationalFilters(operationalFilters);
+          let central;
+          let allQueryRows = null;
+          if (extendedQuery) {
+            // حالة الحساب تُفسر في العميل بقاعدة Lamha الموحدة: inactive فقط
+            // موقوف. لذلك نجلب كل الحالات ثم نطبق الشرط محليًا بدل مفسّر RPC القديم.
+            const allResult = await loadAllCustomerReceivablesResult({ ...queueFilters, status: 'all', page: 1 });
+            allQueryRows = filterCustomerOperationalRows(allResult.rows, operationalFilters);
+            const pageNumber = Math.max(1, Number(queueFilters.page) || 1);
+            const offset = (pageNumber - 1) * AGING_PAGE_SIZE;
+            const pageRows = allQueryRows.slice(offset, offset + AGING_PAGE_SIZE);
+            const totalAmount = +allQueryRows.reduce((sum, row) => sum + Number(row.summary?.amount || 0), 0).toFixed(2);
+            central = {
+              dashboard: allResult.dashboard,
+              assignees: allResult.assignees,
+              sources: allResult.sources,
+              generatedAt: allResult.generatedAt,
+              page: {
+                rows: pageRows,
+                totalRows: allQueryRows.length,
+                totalPages: Math.max(1, Math.ceil(allQueryRows.length / AGING_PAGE_SIZE)),
+                totalAmount,
+                sliceTotal: totalAmount,
+              },
+            };
+          } else {
+            central = await loadCustomerReceivablesWorkQueue(queueFilters);
+          }
           if (requestId !== dashboardRequestIdRef.current) return;
           setD(central.dashboard);
           setReceivablesPage(central.page);
+          setOperationalQueryRows(allQueryRows);
           setReceivablesLoadedFilterKey(requestFilterKey);
           setCollectionAssignees(central.assignees);
           setCollectionTasks(central.page.rows.flatMap(row => row.task ? [row.task] : []));
@@ -498,6 +540,7 @@ export default function CustomerMoney({ isActive = true }) {
       if (requestId !== dashboardRequestIdRef.current) return;
       setD(dashboard);
       setReceivablesPage(null);
+      setOperationalQueryRows(null);
       setReceivablesLoadedFilterKey(requestFilterKey);
       setCentralReadActive(false);
       setViewUpdatedAt(new Date().toISOString());
@@ -708,6 +751,12 @@ export default function CustomerMoney({ isActive = true }) {
     search: searchParams.get('search') || '',
     minAmount: searchParams.get('minAmount') || '',
     maxAmount: searchParams.get('maxAmount') || '',
+    minDays: searchParams.get('minDays') || '',
+    maxDays: searchParams.get('maxDays') || '',
+    billing: searchParams.get('billing') || 'all',
+    wallet: searchParams.get('wallet') || 'all',
+    invoices: searchParams.get('invoices') || 'all',
+    status: searchParams.get('status') || 'all',
     owner: searchParams.get('owner') || 'all',
     collection: searchParams.get('collection') || 'all',
     promise: searchParams.get('promise') || 'all',
@@ -715,6 +764,7 @@ export default function CustomerMoney({ isActive = true }) {
     sort: searchParams.get('sort') || 'amount',
     actionOnly: searchParams.get('action') === 'needed',
   }), [buckets, searchParams]);
+  const extendedOperationalQuery = hasExtendedOperationalFilters(agingFilterState);
   const legacyAllAgingRows = useMemo(() => buildAgingRows({
     customers: d?.customers || [], lines: agingLines, buckets,
     taskByCustomer: collectionTaskByCustomer, assigneeById: collectionAssigneeById,
@@ -776,14 +826,16 @@ export default function CustomerMoney({ isActive = true }) {
     : +allAgingRows.reduce((sum, row) => sum + row.summary.amount, 0).toFixed(2);
   const agingReconciliation = useMemo(() => ({
     detailsTotal: agingDetailsTotal,
-    dashboardTotal: agingDashboardTotal,
+    dashboardTotal: extendedOperationalQuery ? agingDetailsTotal : agingDashboardTotal,
     pending: receivablesContextPending,
     // Compare integer halalas. A residual is valid only in the separate
     // accounting equation; it must never be folded into operational details.
     ok: !receivablesContextPending && !agingLinesError
       && d?.financialPositionReconciled === true
-      && moneyToMinorUnits(agingDetailsTotal) === moneyToMinorUnits(agingDashboardTotal),
-  }), [d?.financialPositionReconciled, agingDetailsTotal, agingDashboardTotal, agingLinesError, receivablesContextPending]);
+      && (extendedOperationalQuery
+        ? (operationalQueryRows || []).every(row => row.customer?.financialPositionReconciled !== false)
+        : moneyToMinorUnits(agingDetailsTotal) === moneyToMinorUnits(agingDashboardTotal)),
+  }), [d?.financialPositionReconciled, extendedOperationalQuery, operationalQueryRows, agingDetailsTotal, agingDashboardTotal, agingLinesError, receivablesContextPending]);
   const platformCounts = useMemo(() => {
     if (centralReadActive && d?.platformCounts) return d.platformCounts;
     const counts = { all: 0, active: 0, inactive: 0, unknown: 0 };
@@ -815,7 +867,8 @@ export default function CustomerMoney({ isActive = true }) {
     if (key === 'clearSecondary') {
       updateUrlFilters({
         minAmount: null, maxAmount: null, owner: null, collection: null,
-        promise: null, contact: null, sort: null, action: null, page: null,
+        minDays: null, maxDays: null, billing: null, wallet: null, invoices: null,
+        status: null, promise: null, contact: null, sort: null, action: null, page: null,
       });
       return;
     }
@@ -890,20 +943,36 @@ export default function CustomerMoney({ isActive = true }) {
       return;
     }
     setBulkAssignee('');
+    let preparedRows = selectedAgingRows;
     if (centralReadActive && allResultsSelected) {
-      try {
-        const rows = await loadAllCustomerReceivablesRows({
-          ...agingFilterState,
-          status: platformFilter,
-          action: agingFilterState.actionOnly ? 'needed' : 'all',
-          source: unclaimedOnly ? 'unclaimed' : 'all',
-          page: 1,
-        });
-        setBulkRowsOverride(rows);
-      } catch (error) {
-        toast(`تعذر تجهيز كل النتائج: ${error.message}`, 'error');
-        return;
+      if (extendedOperationalQuery && operationalQueryRows) {
+        preparedRows = operationalQueryRows;
+        setBulkRowsOverride(operationalQueryRows);
+      } else {
+        try {
+          const rows = await loadAllCustomerReceivablesRows({
+            ...agingFilterState,
+            status: platformFilter,
+            action: agingFilterState.actionOnly ? 'needed' : 'all',
+            source: unclaimedOnly ? 'unclaimed' : 'all',
+            page: 1,
+          });
+          preparedRows = rows;
+          setBulkRowsOverride(rows);
+        } catch (error) {
+          toast(`تعذر تجهيز كل النتائج: ${error.message}`, 'error');
+          return;
+        }
       }
+    }
+    if (action === 'suspend') {
+      const review = operationalSuspensionReview(agingFilterState);
+      setDecisionReviewReturnUrl(`${location.pathname}${location.search}`);
+      setDecisionScopeRows(preparedRows);
+      setDecisionScopeType(review.decision);
+      setDecisionScopeFinancialPolicy(review.enforceFinancialPolicy);
+      setLamhaDecisionOpen(true);
+      return;
     }
     setBulkAction(action);
   };
@@ -1264,6 +1333,7 @@ export default function CustomerMoney({ isActive = true }) {
         onOpen={row => openStoreFromAging(row, false)}
         onInvoices={row => openStoreFromAging(row, true)}
         onBulk={openBulkReview}
+        canSuspend={isAdmin}
         reconciliation={agingReconciliation}
         loading={receivablesContextPending}
         sourceHealthy={centralReadActive || (!agingLinesError && !loadError)}
@@ -1722,6 +1792,7 @@ export default function CustomerMoney({ isActive = true }) {
                   setDecisionReviewReturnUrl(`${location.pathname}${location.search}`);
                   setDecisionScopeRows(selectedRows);
                   setDecisionScopeType(requestedDecision);
+                  setDecisionScopeFinancialPolicy(requestedDecision === 'stop');
                   clearDecisionResults();
                   setLamhaDecisionOpen(true);
                 },
@@ -1748,8 +1819,8 @@ export default function CustomerMoney({ isActive = true }) {
         </Modal>
       )}
       {lamhaDecisionOpen ? <Suspense fallback={<WorkspaceLoadingState label="جارٍ فحص حسابات لمحة…"/>}>
-        <LamhaDecisionActionReview rows={decisionScopeRows} decision={decisionScopeType} enforceFinancialPolicy={decisionScopeType === 'stop'} onClose={() => {
-          setLamhaDecisionOpen(false); setDecisionScopeRows([]); setDecisionScopeType(null);
+        <LamhaDecisionActionReview rows={decisionScopeRows} decision={decisionScopeType} enforceFinancialPolicy={decisionScopeFinancialPolicy} onClose={() => {
+          setLamhaDecisionOpen(false); setDecisionScopeRows([]); setDecisionScopeType(null); setDecisionScopeFinancialPolicy(false);
           if (decisionReviewReturnUrl) navigate(decisionReviewReturnUrl);
           setDecisionReviewReturnUrl('');
         }}/>

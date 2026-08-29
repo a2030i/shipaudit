@@ -171,7 +171,8 @@ test('operational surfaces share the V2 result, preflight, and action-result con
   assert.match(money, /<ResultSetColumnVisibility/);
   assert.match(money, /<BulkPreflightDialog/);
   assert.match(money, /<LamhaDecisionActionReview rows=\{decisionScopeRows\}/);
-  assert.match(money, /enforceFinancialPolicy=\{decisionScopeType === 'stop'\}/);
+  assert.match(money, /enforceFinancialPolicy=\{decisionScopeFinancialPolicy\}/);
+  assert.match(money, /setDecisionScopeFinancialPolicy\(requestedDecision === 'stop'\)/);
   assert.doesNotMatch(money, /<LamhaFinancialAccountReview/);
   assert.match(money, /label: 'فحص حالة لمحة ومراجعة الإيقاف', variant: 'primary'/);
   assert.match(money, /\['stop', 'deduct', 'negative'\]/);

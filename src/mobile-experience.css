@@ -183,8 +183,8 @@
   .aoq-header > div:first-child > span, .aoq-header p { display: none; }
   .aoq-header h1 { margin: 0 !important; font-size: 18px !important; }
   .aoq-reconcile { padding: 9px 11px !important; }
-  .aoq-buckets { display: flex !important; overflow-x: auto; gap: 6px !important; margin-inline: -2px; padding: 2px; scroll-snap-type: x proximity; }
-  .aoq-buckets button { flex: 0 0 auto; min-width: 118px; scroll-snap-align: start; }
+  .aoq-buckets { display: grid !important; grid-template-columns: 1fr 1fr !important; overflow: visible; gap: 6px !important; margin-inline: 0; padding: 0; }
+  .aoq-buckets button { min-width: 0; width: 100%; }
   .aoq-summary { grid-template-columns: 1fr 1fr !important; }
   .aoq-summary span:nth-child(n+3) { grid-column: 1 / -1; }
   .aoq-list { scroll-margin-top: 62px; }
