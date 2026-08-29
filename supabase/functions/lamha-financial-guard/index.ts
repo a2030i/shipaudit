@@ -388,7 +388,7 @@ async function latestMerchantRows() {
   return { rows, snapshot: marker };
 }
 
-async function syncDirectory(token: string, actorId: string | null) {
+async function syncDirectory(token: string, actorId: string | null, trigger: 'cron' | 'user') {
   const previous = await latestMerchantRows();
   const previousByStore = new Map(previous.rows.map(row => [String(row.store_id), row]));
   const rawRows: Json[] = [];
@@ -595,7 +595,9 @@ async function syncDirectory(token: string, actorId: string | null) {
     p_snapshot_at: snapshotAt,
     p_payload_hash: payloadHash,
     p_rows: rows,
-    p_source: 'lamha_employee_api_export_daily',
+    p_source: trigger === 'cron'
+      ? 'lamha_employee_api_export_scheduled'
+      : 'lamha_employee_api_export_manual',
   });
   if (error) throw new Error(`lamha_directory_ingest_failed:${error.message}`);
 
@@ -931,7 +933,7 @@ Deno.serve(async req => {
       return response(req, { ok: false, error: 'cron_read_only' }, 403);
     }
     if (action === 'sync-directory') {
-      const directory = await syncDirectory(token, auth.userId);
+      const directory = await syncDirectory(token, auth.userId, auth.kind === 'cron' ? 'cron' : 'user');
       const statement = await syncStatementExport(token, auth.userId);
       return response(req, { ok: true, action, data: { directory, statement } });
     }

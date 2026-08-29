@@ -62,6 +62,59 @@ export async function loadCustomerActivationCommandCenter(days = 5, target = 500
   };
 }
 
+// نبض المتاجر اليومي: مقارنة لقطة منتصف الليل المرجعية باليوم السابق.
+// لا يشتق حالة الحساب من النشاط؛ inactive/غير نشط فقط يعني موقوفًا.
+export async function loadLamhaStorePerformance({
+  filter = 'all', search = null, page = 0, limit = 25,
+} = {}) {
+  const { data, error } = await supabase.rpc('lamha_store_performance_command_center', {
+    p_filter: filter || 'all',
+    p_search: search || null,
+    p_limit: limit,
+    p_offset: Math.max(0, page) * limit,
+  });
+  if (error) throw error;
+  const value = data || {};
+  return {
+    metric: value.metric || {},
+    summary: value.summary || {},
+    activeFilter: value.active_filter || filter || 'all',
+    count: Number(value.count) || 0,
+    rows: Array.isArray(value.rows) ? value.rows.map(row => ({
+      storeId: row.store_id,
+      storeName: row.store_name || '',
+      phone: row.phone || '',
+      shipmentCount: Number(row.shipment_count) || 0,
+      shipmentDelta: Number(row.shipment_delta) || 0,
+      negativeShipmentDelta: Number(row.negative_shipment_delta) || 0,
+      lastShipmentAt: row.last_shipment_at || null,
+      daysSinceLast: row.days_since_last == null ? null : Number(row.days_since_last),
+      accountState: row.account_state || 'unknown',
+      rawStatus: row.raw_status || null,
+      activityState: row.activity_state || 'never_shipped',
+      lifecycleStage: row.lifecycle_stage || 'never_shipped',
+      billingType: row.billing_type || null,
+      integrationType: row.integration_type || null,
+      walletBalance: row.wallet_balance == null ? null : Number(row.wallet_balance),
+      createdAt: row.created_at_platform || null,
+      registeredToday: !!row.registered_today,
+      observedToday: !!row.observed_today,
+      firstShipment: !!row.first_shipment,
+      resumed: !!row.resumed,
+      disabledToday: !!row.disabled_today,
+      enabledToday: !!row.enabled_today,
+    })) : [],
+    trend: Array.isArray(value.trend) ? value.trend.map(row => ({
+      date: row.date,
+      at: row.at,
+      source: row.source,
+      shipments: Number(row.shipments) || 0,
+      shippingStores: Number(row.shipping_stores) || 0,
+      counterExceptions: Number(row.counter_exceptions) || 0,
+    })) : [],
+  };
+}
+
 // تسميات وألوان الشرائح/الأولوية/القناة — نقطة الحقيقة الواحدة للعرض.
 export const SEGMENTS = {
   new_active:        { label: 'جديد نشط',            color: 'var(--accent3)', icon: '🆕' },

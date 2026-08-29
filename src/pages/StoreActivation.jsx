@@ -8,6 +8,7 @@ import {
   ShieldAlert, Target as TargetIcon, TrendingUp, UserRoundCheck, UsersRound,
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, PageHeader, toast } from '../components/UI.jsx';
+import LamhaStorePerformance from '../components/LamhaStorePerformance.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
   loadActivationConfig,
@@ -155,6 +156,8 @@ export default function StoreActivation({ isActive = true }) {
           <Btn size="sm" variant="ghost" onClick={refresh} disabled={loading} title="تحديث" aria-label="تحديث بيانات التفعيل"><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>
         </div>}
       />
+
+      <LamhaStorePerformance/>
 
       <Card className="activation-hero-card" style={{
         overflow: 'hidden', marginBottom: 14,

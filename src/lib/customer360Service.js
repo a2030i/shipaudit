@@ -29,6 +29,7 @@
 
 import { loadLatestReceivables } from './customerReceivablesService.js';
 import { loadLatestMerchants } from './merchantsService.js';
+import { isLamhaAccountDisabled, isLamhaAccountEnabled } from './lamhaAccountState.js';
 import { supabase } from './supabase.js';
 
 const DAY = 86_400_000;
@@ -179,7 +180,7 @@ export async function loadCustomerWatch() {
       anomalies.postpaid_overdue.push(c);
       continue;
     }
-    if (m.platformStatus === 'غير نشط' && debt > 0.5) {
+    if (isLamhaAccountDisabled(m.platformStatus) && debt > 0.5) {
       anomalies.inactive_with_debt.push(c);
       continue;
     }
@@ -202,8 +203,8 @@ export async function loadCustomerWatch() {
     if (w > 0) walletPositiveTotal += w;
     if (w < 0) walletNegativeTotal += w;
 
-    if (m.status === 'نشط') activeCount++;
-    if (m.status === 'غير نشط') inactiveCount++;
+    if (isLamhaAccountEnabled(m.status)) activeCount++;
+    if (isLamhaAccountDisabled(m.status)) inactiveCount++;
     if ((m.shipment_count || 0) === 0) neverShipped++;
     totalShipments += Number(m.shipment_count) || 0;
 
@@ -243,7 +244,7 @@ export async function loadCustomerWatch() {
       .slice(0, 10),
 
     churned: [...merchants]
-      .filter(m => m.status === 'غير نشط' && (m.shipment_count || 0) > 0)
+      .filter(m => isLamhaAccountDisabled(m.status) && (m.shipment_count || 0) > 0)
       .sort((a, b) => {
         const ta = a.last_shipment_at ? new Date(a.last_shipment_at).getTime() : 0;
         const tb = b.last_shipment_at ? new Date(b.last_shipment_at).getTime() : 0;
