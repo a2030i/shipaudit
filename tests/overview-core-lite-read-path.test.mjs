@@ -5,10 +5,12 @@ import {
   loadOverviewRead,
   loadOverviewLiteLazy,
   mergeOverviewLiteLazy,
+  summarizeOverviewUploadEvidence,
 } from '../src/lib/overviewService.js';
 
 const sql = await readFile(new URL('../supabase/migrations/20260821213856_overview_core_lite.sql', import.meta.url), 'utf8');
 const lazySql = await readFile(new URL('../supabase/migrations/20260821215657_overview_core_lite_lazy_sections.sql', import.meta.url), 'utf8');
+const actionableSql = await readFile(new URL('../supabase/migrations/20260828234042_overview_actionable_suspension_summary.sql', import.meta.url), 'utf8');
 const service = await readFile(new URL('../src/lib/overviewService.js', import.meta.url), 'utf8');
 const page = await readFile(new URL('../src/pages/Overview.jsx', import.meta.url), 'utf8');
 
@@ -43,15 +45,29 @@ test('overview core lite preserves the current receivables bucket boundaries', (
   assert.match(sql, /greatest\(b90p-opening_balance,0\)/);
 });
 
-test('the production cutover uses one core request followed by two local lazy summaries', () => {
+test('the production cutover pairs the core request with an authoritative actionable suspension summary', () => {
   assert.match(service, /VITE_OVERVIEW_READ_MODE \|\| 'lite'/);
   assert.match(service, /client\.rpc\('overview_core_lite'/);
+  assert.match(service, /client\.rpc\('overview_actionable_suspension_lite'/);
+  assert.match(service, /DEFAULT_SUSPENSION_MIN_OVERDUE/);
   assert.match(service, /Promise\.all\(\[/);
   assert.match(service, /client\.rpc\('overview_merchant_pulse_lite'/);
   assert.match(service, /client\.rpc\('overview_cash_lite'/);
   assert.match(page, /requestIdleCallback/);
   assert.match(page, /mode: 'legacy'/);
   assert.doesNotMatch(lazySql, /http|net\.|functions\.invoke|dblink/i);
+});
+
+test('actionable suspension summary is strict, read-only and respects documented financial holds', () => {
+  assert.match(actionableSql, /create or replace function public\.overview_actionable_suspension_lite/);
+  assert.match(actionableSql, /stable\s+security invoker/i);
+  assert.match(actionableSql, /crm_has_permission\('overview\.view'\)/);
+  assert.match(actionableSql, /b31_60 \+ c\.b61_90 \+ c\.b90p > p_min_overdue/);
+  assert.match(actionableSql, /automation_key' = 'lamha_financial_guard'/);
+  assert.match(actionableSql, /context' = 'financial_policy'/);
+  assert.match(actionableSql, /action_kind = 'deactivate'/);
+  assert.match(actionableSql, /revoke all on function public\.overview_actionable_suspension_lite\(numeric\) from public, anon/);
+  assert.doesNotMatch(actionableSql, /\b(insert|update|delete|merge|truncate)\b\s+(into|public\.|from)/i);
 });
 
 test('lazy summaries are additive, invoker-safe, permission scoped and contain no detail arrays', () => {
@@ -66,7 +82,7 @@ test('lazy summaries are additive, invoker-safe, permission scoped and contain n
   assert.doesNotMatch(lazySql, /\b(insert|update|delete|merge|truncate)\b\s+(into|public\.|from)/i);
 });
 
-test('lite adapter paints from one core call and reaches the complete page in exactly three calls', async () => {
+test('lite adapter paints from two parallel safety summaries and reaches the complete page in four calls', async () => {
   const calls = [];
   const client = {
     async rpc(name) {
@@ -79,6 +95,9 @@ test('lite adapter paints from one core call and reaches the complete page in ex
         sources: { finance: { status: 'fresh' }, merchants: { status: 'fresh' }, vat: { status: 'fresh' }, accountingCycle: { status: 'fresh' } },
         vat: null, drilldowns: {},
       }, error: null };
+      if (name === 'overview_actionable_suspension_lite') return {
+        data: { count: 1, amount: 120, minOverdueExclusive: 100 }, error: null,
+      };
       if (name === 'overview_merchant_pulse_lite') return { data: { generatedAt: '2026-08-22T00:00:01Z', merchantPulse: { available: true, total: 10 }, lamhaUploads: {}, source: { status: 'fresh' } }, error: null };
       if (name === 'overview_cash_lite') return { data: { generatedAt: '2026-08-22T00:00:01Z', cashPosition: { bankBalance: 50, totalAP: 20 }, source: { status: 'fresh' } }, error: null };
       throw new Error(`unexpected rpc ${name}`);
@@ -86,14 +105,36 @@ test('lite adapter paints from one core call and reaches the complete page in ex
   };
 
   const initial = await loadOverviewRead({ period: '2026-08', mode: 'lite', client });
-  assert.deepEqual(calls, ['overview_core_lite']);
+  assert.deepEqual(calls, ['overview_core_lite', 'overview_actionable_suspension_lite']);
   assert.equal(initial.overview.cashPosition.totalAR, 100);
+  assert.deepEqual(initial.overview.customerDecisionSummary.stopPostpaid, {
+    count: 1, amount: 120, minOverdueExclusive: 100,
+  });
   assert.equal(initial.overview.lazyStatus, 'pending');
 
   const lazy = await loadOverviewLiteLazy({ period: '2026-08', client });
   const complete = mergeOverviewLiteLazy(initial.overview, lazy.merchant, lazy.cash);
-  assert.deepEqual(calls, ['overview_core_lite', 'overview_merchant_pulse_lite', 'overview_cash_lite']);
+  assert.deepEqual(calls, [
+    'overview_core_lite',
+    'overview_actionable_suspension_lite',
+    'overview_merchant_pulse_lite',
+    'overview_cash_lite',
+  ]);
   assert.equal(complete.cashPosition.net, 130);
   assert.equal(complete.merchantPulse.total, 10);
   assert.equal(complete.lazyStatus, 'ready');
+});
+
+test('upload evidence never treats the Lamha API snapshot as an Excel upload', () => {
+  const evidence = summarizeOverviewUploadEvidence([
+    { stage: 'lamha_sources', source_kind: 'merchants', status: 'success', file_name: null, created_at: '2026-08-29T00:01:00Z' },
+    { stage: 'lamha_sources', source_kind: 'merchants', status: 'success', file_name: 'stores.xlsx', row_count: 1658, created_at: '2026-08-28T19:00:00Z' },
+    { stage: 'lamha_sources', source_kind: 'internal_settlement', status: 'success', file_name: 'statement.xlsx', row_count: 236, created_at: '2026-08-25T13:01:00Z' },
+  ]);
+  const merchants = evidence.items.find(item => item.key === 'lamha_merchants_excel');
+  const balance = evidence.items.find(item => item.key === 'lamha_balance');
+  assert.equal(merchants.fileName, 'stores.xlsx');
+  assert.equal(merchants.uploadedAt, '2026-08-28T19:00:00Z');
+  assert.equal(balance.fileName, 'statement.xlsx');
+  assert.equal(evidence.items.find(item => item.key === 'lamha_shipments').uploaded, false);
 });

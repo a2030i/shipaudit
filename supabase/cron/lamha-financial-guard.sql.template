@@ -16,16 +16,17 @@ select cron.schedule(
         'X-Cron-Key', (select decrypted_secret from vault.decrypted_secrets where name = 'lamha_financial_guard_cron_secret')
       ),
       body := '{"action":"sync-directory"}'::jsonb,
-      timeout_milliseconds := 120000
+      timeout_milliseconds := 300000
     );
   $job$
 );
 
--- The policy worker runs in small, idempotent batches after directory sync.
--- Small batches keep every Lamha request inside the shared 30 rpm token budget.
+-- Finish missing store-detail hydration quickly without competing with the
+-- midnight directory run. Once every profile is hydrated the Edge Function
+-- performs no Lamha request until the oldest detail becomes seven days old.
 select cron.schedule(
-  'lamha-financial-guard-0005-0255-riyadh',
-  '5-55/10 21-23 * * *',
+  'lamha-profile-details-catchup-readonly',
+  '7,22,37,52 * * * *',
   $job$
     select net.http_post(
       url := (select decrypted_secret from vault.decrypted_secrets where name = 'project_url')
@@ -34,8 +35,8 @@ select cron.schedule(
         'Content-Type', 'application/json',
         'X-Cron-Key', (select decrypted_secret from vault.decrypted_secrets where name = 'lamha_financial_guard_cron_secret')
       ),
-      body := '{"action":"policy"}'::jsonb,
-      timeout_milliseconds := 120000
+      body := '{"action":"sync-profile-details"}'::jsonb,
+      timeout_milliseconds := 180000
     );
   $job$
 );

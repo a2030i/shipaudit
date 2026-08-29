@@ -52,13 +52,6 @@ export async function loadCompanyOperatingPulse({ force = false } = {}) {
       promiseToday: n(data.collections.promise_today),
       snoozeExpired: n(data.collections.snooze_expired),
     } : null,
-    support: data?.support ? {
-      ...team(data.support),
-      open: n(data.support.open),
-      withoutFollowup: n(data.support.without_followup),
-      urgent: n(data.support.urgent),
-      stale3d: n(data.support.stale_3d),
-    } : null,
   };
   if (cacheKey) {
     try { sessionStorage.setItem(cacheKey, JSON.stringify({ savedAt: Date.now(), value })); }

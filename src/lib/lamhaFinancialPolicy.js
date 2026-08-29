@@ -1,6 +1,7 @@
 import { effectiveCollectibleLineKind } from './agingOperations.js';
 
 export const LAMHA_FINANCIAL_GRACE_DAYS = 30;
+export const LAMHA_OPERATIONAL_BALANCE_THRESHOLD = 0.50;
 
 const money = value => Math.max(0, Number(value) || 0);
 const isDraft = value => ['draft', 'مسودة'].includes(String(value || '').trim().toLowerCase());
@@ -35,7 +36,9 @@ export function buildLamhaFinancialPolicyRows({
     if (lineKind === 'invoice' && isDraft(line?.status)) continue;
     const ageDays = Number(line?.age_days) || 0;
     const amount = money(line?.collectible_amount);
-    if (ageDays <= LAMHA_FINANCIAL_GRACE_DAYS || amount <= 0.005) continue;
+    // A source line must be operationally collectible on its own. Do not let
+    // several residual accounting balances combine into a suspension trigger.
+    if (ageDays <= LAMHA_FINANCIAL_GRACE_DAYS || amount <= LAMHA_OPERATIONAL_BALANCE_THRESHOLD) continue;
     const current = financeByCustomer.get(customerName) || {
       amount: 0, invoiceAmount: 0, openingBalanceAmount: 0,
       invoices: new Set(), openingBalances: new Set(), oldestDays: 0,
@@ -91,7 +94,7 @@ export function buildLamhaFinancialPolicyRows({
   const rows = [...byStore.values()].map(row => ({
     ...row,
     customerNames: [...new Set(row.customerNames)],
-    policyGroup: row.overdue30Amount > 0.005 ? 'overdue' : 'clear',
+    policyGroup: row.overdue30Amount > LAMHA_OPERATIONAL_BALANCE_THRESHOLD ? 'overdue' : 'clear',
     eligible: !row.balanceSyncIssue,
     exclusionReason: row.balanceSyncIssue ? 'فرق مطابقة مالي؛ يلزم حله قبل تغيير الحساب' : null,
   })).sort((a, b) => b.overdue30Amount - a.overdue30Amount || a.storeName.localeCompare(b.storeName, 'ar'));

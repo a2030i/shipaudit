@@ -10,6 +10,7 @@ import {
   WalletCards,
 } from 'lucide-react';
 import './figma-customer-portfolio.css';
+import { lamhaAccountState } from '../../lib/lamhaAccountState.js';
 
 const amount = (value) => Number(value || 0).toLocaleString('en-US', {
   minimumFractionDigits: 2,
@@ -22,9 +23,9 @@ const isPrepaid = (customer) => {
   return value.includes('مسبق') || value.includes('prepaid') || value.includes('pre-paid');
 };
 const platformState = (customer) => {
-  const value = normalize(customer?.platformStatus);
-  if (value === 'active' || value === 'نشط') return 'active';
-  if (value === 'inactive' || value === 'غير نشط') return 'inactive';
+  const state = lamhaAccountState(customer?.platformStatus);
+  if (state === 'enabled') return 'active';
+  if (state === 'disabled') return 'inactive';
   return 'unknown';
 };
 const overThirty = (customer) => (
@@ -148,7 +149,7 @@ export default function FigmaCustomerPortfolio({
               <tr key={`${customer.name}-${customer.storeId || ''}`}>
                 <td data-label="العميل"><strong>{customer.storeName || customer.name}</strong><small>{customer.storeId ? `متجر #${customer.storeId}` : customer.name}</small></td>
                 <td data-label="نموذج الدفع"><span>{isPrepaid(customer) ? 'دفع مسبق' : 'دفع لاحق'}</span></td>
-                <td data-label="الحالة"><span className={`fcp-status fcp-status--${platformState(customer)}`}>{platformState(customer) === 'active' ? 'نشط' : platformState(customer) === 'inactive' ? 'غير نشط' : 'غير معروف'}</span></td>
+                <td data-label="الحالة"><span className={`fcp-status fcp-status--${platformState(customer)}`}>{platformState(customer) === 'active' ? 'الحساب يعمل' : platformState(customer) === 'inactive' ? 'الحساب موقوف' : 'غير معروف'}</span></td>
                 <td data-label="الدين / الرصيد"><strong className={Number(customer.owed || 0) > 0.5 ? 'is-debt' : 'is-clear'}>{amount(customer.owed)} ر.س</strong>{Number(customer.walletBalance || 0) > 0.5 && <small>رصيد {amount(customer.walletBalance)}</small>}</td>
                 <td data-label="أقدم تأخير"><strong className={late > 0.5 ? 'is-late' : ''}>{customer.oldestDays ? `${customer.oldestDays} يوم` : 'لا يوجد +30'}</strong><small>{customer.invCnt || 0} فاتورة</small></td>
                 <td data-label="المسؤول"><strong>{assignee || 'غير مسند'}</strong><small>{task?.stage ? 'مهمة تحصيل مفتوحة' : 'لا توجد مهمة'}</small></td>

@@ -22,6 +22,7 @@ import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
 import CallTranscript from '../components/CallTranscript.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
+import CampaignResultModal from '../components/CampaignResultModal.jsx';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
@@ -1060,6 +1061,7 @@ const fmt0 = (n) => Number(n || 0).toLocaleString('en-US');
 const reasonAr = (r) => /undeliverable/i.test(r) ? 'الرقم بلا واتساب (دائم)'
   : /healthy ecosystem/i.test(r) ? 'خنق جودة من ميتا (تسويق لغير متفاعلين)'
   : /experiment/i.test(r) ? 'تجربة ميتا مؤقتة'
+  : /chosen to stop receiving marketing messages|stop receiving marketing/i.test(r) ? 'المستلم أوقف استقبال الرسائل التسويقية'
   : /document format|not supported by whatsapp|supported formats/i.test(r) ? 'صيغة المرفق غير مدعومة في واتساب'
   : /invalid|not.*valid/i.test(r) ? 'رقم غير صالح' : r;
 
@@ -1071,13 +1073,14 @@ function CampaignsTab() {
     ? ['summary', 'quality', 'messages', 'controls']
     : ['summary', 'quality', 'messages'];
   const requestedView = new URLSearchParams(location.search).get('panel');
+  const requestedCampaign = new URLSearchParams(location.search).get('campaign') || '';
   const [view, setView] = useState(() => allowedViews.includes(requestedView) ? requestedView : 'summary');
   const [showAllCampaigns, setShowAllCampaigns] = useState(false);
   const [ivrOpen, setIvrOpen] = useState(false);
   const [rows, setRows] = useState(null);
   const [report, setReport] = useState([]);        // صف لكل حملة
   const [qual, setQual] = useState([]);            // جودة القوالب (30 يوماً)
-  const [camp, setCamp] = useState('');            // الحملة المفتوحة (فلتر سيرفري)
+  const [camp, setCamp] = useState(requestedCampaign); // الحملة المفتوحة (فلتر سيرفري)
   const [liveCamp, setLiveCamp] = useState('');    // حملة مفتوحة في مودال الإحصائيات الحي
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -1144,6 +1147,9 @@ function CampaignsTab() {
     const next = allowedViews.includes(requestedView) ? requestedView : 'summary';
     if (next !== view) setView(next);
   }, [requestedView]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (requestedCampaign !== camp) setCamp(requestedCampaign);
+  }, [requestedCampaign]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // تصدير أرقام «بلا واتساب» لفريق الاتصال (رقم/اسم/آخر محاولة/الحملات)
   const exportNoWa = async () => {
@@ -1496,7 +1502,7 @@ function CampaignsTab() {
       )}
 
       {liveCamp && (
-        <CampaignLiveModal name={liveCamp}
+        <CampaignResultModal campaign={{ name: liveCamp, channel: 'whatsapp', legacy: true }}
           onClose={() => setLiveCamp('')}
           onShowMessages={() => { setCamp(liveCamp); changeCampaignView('messages'); setLiveCamp(''); }}/>
       )}

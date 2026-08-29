@@ -34,6 +34,18 @@ const fmtDate = (iso) => {
   } catch { return iso; }
 };
 
+const displayedScheduleNote = (schedule) => {
+  if (schedule?.task_kind === 'cod_remittance') {
+    return 'سجل تاريخي محفوظ؛ لا ينشئ التزامًا تشغيليًا جديدًا.';
+  }
+
+  const note = String(schedule?.notes || '').trim();
+  if (!note) return '—';
+
+  // لا نعدّل السجل التاريخي، لكننا نعرض وصف المهمة وفق نموذج التشغيل الحالي.
+  return note.replace(/ملف موحّد\s*\(فاتورة\s*\+\s*تحصيل\)/g, 'فاتورة ناقل');
+};
+
 export default function Tasks({ carriers = [], isActive = true }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -66,7 +78,11 @@ export default function Tasks({ carriers = [], isActive = true }) {
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
 
-  const groups = useMemo(() => partitionByDueness(schedules), [schedules]);
+  const operationalSchedules = useMemo(
+    () => schedules.filter(schedule => schedule.task_kind !== 'cod_remittance'),
+    [schedules],
+  );
+  const groups = useMemo(() => partitionByDueness(operationalSchedules), [operationalSchedules]);
   const carrierNameById = useMemo(
     () => new Map((carriers || []).map(c => [c.id, c.name])),
     [carriers],
@@ -122,7 +138,7 @@ export default function Tasks({ carriers = [], isActive = true }) {
       <PageHeader
         icon={<ListTodo size={22}/>}
         title="جداول استلام الناقلين"
-        subtitle="اضبط لكل شركة موعد الفاتورة وموعد التحصيل حسب طريقة ملفاتها — موحّد أو منفصل"
+        subtitle="اضبط موعد استلام فاتورة كل ناقل؛ COD القديم يظهر للتتبع فقط ولا ينشئ موعدًا جديدًا"
         meta={`${groups.overdue.length} متأخّر · ${groups.dueThisWeek.length} مستحق هذا الأسبوع`}
         actions={
           <>
@@ -145,7 +161,7 @@ export default function Tasks({ carriers = [], isActive = true }) {
             <Empty
               icon="📅"
               title="لم تُضف أي مهمة متكررة بعد"
-              sub='اضغط "مهمة جديدة" لإضافة موعد استلام فاتورة أو تحصيل من شركة'
+              sub='اضغط "مهمة جديدة" لإضافة موعد استلام فاتورة شركة الشحن'
             />
           </Card>
         </>
@@ -220,7 +236,7 @@ export default function Tasks({ carriers = [], isActive = true }) {
                 كل المهام المُسجَّلة ({schedules.length})
               </h3>
             </div>
-            <table style={{ fontSize: 12.5, width: '100%' }}>
+            <table className="tasks-schedule-table" style={{ fontSize: 12.5, width: '100%' }}>
               <thead>
                 <tr>
                   <th>الشركة</th>
@@ -235,27 +251,36 @@ export default function Tasks({ carriers = [], isActive = true }) {
                 {schedules.map(s => {
                   const kindMeta = TASK_KIND_META[s.task_kind] || {};
                   const cadMeta  = CADENCE_META[s.cadence] || {};
+                  const isHistoricalCod = s.task_kind === 'cod_remittance';
                   return (
                     <tr key={s.id} style={{ opacity: s.active ? 1 : 0.5 }}>
-                      <td style={{ fontWeight: 600 }}>{carrierNameById.get(s.carrier_id) || s.carrier_id}</td>
-                      <td>
+                      <td className="tasks-schedule-carrier" style={{ fontWeight: 600 }}>{carrierNameById.get(s.carrier_id) || s.carrier_id}</td>
+                      <td className="tasks-schedule-kind">
                         <span style={{
                           padding: '3px 9px', borderRadius: 999,
-                          background: `color-mix(in srgb, ${kindMeta.color} 14%, transparent)`,
-                          color: kindMeta.color, fontWeight: 600, fontSize: 11.5,
+                          background: isHistoricalCod ? 'var(--surface)' : `color-mix(in srgb, ${kindMeta.color} 14%, transparent)`,
+                          color: isHistoricalCod ? 'var(--muted)' : kindMeta.color,
+                          border: isHistoricalCod ? '1px solid var(--border)' : '1px solid transparent',
+                          fontWeight: 600, fontSize: 11.5,
                         }}>
                           {kindMeta.icon} {kindMeta.label}
                         </span>
                       </td>
-                      <td>{s.active ? scheduleRequirementLabel(s, currentPeriod) : cadMeta.label}</td>
-                      <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--muted)' }}>
+                      <td className="tasks-schedule-cadence" data-label="التكرار">{s.active ? scheduleRequirementLabel(s, currentPeriod) : cadMeta.label}</td>
+                      <td className="tasks-schedule-completed" data-label="آخر تنفيذ" style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--muted)' }}>
                         {s.last_completed_at ? fmtDate(s.last_completed_at) : '— لم يُسجَّل'}
                       </td>
-                      <td style={{ fontSize: 11.5, color: 'var(--muted)' }}>{s.notes || '—'}</td>
-                      <td style={{ textAlign: 'left' }}>
+                      <td className="tasks-schedule-note" data-label="ملاحظة" style={{ fontSize: 11.5, color: 'var(--muted)' }}>{displayedScheduleNote(s)}</td>
+                      <td className="tasks-schedule-action" style={{ textAlign: 'left' }}>
                         <div style={{ display: 'inline-flex', gap: 6 }}>
-                          <Btn size="sm" variant="ghost" onClick={() => openEditor(s)}>تعديل</Btn>
-                          <Btn size="sm" variant="ghost" icon={<Trash2 size={12}/>} onClick={() => handleDelete(s.id)} style={{ color: 'var(--red)' }}/>
+                          {isHistoricalCod ? (
+                            <span style={{ color: 'var(--muted)', fontSize: 11 }}>تاريخي للقراءة فقط</span>
+                          ) : (
+                            <>
+                              <Btn size="sm" variant="ghost" onClick={() => openEditor(s)}>تعديل</Btn>
+                              <Btn size="sm" variant="ghost" icon={<Trash2 size={12}/>} onClick={() => handleDelete(s.id)} style={{ color: 'var(--red)' }}/>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -283,16 +308,10 @@ function evidenceSummary(row, evidence) {
   if (!evidence) return 'لا يوجد سجل تاريخي كافٍ داخل النظام لاقتراح موعد؛ يلزم تأكيد الموعد الفعلي من العقد أو الشركة.';
   const parts = [];
   const needsInvoice = [...row.missingKinds, ...row.invalidKinds].includes('invoice');
-  const needsCod = [...row.missingKinds, ...row.invalidKinds].includes('cod_remittance');
   if (needsInvoice) {
     parts.push(evidence.invoice.batchCount
       ? `الفواتير: ${evidence.invoice.batchCount} ملفات محفوظة (${evidence.invoice.dates.join('، ') || 'بلا تاريخ'})`
       : 'الفواتير: لا يوجد ملف تاريخي محفوظ');
-  }
-  if (needsCod) {
-    parts.push(evidence.cod.batchCount
-      ? `التحصيل: ${evidence.cod.batchCount} ملفات واردة (${evidence.cod.dates.join('، ') || 'بلا تاريخ'})`
-      : 'التحصيل: لا يوجد ملف وارد محفوظ');
   }
   return `${parts.join(' · ')}. هذه قرائن فقط ولا تُحفظ كموعد تلقائي.`;
 }
@@ -306,7 +325,7 @@ function ScheduleCoveragePanel({ rows, evidence, evidenceError, onConfigure }) {
         <div>
           <h3 style={{ margin: 0, fontSize: 15, color: 'var(--text)' }}>اكتمال جداول الناقلين</h3>
           <p style={{ margin: '4px 0 0', color: 'var(--muted)', fontSize: 11.5, lineHeight: 1.6 }}>
-            الناقل ذو الملف الموحّد يحتاج جدولًا واحدًا، والناقل ذو الفاتورة والتحصيل المنفصلين يحتاج جدولين. الجدول الناقص يمنع إقفال الشهر.
+            كل ناقل متعاقد يحتاج جدول فاتورة واحدًا صالحًا. تصنيفات COD القديمة لا تنشئ جدولًا أو متطلب إقفال جديدًا.
           </p>
         </div>
         <span style={{ padding: '5px 10px', borderRadius: 999, background: incomplete.length ? 'color-mix(in srgb, var(--gold) 14%, transparent)' : 'color-mix(in srgb, var(--green) 14%, transparent)', color: incomplete.length ? 'var(--gold)' : 'var(--green)', fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}>
@@ -315,7 +334,7 @@ function ScheduleCoveragePanel({ rows, evidence, evidenceError, onConfigure }) {
       </div>
       {incomplete.length === 0 ? (
         <div style={{ padding: 16, color: 'var(--green)', fontSize: 12.5, fontWeight: 700 }}>
-          ✓ كل ناقل ذي عقد ساري يملك جداول الفاتورة والتحصيل المطلوبة.
+          ✓ كل ناقل ذي عقد ساري يملك جدول الفاتورة المطلوب.
         </div>
       ) : (
         <div style={{ display: 'grid', gap: 8, padding: 12 }}>
@@ -430,7 +449,7 @@ function DueColumn({ accent, icon, title, hint, rows, empty, carrierNameById, on
 // ── Editor modal ───────────────────────────────────────────────
 function ScheduleEditor({ row, carriers, onClose, onSaved }) {
   const [carrierId, setCarrierId] = useState(row?.carrier_id || '');
-  const [taskKind, setTaskKind] = useState(row?.task_kind || 'cod_remittance');
+  const [taskKind, setTaskKind] = useState(row?.task_kind || 'invoice');
   const [cadence, setCadence] = useState(row?.cadence || 'monthly');
   const [scheduleBasis, setScheduleBasis] = useState(
     row?.schedule_basis || (row?.cadence === 'weekly' && Number(row?.day_of_period) <= 6 ? 'weekday' : 'month_days'),
@@ -449,7 +468,6 @@ function ScheduleEditor({ row, carriers, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const selectedCarrier = (carriers || []).find(carrier => String(carrier.id) === String(carrierId));
   const fileKind = selectedCarrier?.file_signature?.file_kind || null;
-  const isCombined = fileKind === 'audit_with_cod';
   const requiredCycleKinds = requiredScheduleKindsForCarrier(selectedCarrier);
   const allowedTaskKinds = new Set([...requiredCycleKinds, 'statement', 'weight_report']);
 
@@ -471,9 +489,7 @@ function ScheduleEditor({ row, carriers, onClose, onSaved }) {
 
   const handleSave = async () => {
     if (!carrierId) return toast('اختر الشركة', 'warn');
-    if (isCombined && taskKind === 'cod_remittance') {
-      return toast('هذا الناقل يرسل الفاتورة والتحصيل في ملف موحّد؛ أنشئ جدول «فاتورة + تحصيل» فقط', 'warn');
-    }
+    if (taskKind === 'cod_remittance') return toast('توقف إنشاء جداول COD جديدة؛ استخدم جدول الفاتورة للمسار التشغيلي الحالي', 'warn');
     setSaving(true);
     try {
       const dueDays = cadence === 'on_demand'
@@ -507,15 +523,8 @@ function ScheduleEditor({ row, carriers, onClose, onSaved }) {
 
         {carrierId && (
           <div style={{ padding: '10px 12px', borderRadius: 10, background: 'var(--surface2)', color: 'var(--text2)', fontSize: 12.5 }}>
-            {isCombined
-              ? 'طريقة الشركة: ملف موحّد — كل ملف معتمد يثبت الفاتورة والتحصيل معًا.'
-              : fileKind === 'audit_and_cod_separate'
-                ? 'طريقة الشركة: ملفان منفصلان — اضبط جدول الفاتورة وجدول تحصيل COD كلًا على حدة.'
-                : fileKind === 'audit_only'
-                  ? 'طريقة الشركة: فاتورة ناقل فقط — لا يوجد تحصيل COD مطلوب من هذه الشركة.'
-                  : fileKind === 'cod_only'
-                    ? 'طريقة الشركة: تحصيل COD فقط — لا توجد فاتورة ناقل مطلوبة.'
-                    : 'طريقة ملفات الشركة غير مكتملة؛ لا يمكن إنشاء جدول فاتورة أو تحصيل قبل تصنيفها.'}
+            التشغيل الحالي يتطلب جدول فاتورة فقط. تصنيف الملف التاريخي
+            {fileKind ? ` (${fileKind})` : ''} محفوظ للتتبع ولا ينشئ جدول COD جديدًا.
           </div>
         )}
 
@@ -532,7 +541,7 @@ function ScheduleEditor({ row, carriers, onClose, onSaved }) {
                 fontFamily: 'inherit',
                 display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'center',
               }}>
-                <span>{m.icon}</span> {isCombined && k === 'invoice' ? 'فاتورة + تحصيل' : m.label}
+                <span>{m.icon}</span> {m.label}
               </button>
             ))}
           </div>

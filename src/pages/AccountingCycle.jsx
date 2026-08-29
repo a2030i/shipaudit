@@ -95,7 +95,7 @@ function stageActionLabel(stage) {
     weight_export: 'تنزيل ملف الأوزان',
     lamha_shipments: stage.status === 'complete' ? 'رفع نسخة أحدث' : 'رفع شحنات لمحة',
     lamha_sources: 'تحديث ملفات لمحة',
-    carrier_collections: 'رفع تحصيل شركة شحن',
+    carrier_collections: 'مراجعة الرصيد التاريخي',
     lamha_collections: 'رفع تحصيل لمحة',
     period_close: 'مراجعة وإقفال الشهر',
   };
@@ -804,11 +804,11 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
         : collectionScheduleSlot;
       return (
         <div>
-          <p className="accounting-cycle-help">كل دفعة أسبوعية تُحسب ملفًا مستقلًا. الفاتورة الشهرية لا تكمل التحصيل الأسبوعي، والملف الموحّد فقط هو الذي يثبت الفاتورة والتحصيل معًا.</p>
-          <CarrierRequirementChecklist items={checklist} title="اكتمال تحصيلات الناقلين حسب الجدول" />
+          <p className="accounting-cycle-help">لا ينشئ النظام متطلبات COD جديدة. تعرض هذه المرحلة الأرصدة والملفات السابقة للتتبع والتصفية فقط، ولا يمنع غياب ملف جديد إقفال الشهر.</p>
+          <CarrierRequirementChecklist items={checklist} title="حالة التصفية التاريخية للناقلين" />
           {checklist.some(item => item.status === 'unclassified') && (
             <Btn variant="ghost" size="sm" onClick={() => navigate('/tasks')} style={{ marginBottom: 14 }}>
-              ضبط جداول الفواتير والتحصيل
+              ضبط جداول استلام الفواتير
             </Btn>
           )}
           {available.length > 0 ? (

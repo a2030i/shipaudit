@@ -39,6 +39,7 @@ import TeamReadinessPanel from '../components/TeamReadinessPanel.jsx';
 import SourceStatusStrip from '../components/SourceStatusStrip.jsx';
 import { metricDefinition } from '../lib/metricCatalog.js';
 import FigmaCommandCenter from '../components/operations/FigmaCommandCenter.jsx';
+import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 
 const fmtMonth = (period) => {
   if (!period) return '—';
@@ -107,6 +108,30 @@ export default function Overview({ carriers = [], isActive = true }) {
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
 
+  // Refresh quietly when the manager returns to an already-open command
+  // center. The current readable snapshot remains visible while the new read
+  // is in flight; a source failure must not replace it with synthetic zeros.
+  useEffect(() => {
+    if (!isActive) return undefined;
+    let lastRefreshAt = Date.now();
+    const refreshIfStale = () => {
+      if (Date.now() - lastRefreshAt < 60_000) return;
+      lastRefreshAt = Date.now();
+      refresh();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshIfStale();
+    };
+    window.addEventListener('focus', refreshIfStale);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    const intervalId = window.setInterval(refreshIfStale, 300_000);
+    return () => {
+      window.removeEventListener('focus', refreshIfStale);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.clearInterval(intervalId);
+    };
+  }, [isActive, refresh]);
+
   // The first paint is intentionally powered by overview_core_lite alone.
   // Merchant movement and cash are requested only after the browser has had a
   // chance to paint; a failure swaps the whole page back to the proven legacy
@@ -117,7 +142,7 @@ export default function Overview({ carriers = [], isActive = true }) {
     const loadLazy = async () => {
       try {
         const lazy = await loadOverviewLiteLazy({ period });
-        if (!cancelled) setData(current => mergeOverviewLiteLazy(current, lazy.merchant, lazy.cash));
+        if (!cancelled) setData(current => mergeOverviewLiteLazy(current, lazy.merchant, lazy.cash, lazy.uploads));
       } catch (error) {
         console.warn('[overview-read] lite lazy section unavailable; using legacy fallback', error?.code || error?.message);
         try {
@@ -846,10 +871,9 @@ function CustomerDecisionBoard({ decisions, available, fresh, onNavigate }) {
     }
     setExportingStopList(true);
     try {
-      const [xlsxModule, { rtl }, { persistAndDownloadExport }] = await Promise.all([
+      const [xlsxModule, { rtl }] = await Promise.all([
         import('xlsx'),
         import('../lib/xlsxRtl.js'),
-        import('../lib/internalExportsService.js'),
       ]);
       const XLSX = xlsxModule.default || xlsxModule;
       const exportedAt = new Date();

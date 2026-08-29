@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback, useRef, lazy, Suspense, Component } f
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, Download, History, Settings,
-  Menu, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target, MessageCircle, UserPlus, LifeBuoy, Bot, Landmark, ListFilter,
+  Menu, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target, MessageCircle, UserPlus, Bot, Landmark, ListFilter,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import CenterWorkspace from './components/CenterWorkspace.jsx';
 import QuickActionLauncher from './components/QuickActionLauncher.jsx';
 import NavigationHub, { firstSectionDestination } from './components/NavigationHub.jsx';
+import ExecutiveSidebar from './components/ExecutiveSidebar.jsx';
 import { MobileExperienceManager } from './components/MobileUX.jsx';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
 import { logLogin, logPageView, logDenied } from './lib/activityLogger.js';
@@ -250,7 +251,10 @@ const ROUTE_ITEMS = [
 //   2. The active indicator on items in that section
 //   3. The subtle left-edge bar on the active item
 const NAV_ITEMS = applyNavigationIA(ROUTE_ITEMS);
-const SECTION_ICONS = { Truck, Users, Target, DollarSign, FileCheck, Settings, Landmark, LifeBuoy };
+const navigationItemForPath = path => NAV_ITEMS.find(entry => (
+  entry.path === path || entry.subTabs?.some(tab => tab.legacy === path)
+));
+const SECTION_ICONS = { Truck, Users, Target, DollarSign, FileCheck, Settings, Landmark };
 const NAV_SECTIONS = NAV_SECTION_MODEL.map(section => ({
   ...section,
   icon: SECTION_ICONS[section.icon] || Layers,
@@ -324,6 +328,7 @@ export default function App() {
 // مسارات تُرسَم مستقلّةً خارج غلاف التطبيق (بلا جانبية/شريط/تحقّق دخول).
 // التطبيع يمنع الشرطة النهائية من إسقاط الرابط العام داخل حارس النظام.
 const normalizePublicPath = (pathname = '/') => pathname.replace(/\/+$/, '') || '/';
+const LAST_CENTER_ROUTE_PREFIX = 'shipaudit:last-center-route:v1:';
 const PUBLIC_ROUTES = new Map([
   ['/short-address', PublicShortAddress],
   ['/national-address', PublicShortAddress],
@@ -371,8 +376,14 @@ function AppInner({ theme, toggleTheme }) {
     else logDenied(rawPath, Array.isArray(pathPermKey) ? pathPermKey.join('|') : pathPermKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawPath, pathAllowed, user, profile]);
+  useEffect(() => {
+    if (!pathAllowed) return;
+    const item = navigationItemForPath(rawPath);
+    if (!item || NAV_SECTIONS.some(section => section.path === rawPath)) return;
+    try { localStorage.setItem(`${LAST_CENTER_ROUTE_PREFIX}${item.section}`, `${rawPath}${location.search}`); } catch { /* best effort */ }
+  }, [location.search, pathAllowed, rawPath]);
   const CENTER_ROUTES = NAV_SECTIONS.map(section => section.path);
-  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/sales','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/campaigns','/whatsapp-settings','/hatif-leads','/support','/ticket','/marketers','/platform-carriers','/next-actions','/work-agents','/operations','/accounting-cycle','/workspace/customers','/workspace/operations','/workspace/reports', ...CENTER_ROUTES];
+  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/sales','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/campaigns','/whatsapp-settings','/hatif-leads','/marketers','/platform-carriers','/next-actions','/work-agents','/operations','/accounting-cycle','/workspace/customers','/workspace/operations','/workspace/reports', ...CENTER_ROUTES];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
   const campaignActionActive = pathname === '/campaigns';
 
@@ -447,10 +458,6 @@ function AppInner({ theme, toggleTheme }) {
       navigate('/workspace/sales?source=legacy-marketers', { replace: true });
       return;
     }
-    if (rawPath === '/support' || rawPath === '/ticket') {
-      navigate('/customer-360?source=retired-support', { replace: true });
-      return;
-    }
     if (rawPath === '/legal') {
       navigate('/customer-money?view=money&source=retired-legal', { replace: true });
       return;
@@ -518,7 +525,22 @@ function AppInner({ theme, toggleTheme }) {
   // kept reachable but its nav filter no longer drives anything.
 
   const goto = (path) => {
-    navigate(path);
+    const center = NAV_SECTIONS.find(section => section.path === path);
+    let destination = path;
+    if (center) {
+      try {
+        const saved = localStorage.getItem(`${LAST_CENTER_ROUTE_PREFIX}${center.id}`);
+        if (saved?.startsWith('/')) {
+          const savedUrl = new URL(saved, window.location.origin);
+          const item = navigationItemForPath(savedUrl.pathname);
+          const belongsToCenter = item?.section === center.id && !item.navHidden;
+          const allowed = belongsToCenter && (isAdmin
+            || (!item.adminOnly && (item.permAny ? item.permAny.some(key => can(key)) : !item.permKey || can(item.permKey))));
+          if (allowed) destination = `${savedUrl.pathname}${savedUrl.search}`;
+        }
+      } catch { /* fall back to the center destination */ }
+    }
+    navigate(destination);
     setMobileOpen(false);
   };
 
@@ -627,14 +649,16 @@ function AppInner({ theme, toggleTheme }) {
     || (detailSectionId ? NAV_SECTIONS.find(section => section.id === detailSectionId) : null)
     || centerRouteSection
     || currentSection;
-  const currentTitle = centerRouteSection?.label ?? currentSubTab?.label
-    ?? currentNavItem?.label
-    ?? PAGE_TITLES[location.pathname]
-    ?? (location.pathname.startsWith('/settings') ? 'الإعدادات' : 'لمحة');
+  const currentTitle = pathname === '/overview'
+    ? 'مركز القيادة'
+    : centerRouteSection?.label ?? currentSubTab?.label
+      ?? currentNavItem?.label
+      ?? PAGE_TITLES[location.pathname]
+      ?? (location.pathname.startsWith('/settings') ? 'الإعدادات' : 'لمحة');
   const quickActionLabel = ({
     finance: 'إجراء مالي جديد',
     sales: 'إضافة فرصة أو تواصل',
-    customers: 'فتح تذكرة عميل',
+    customers: 'بحث أو فتح عميل',
     shipping: 'رفع ملف أو تشغيل دورة',
     reports: 'إنشاء أو تصدير تقرير',
     settings: 'إجراء إداري',
@@ -694,6 +718,18 @@ function AppInner({ theme, toggleTheme }) {
 
       <div className="app-layout">
 
+        <ExecutiveSidebar
+          sections={NAV_SECTIONS}
+          navItems={visibleNav}
+          currentSectionId={contextSection?.id || null}
+          pathname={location.pathname}
+          profile={profile}
+          roleLabel={ROLE_LABEL[profile.role] ?? profile.role}
+          canOpenHome={isAdmin || can('overview.view')}
+          onNavigate={goto}
+          onSignOut={signOut}
+        />
+
         {/* ═══════════════ MAIN ═══════════════ */}
         <main className="app-main">
 
@@ -726,7 +762,7 @@ function AppInner({ theme, toggleTheme }) {
                 }}
               >
                 <Search size={15}/>
-                <span className="topbar-search-hint" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>عميل، فاتورة، AWB، صفحة…</span>
+                <span className="topbar-search-hint" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>عميل، متجر، فاتورة، شحنة أو صفحة…</span>
                 <kbd className="topbar-search-kbd" style={{ fontSize: 10, border: '1px solid var(--border2)', borderRadius: 6, padding: '2px 6px', marginInlineStart: 'auto', color:'var(--muted)' }}>Ctrl K</kbd>
               </button>
             </div>

@@ -8,11 +8,13 @@ const commandCenter = await readFile(new URL('../src/components/operations/Figma
 
 test('overview effective cash uses collectible customer debt, not gross Zoho debit', () => {
   assert.match(service, /supabaseRpc\('customer_money_dashboard'\)/);
-  assert.match(service, /const collectibleAr = Number\(customerMoney\?\.outstanding\)/);
   assert.match(service, /const openingBalance = Number\(customerMoney\?\.aging\?\.opening_balance\)/);
-  assert.match(service, /Math\.max\(0, collectibleAr - openingBalance\)/);
+  assert.match(service, /const operationalAging = customerMoney\?\.aging \|\| \{\}/);
+  assert.match(service, /totalAR: Number\(aging\.total\) \|\| 0/);
+  assert.match(service, /const invoiceCollectibleAr = customerAging\.total/);
   assert.match(service, /const totalAR = arFromZoho \? invoiceCollectibleAr/);
   assert.match(service, /customerCreditOffset:/);
+  assert.match(commandCenter, /label="القابل للتحصيل تشغيليًا"/);
 });
 
 test('overview debt counter and aging exclude explicit opening balances', () => {
@@ -37,10 +39,9 @@ test('overview customer decisions use safe identifiers and invoice-only post-30 
   assert.match(service, /Availability and freshness are different concerns/);
   assert.match(service, /const customerDecisionDataReadable/);
   assert.match(service, /customerDecisionFresh,/);
-  assert.match(service, /const customerDecisionGuard = \{/);
-  assert.match(service, /status: customerDecisionStatus/);
-  assert.match(service, /repairPath: customerDecisionBlocker\?\.key === 'merchants'/);
-  assert.match(service, /تحديث ملف لمحة/);
+  assert.match(commandCenter, /const decisionGuard = \{/);
+  assert.match(commandCenter, /status: decisionSourceUnavailable \? 'unavailable' : data\?\.customerDecisionFresh \? 'ready' : 'stale'/);
+  assert.match(commandCenter, /للعرض فقط · يُعاد التحقق داخل النتائج/);
   assert.match(service, /merchantSnapshotSourceState/);
   assert.match(service, /row\?\.store_id \?\? row\?\.storeId/);
   assert.match(service, /row\?\.store_name \?\? row\?\.storeName/);
@@ -52,7 +53,7 @@ test('overview customer decisions use safe identifiers and invoice-only post-30 
   assert.match(page, /شغّل الحسابات الجاهزة/);
   assert.match(page, /خصم الرصيد المدفوع مقدمًا/);
   assert.match(page, /لا ينفذ النظام إيقافًا أو تفعيلًا أو خصمًا تلقائيًا/);
-  assert.match(commandCenter, /decisionGuard\.status === 'stale'/);
+  assert.match(commandCenter, /decisionGuard\.status === 'unavailable'/);
   assert.match(commandCenter, /للـ?عرض فقط|للعرض فقط/);
   assert.match(commandCenter, /statusMessage=\{decisionGuard\.message\}/);
   assert.doesNotMatch(commandCenter, /unavailable=\{!data\?\.customerDecisionFresh\}/);

@@ -23,11 +23,12 @@ import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import {
   RefreshCw, Phone, CheckCircle2, Clock, X, AlertTriangle, Download,
-  Inbox, MessageSquare, Calendar, Sparkles, Edit3, Plus, ChevronLeft, Trash2, UserPlus,
+  Inbox, MessageSquare, Calendar, Sparkles, Edit3, Plus, ChevronLeft, Trash2, UserPlus, Megaphone, PhoneCall,
 } from 'lucide-react';
 import {
   Card, Btn, Spinner, Empty, Modal, toast, PageHeader,
 } from '../components/UI.jsx';
+import OperationalResultSet from '../components/operations/OperationalResultSet.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
   TRIGGER_LABELS, STAGE_LABELS,
@@ -40,7 +41,10 @@ import {
   requestWriteoff, approveWriteoff, rejectWriteoff, listWriteoffs,
   WRITEOFF_STATUS_LABELS,
 } from '../lib/writeoffsService.js';
-import { readAudienceHandoff } from '../lib/agingOperations.js';
+import { readAudienceHandoff, saveAudienceHandoff } from '../lib/agingOperations.js';
+import { readWorkspaceState, restoreWorkspaceScroll, saveWorkspaceState } from '../lib/workspaceState.js';
+import { CUSTOMER_CAMPAIGN_BUCKETS } from '../lib/customerCampaignBuckets.js';
+import { loadWhatsAppCampaignStatus, normalizeSaudiPhone, waStatusBadge } from '../lib/whatsappService.js';
 
 const fmt = (n) =>
   n == null || Number.isNaN(n) ? '—'
@@ -105,6 +109,9 @@ export default function Collections({ isActive = true }) {
   const canUpdateStage = can('collections.update_stage');
   const canRecordPromise = can('collections.record_promise');
   const canAssign = can('collections.assign');
+  const canCampaign = can('campaigns.send');
+  const canIvr = can('campaigns.ivr');
+  const canSelect = canAssign || canCampaign || canIvr;
   const [loading, setLoading]   = useState(true);
   const [tasks, setTasks]       = useState([]);
   const [customers, setCustomers] = useState([]);  // for regenerate + lookup
@@ -123,15 +130,23 @@ export default function Collections({ isActive = true }) {
   const [bulkAssignee, setBulkAssignee] = useState('');
   const [assigning, setAssigning] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [loadedAt, setLoadedAt] = useState(null);
+  const [loadError, setLoadError] = useState('');
+  const [campaignStatusByPhone, setCampaignStatusByPhone] = useState(() => new Map());
+  const [campaignStatusLoading, setCampaignStatusLoading] = useState(true);
   const focusedCustomer = (searchParams.get('search') || searchParams.get('customer'))?.trim() || '';
   const batchContext = useMemo(() => readAudienceHandoff(searchParams.get('batchContext')), [searchParams]);
   const batchSelectionKeys = useMemo(() => new Set(batchContext?.selectionKeys || []), [batchContext]);
   const showSyncPrompt = searchParams.get('action') === 'sync';
+  const workspaceKey = `collections:${location.pathname}${location.search}`;
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
       let candidatesOk = true;
+      setCampaignStatusLoading(true);
+      const campaignStatusesPromise = loadWhatsAppCampaignStatus().catch(() => new Map());
       const [recs, pending, trend, collectors] = await Promise.all([
         loadCollectionCandidates().catch((e) => {
           candidatesOk = false;
@@ -150,13 +165,25 @@ export default function Collections({ isActive = true }) {
       setPendingWriteoffs(pending);
       setAgingTrend(trend);
       setAssignmentCandidates(collectors);
+      setLoadedAt(new Date().toISOString());
+      campaignStatusesPromise
+        .then(setCampaignStatusByPhone)
+        .finally(() => setCampaignStatusLoading(false));
     } catch (e) {
+      setLoadError(e.message || 'تعذر قراءة قائمة التحصيل.');
       toast(`فشل التحميل: ${e.message}`, 'error');
     }
     setLoading(false);
   }, [stageFilter, canAssign]);
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
+  useEffect(() => {
+    if (!isActive || loading) return;
+    const saved = readWorkspaceState(workspaceKey, { consume: true });
+    if (!saved) return;
+    if (Array.isArray(saved.selectionKeys)) setSelectedTasks(new Set(saved.selectionKeys));
+    restoreWorkspaceScroll(saved);
+  }, [isActive, loading, workspaceKey]);
   useEffect(() => {
     setStageFilter(searchParams.get('status') || 'open');
     setWorkScope(searchParams.get('scope') || 'today');
@@ -307,6 +334,28 @@ export default function Collections({ isActive = true }) {
     }
   };
 
+  const openSelectedCampaign = (channel) => {
+    const selected = visibleTasks.filter(task => selectedTasks.has(task.id));
+    if (!selected.length) return;
+    const selectionKeys = selected.map(task => {
+      const merchant = customerByName.get(task.customer_name)?.merchant;
+      return merchant?.storeId ? `store:${merchant.storeId}` : merchant?.zohoId ? `zoho:${merchant.zohoId}` : null;
+    }).filter(Boolean);
+    const totalAmount = +selected.reduce((sum, task) => sum + taskDebt(task), 0).toFixed(2);
+    const context = {
+      version: 2, source: 'aging_operations', channel,
+      originLabel: 'قائمة التحصيل', selectionLabel: 'المهام المحددة',
+      count: selected.length, selectedCount: selected.length,
+      eligibleCount: selectionKeys.length, excludedBeforeChannelCount: selected.length - selectionKeys.length,
+      totalAmount, eligibleTotalAmount: totalAmount,
+      selectionKeys, aging: CUSTOMER_CAMPAIGN_BUCKETS.map(bucket => bucket.key), filters: {}, snapshotAt: loadedAt || new Date().toISOString(),
+      returnTo: `${location.pathname}${location.search}`,
+    };
+    const token = saveAudienceHandoff(context);
+    saveWorkspaceState(workspaceKey, { selectionKeys: [...selectedTasks] });
+    navigate(`/campaigns?audienceContext=${encodeURIComponent(token)}&channel=${channel}&step=5&returnTo=${encodeURIComponent(context.returnTo)}`);
+  };
+
   const stats = useMemo(() => {
     const open    = tasks.filter(t => OPEN_STAGES.includes(t.stage) && isLiveTask(t));
     const promised = open.filter(t => t.stage === 'promised');
@@ -386,7 +435,7 @@ export default function Collections({ isActive = true }) {
   }
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
+    <div className="collections-page" style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader
         icon={<Phone size={22}/>}
         iconColor="var(--red)"
@@ -394,7 +443,7 @@ export default function Collections({ isActive = true }) {
         subtitle="ابدأ بوعود الدفع والمخاطر الأعلى — هذه قائمة يوم وليست كل المديونين"
         meta={`${stats.daily} لليوم · ${stats.backlog} في المخزون · ${fmt(stats.totalDebt)} ر.س مفتوح`}
         actions={
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div className="collections-page-actions" style={{ display: 'flex', gap: 6 }}>
             {canRegenerate && (
               <Btn size="sm" variant="primary" icon={<Sparkles size={13}/>} onClick={handleRegenerate} disabled={regenerating}>
                 {regenerating ? 'جارٍ إنشاء المهام…' : 'إنشاء أو تحديث مهام التحصيل'}
@@ -469,7 +518,7 @@ export default function Collections({ isActive = true }) {
         </Card>
       )}
 
-      <Card style={{
+      <Card className="collections-today-plan" style={{
         marginBottom: 16, padding: 16,
         background: 'color-mix(in srgb, var(--accent3) 7%, var(--card))',
         border: '1px solid color-mix(in srgb, var(--accent3) 24%, var(--border))',
@@ -496,6 +545,8 @@ export default function Collections({ isActive = true }) {
         </div>
       </Card>
 
+      <details className="collections-analysis-disclosure">
+        <summary><span>تحليل المخزون وأعمار الديون</span><small>{stats.open} مهمة مفتوحة · متوسط العمر {arHealth.avgAge} يوم · {fmt(stats.totalDebt)} ر.س</small></summary>
       {/* Stats strip */}
       <div style={{
         display: 'grid', gap: 12, marginBottom: 16,
@@ -565,6 +616,7 @@ export default function Collections({ isActive = true }) {
           );
         })()
       )}
+      </details>
 
       {/* Pending write-offs banner — shows when there are requests
           awaiting admin approval. Admins click to open the review
@@ -595,87 +647,80 @@ export default function Collections({ isActive = true }) {
         </Card>
       )}
 
-      {/* Stage filter chips */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-        {['open', 'todo', 'contacted', 'promised', 'snoozed', 'done', 'cancelled', 'all'].map(s => (
-          <button key={s} onClick={() => updateQueueFilters({ status: s === 'open' ? null : s })} style={{
-            padding: '6px 14px', borderRadius: 999, cursor: 'pointer',
-            border: `1.5px solid ${stageFilter === s ? '#EF4444' : 'var(--border)'}`,
-            background: stageFilter === s ? 'rgba(239,68,68,.12)' : 'transparent',
-            color: stageFilter === s ? 'var(--red)' : 'var(--text2)',
-            fontSize: 11.5, fontWeight: 600, fontFamily: 'var(--font-sans)',
-          }}>
-            {s === 'open' ? (workScope === 'today' ? 'عمل اليوم' : 'مخزون مفتوح') : s === 'all' ? 'الكل' : STAGE_LABELS[s] || s}
-          </button>
-        ))}
-      </div>
-
-      {canAssign && visibleTasks.length > 0 && (
-        <Card className="collection-assignment-bar" style={{ marginBottom: 14, padding: 12 }}>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 750, color: 'var(--text)' }}>
-              <input type="checkbox" checked={allVisibleSelected} onChange={toggleVisibleSelection}/>
-              تحديد المعروض ({visibleTasks.length})
-            </label>
-            <span style={{ fontSize: 11.5, color: selectedTasks.size ? 'var(--accent3)' : 'var(--muted)', fontWeight: 700 }}>
-              المحدد: {selectedTasks.size}
-            </span>
-            <select
-              value={bulkAssignee}
-              onChange={(event) => setBulkAssignee(event.target.value)}
-              disabled={!assignmentCandidates.length || assigning}
-              aria-label="موظف التحصيل المسؤول"
-              style={{ minWidth: 210, minHeight: 40, marginInlineStart: 'auto', border: '1px solid var(--border)', borderRadius: 10, padding: '7px 10px', color: 'var(--text)', background: 'var(--card)', fontFamily: 'inherit' }}
-            >
-              <option value="">اختر موظف التحصيل…</option>
-              {assignmentCandidates.map(employee => (
-                <option key={employee.id} value={employee.id}>
-                  {employee.name} · {employee.openTasks} مهام مفتوحة
-                </option>
-              ))}
-            </select>
-            <Btn
-              size="sm"
-              variant="primary"
-              icon={<UserPlus size={14}/>}
-              disabled={!selectedTasks.size || !bulkAssignee || assigning}
-              onClick={() => handleBulkAssignment(bulkAssignee)}
-            >
-              إسناد المحدد
-            </Btn>
-            <Btn
-              size="sm"
-              variant="ghost"
-              disabled={!selectedTasks.size || assigning}
-              onClick={() => handleBulkAssignment(null)}
-            >
-              إلغاء الإسناد
-            </Btn>
+      <OperationalResultSet
+        className="collections-work-queue"
+        context={{
+          title: workScope === 'backlog' && stageFilter === 'open' ? 'مخزون التحصيل المفتوح' : 'نتائج قائمة التحصيل',
+          description: 'قائمة تشغيلية مرتبة حسب الوعد والخطر والعمر، وتبقي العميل والإجراء في السياق نفسه.',
+          reason: focusedCustomer
+            ? `النتائج مقيدة بالعميل ${focusedCustomer}.`
+            : batchSelectionKeys.size
+              ? 'هذه المهام تخص الجمهور الذي انتقل من نتيجة مالية محددة.'
+              : 'تظهر المهمة لأنها مفتوحة أو تطابق المرحلة المختارة وما زالت مرتبطة بمديونية حية.',
+          metrics: [
+            { key: 'count', label: 'الحالات المعروضة', value: visibleTasks.length.toLocaleString('en-US') },
+            { key: 'debt', label: 'إجمالي الدين', value: `${fmt(visibleTasks.reduce((sum, task) => sum + taskDebt(task), 0))} ر.س` },
+            { key: 'oldest', label: 'أقدم مديونية', value: `${Math.max(0, ...visibleTasks.map(task => Number(customerByName.get(task.customer_name)?.daysOutstanding ?? task.days_outstanding) || 0))} يوم` },
+            { key: 'promises', label: 'وعود متأخرة', value: stats.promiseOverdue.toLocaleString('en-US') },
+          ],
+          source: 'مهام التحصيل المحلية + ذمم Zoho الحية',
+          updatedAt: loadedAt,
+          staleAfterMs: 5 * 60 * 1000,
+          sourceState: loadError ? 'error' : !candidatesReady ? 'partial' : 'healthy',
+          activeFilters: [
+            { key: 'stage', label: stageFilter === 'open' ? 'مهام مفتوحة' : (stageFilter === 'all' ? 'كل المراحل' : STAGE_LABELS[stageFilter] || stageFilter) },
+            ...(stageFilter === 'open' ? [{ key: 'scope', label: workScope === 'today' ? 'عمل اليوم' : 'المخزون' }] : []),
+          ],
+        }}
+        state={loadError && !tasks.length ? 'error' : 'available'}
+        error={loadError}
+        onRetry={refresh}
+        empty={!visibleTasks.length}
+        toolbar={<>
+          <div className="collections-work-queue__filters" aria-label="فلترة مراحل التحصيل">
+            {['open', 'todo', 'contacted', 'promised', 'snoozed', 'done', 'cancelled', 'all'].map(s => (
+              <button key={s} onClick={() => updateQueueFilters({ status: s === 'open' ? null : s })} className={stageFilter === s ? 'is-active' : ''}>
+                {s === 'open' ? (workScope === 'today' ? 'عمل اليوم' : 'مخزون مفتوح') : s === 'all' ? 'الكل' : STAGE_LABELS[s] || s}
+              </button>
+            ))}
           </div>
-          {!assignmentCandidates.length && (
-            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--gold)' }}>
-              لا يوجد موظف يملك صلاحيتَي عرض قائمة التحصيل وتحديث مرحلتها. جهّز صلاحيات الموظف أولاً.
-            </div>
-          )}
-        </Card>
-      )}
-
-      {/* Tasks table */}
-      {visibleTasks.length === 0 ? (
-        <Empty
-          icon="✓"
-          title={workScope === 'backlog' && stageFilter === 'open' ? 'لا يوجد مخزون مؤجل' : 'لا توجد مهام في هذا التبويب'}
-          sub={canRegenerate ? "اضغط «مزامنة من زوهو» لتحديث القائمة عند الحاجة" : 'لا توجد حالات مسندة لك الآن'}
-        />
-      ) : (
-        <Card style={{ padding: 0, overflow: 'hidden' }}>
-          <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+          {canAssign ? <select
+            value={bulkAssignee}
+            onChange={(event) => setBulkAssignee(event.target.value)}
+            disabled={!assignmentCandidates.length || assigning}
+            aria-label="موظف التحصيل المسؤول"
+            className="collections-work-queue__assignee"
+          >
+            <option value="">اختر موظف التحصيل…</option>
+            {assignmentCandidates.map(employee => <option key={employee.id} value={employee.id}>{employee.name} · {employee.openTasks} مهام مفتوحة</option>)}
+          </select> : null}
+        </>}
+        selection={canSelect && visibleTasks.length ? {
+          visibleCount: visibleTasks.length,
+          totalCount: visibleTasks.length,
+          selectedCount: selectedTasks.size,
+          allVisibleSelected,
+          onToggleVisible: toggleVisibleSelection,
+          onClear: () => setSelectedTasks(new Set()),
+          disabled: assigning,
+          actions: [
+            ...(canAssign ? [
+              { key: 'assign', label: 'إسناد المحدد', variant: 'primary', icon: <UserPlus size={14}/>, disabled: !bulkAssignee, onClick: () => handleBulkAssignment(bulkAssignee) },
+              { key: 'unassign', label: 'إلغاء الإسناد', onClick: () => handleBulkAssignment(null) },
+            ] : []),
+            ...(canCampaign ? [{ key: 'campaign', label: 'مراجعة WhatsApp', variant: 'accent', icon: <Megaphone size={14}/>, onClick: () => openSelectedCampaign('whatsapp') }] : []),
+            ...(canIvr ? [{ key: 'ivr', label: 'مراجعة IVR', icon: <PhoneCall size={14}/>, onClick: () => openSelectedCampaign('ivr') }] : []),
+          ],
+        } : null}
+      >
+        <Card style={{ padding: 0, overflowX: 'auto', overflowY: 'hidden' }}>
+          <table className="m-cards collections-work-queue-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead>
               <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
-                {canAssign && (
+                {canSelect && (
                   <th aria-label="تحديد" style={{ width: 42, padding: '10px 8px' }}/>
                 )}
-                {['العميل', 'السبب', 'المرحلة', 'الدين', 'عمر الدين', 'الوعد', 'المسؤول', 'إجراء'].map(h => (
+                {['العميل', 'السبب', 'المرحلة', 'الدين', 'عمر الدين', 'آخر حملة', 'الوعد', 'المسؤول', 'إجراء'].map(h => (
                   <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -685,13 +730,15 @@ export default function Collections({ isActive = true }) {
                 const c = customerByName.get(t.customer_name);
                 const isOverdueSnooze = t.stage === 'snoozed' && t.snooze_until && new Date(t.snooze_until) < new Date();
                 const isPromiseOverdue = t.stage === 'promised' && t.promise_date && new Date(t.promise_date) < new Date();
+                const campaignStatus = campaignStatusByPhone.get(normalizeSaudiPhone(c?.merchant?.phone || c?.phone || '')) || null;
+                const campaignBadge = waStatusBadge(campaignStatus);
                 return (
                   <tr key={t.id} style={{
                     borderBottom: '1px solid var(--border)',
                     background: isOverdueSnooze || isPromiseOverdue ? 'color-mix(in srgb, var(--red) 4%, transparent)' : 'transparent',
                     cursor: 'pointer',
                   }} onClick={() => setDrawer(t)}>
-                    {canAssign && (
+                    {canSelect && (
                       <td data-label="تحديد" style={{ padding: '10px 8px' }} onClick={(event) => event.stopPropagation()}>
                         <input
                           type="checkbox"
@@ -738,6 +785,13 @@ export default function Collections({ isActive = true }) {
                         </>);
                       })()}
                     </td>
+                    <td data-label="آخر حملة" style={{ padding: '10px 12px', minWidth: 130 }}>
+                      {campaignStatus ? <div className="collections-last-campaign">
+                        <b style={{ color: campaignBadge?.c || 'var(--text)' }}>{campaignBadge?.t || 'أُرسلت'}</b>
+                        <span title={campaignStatus.lastCampaign || ''}>{campaignStatus.lastCampaign || campaignStatus.lastTemplate || 'حملة سابقة'}</span>
+                        <small>{campaignStatus.lastSentAt ? fmtDate(campaignStatus.lastSentAt) : 'الوقت غير متاح'}</small>
+                      </div> : <span style={{ color: 'var(--muted2)', fontSize: 10.5 }}>{campaignStatusLoading ? 'يُحدّث سجل الحملات…' : 'لا توجد حملة سابقة'}</span>}
+                    </td>
                     <td data-label="الوعد" style={{ padding: '10px 12px', fontSize: 11 }}>
                       {t.stage === 'promised' ? (
                         <span style={{ color: isPromiseOverdue ? 'var(--red)' : 'var(--gold)', fontWeight: 600 }}>
@@ -782,7 +836,7 @@ export default function Collections({ isActive = true }) {
             </tbody>
           </table>
         </Card>
-      )}
+      </OperationalResultSet>
 
       {/* Drawer / dialogs */}
       {drawer && (
@@ -934,6 +988,8 @@ function TaskDrawer({ task, customer, onClose, onRefresh, onPromise, onWriteoff,
             <span style={pill(STAGE_COLORS[task.stage])}>{STAGE_LABELS[task.stage]}</span>
           }/>
           <KV label="الدين عند الإنشاء" value={`${fmt(task.debt_at_creation)} ر.س`}/>
+          {customer ? <KV label="القابل للتحصيل الآن" value={<strong style={{ fontFamily: 'var(--font-mono)' }}>{fmt(customer.total)} ر.س</strong>}/> : null}
+          {customer?.merchant ? <KV label="حساب لمحة" value={`${customer.merchant.platformStatus || 'غير متاح'} · محفظة ${fmt(customer.merchant.walletBalance)} ر.س`}/> : null}
           {task.credit_limit != null && <KV label="السقف الائتماني" value={`${fmt(task.credit_limit)} ر.س`}/>}
           {task.days_outstanding != null && <KV label="عمر الدين" value={`${task.days_outstanding} يوم`}/>}
           {customer?.merchant?.phone && (

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle,
+  BarChart3,
   Check,
   ChevronLeft,
   ClipboardList,
@@ -10,7 +11,7 @@ import {
   FileDown,
   Megaphone,
   MessageCircle,
-  MoreHorizontal,
+  Pencil,
   PhoneCall,
   Plus,
   RefreshCw,
@@ -24,6 +25,7 @@ import * as XLSX from 'xlsx';
 import { Btn, Spinner, toast } from '../components/UI.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import IvrCampaignModal from '../components/IvrCampaignModal.jsx';
+import CampaignResultModal from '../components/CampaignResultModal.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import {
@@ -178,7 +180,7 @@ function ManualAudienceEditor({ definition, onChange }) {
   );
 }
 
-function SummaryStrip({ campaigns }) {
+function SummaryStrip({ campaigns, activeFilter, onFilter }) {
   const counts = campaigns.reduce((acc, campaign) => {
     if (campaign.status === 'draft' || campaign.status === 'review' || campaign.status === 'ready') acc.draft += 1;
     if (campaign.status === 'scheduled') acc.scheduled += 1;
@@ -188,16 +190,16 @@ function SummaryStrip({ campaigns }) {
   }, { draft: 0, scheduled: 0, running: 0, decision: 0 });
   return (
     <div className="scc-summary" aria-label="ملخص تشغيل الحملات">
-      <SummaryItem label="مسودات" value={counts.draft}/>
-      <SummaryItem label="مجدولة" value={counts.scheduled}/>
-      <SummaryItem label="تعمل الآن" value={counts.running} tone="success"/>
-      <SummaryItem label="تحتاج قراراً" value={counts.decision} tone="warning"/>
+      <SummaryItem id="draft" label="مسودات" value={counts.draft} active={activeFilter === 'draft'} onClick={onFilter}/>
+      <SummaryItem id="scheduled" label="مجدولة" value={counts.scheduled} active={activeFilter === 'scheduled'} onClick={onFilter}/>
+      <SummaryItem id="running" label="تعمل الآن" value={counts.running} tone="success" active={activeFilter === 'running'} onClick={onFilter}/>
+      <SummaryItem id="decision" label="تحتاج قراراً" value={counts.decision} tone="warning" active={activeFilter === 'decision'} onClick={onFilter}/>
     </div>
   );
 }
 
-function SummaryItem({ label, value, tone = 'default' }) {
-  return <div className={`scc-summary__item is-${tone}`}><span>{label}</span><strong>{fmt0(value)}</strong></div>;
+function SummaryItem({ id, label, value, tone = 'default', active, onClick }) {
+  return <button type="button" className={`scc-summary__item is-${tone}${active ? ' is-active' : ''}`} aria-pressed={active} onClick={() => onClick(id)}><span>{label}</span><strong>{fmt0(value)}</strong></button>;
 }
 
 function StepRail({ step, onStep }) {
@@ -206,7 +208,7 @@ function StepRail({ step, onStep }) {
       {STEPS.map((label, index) => {
         const number = index + 1;
         return (
-          <button key={label} type="button" className={number === step ? 'is-active' : number < step ? 'is-done' : ''} onClick={() => onStep(number)}>
+          <button key={label} type="button" aria-current={number === step ? 'step' : undefined} className={number === step ? 'is-active' : number < step ? 'is-done' : ''} onClick={() => onStep(number)}>
             <i>{number < step ? <Check size={12}/> : number}</i><span>{label}</span>
           </button>
         );
@@ -220,7 +222,7 @@ function ToggleGroup({ items, selected, onToggle }) {
   return (
     <div className="scc-toggle-group">
       {items.map(([key, label]) => (
-        <button type="button" key={key} className={selectedSet.has(key) ? 'is-selected' : ''} onClick={() => onToggle(key)}>
+        <button type="button" key={key} aria-pressed={selectedSet.has(key)} className={selectedSet.has(key) ? 'is-selected' : ''} onClick={() => onToggle(key)}>
           <span className="scc-check">{selectedSet.has(key) ? <Check size={12}/> : null}</span>{label}
         </button>
       ))}
@@ -232,7 +234,7 @@ function ObjectiveSelector({ objective, onChange }) {
   return (
     <div className="scc-objectives">
       {Object.entries(SMART_CAMPAIGN_OBJECTIVES).map(([key, meta]) => (
-        <button type="button" key={key} className={objective === key ? 'is-selected' : ''} onClick={() => onChange(key)}>
+        <button type="button" key={key} aria-pressed={objective === key} className={objective === key ? 'is-selected' : ''} onClick={() => onChange(key)}>
           <span>{meta.label}</span><small>{meta.description}</small>
         </button>
       ))}
@@ -293,7 +295,7 @@ function AudienceFilters({ objective, definition, onChange }) {
   );
 }
 
-function CampaignList({ rows, loading, onOpen, onOpenLegacy }) {
+function CampaignList({ rows, loading, onOpenResult, onEdit }) {
   if (loading) return <div className="scc-list-loading"><Spinner/></div>;
   return (
     <div className="scc-table-wrap">
@@ -311,7 +313,13 @@ function CampaignList({ rows, loading, onOpen, onOpenLegacy }) {
                 <td data-label="القناة">{SMART_CAMPAIGN_CHANNELS[row.channel]?.label || (row.legacy ? 'واتساب عبر هاتف' : 'غير محددة')}</td>
                 <td data-label="الحالة"><span className={`scc-status is-${status[1]}`}>{status[0]}</span></td>
                 <td data-label="النتيجة">{result.replied != null ? `${fmt0(result.replied)} ردّ` : result.tasks != null ? `${fmt0(result.tasks)} مهمة` : '—'}</td>
-                <td data-label="الإجراء"><button type="button" className="scc-row-action" onClick={() => row.legacy ? onOpenLegacy(row) : onOpen(row)} aria-label={`فتح ${row.name}`}><MoreHorizontal size={17}/></button></td>
+                <td data-label="الإجراء"><div className="scc-row-actions">
+                  {row.status === 'draft' || row.status === 'review' || row.status === 'ready' ? (
+                    <button type="button" className="scc-row-action" onClick={() => onEdit(row)} aria-label={`تعديل ${row.name}`}><Pencil size={15}/><span>تعديل</span></button>
+                  ) : (
+                    <button type="button" className="scc-row-action is-result" onClick={() => onOpenResult(row)} aria-label={`عرض نتيجة ${row.name}`}><BarChart3 size={15}/><span>النتيجة</span></button>
+                  )}
+                </div></td>
               </tr>
             );
           })}
@@ -350,8 +358,15 @@ export default function SmartCampaignCenter({ isActive = true }) {
   const [ivrCampaign, setIvrCampaign] = useState(null);
   const [hatifUsers, setHatifUsers] = useState([]);
   const [hatifUsersLoading, setHatifUsersLoading] = useState(false);
+  const [hatifUsersError, setHatifUsersError] = useState('');
   const [assignedHatifUserId, setAssignedHatifUserId] = useState('');
   const [audienceHandoff, setAudienceHandoff] = useState(null);
+  const [campaignFilter, setCampaignFilter] = useState('');
+  const [resultCampaign, setResultCampaign] = useState(null);
+  const handoffFromStore = audienceHandoff?.source === 'store_360'
+    || audienceHandoff?.returnTo?.startsWith('/customer-360');
+  const handoffOriginLabel = audienceHandoff?.originLabel || (handoffFromStore ? 'Customer 360' : 'Aging Operations');
+  const handoffSelectionLabel = audienceHandoff?.selectionLabel || (handoffFromStore ? 'العميل المحدد' : 'المحدد في التحصيل');
 
   useEffect(() => {
     if (!isActive) return;
@@ -421,9 +436,10 @@ export default function SmartCampaignCenter({ isActive = true }) {
     if (!isActive || !canWhatsApp) return undefined;
     let live = true;
     setHatifUsersLoading(true);
+    setHatifUsersError('');
     loadHatifUsers()
       .then(rows => { if (live) setHatifUsers(rows || []); })
-      .catch(() => { if (live) setHatifUsers([]); })
+      .catch(error => { if (live) { setHatifUsers([]); setHatifUsersError(error?.message || 'تعذّر قراءة موظفي هاتف'); } })
       .finally(() => { if (live) setHatifUsersLoading(false); });
     return () => { live = false; };
   }, [isActive, canWhatsApp]);
@@ -485,6 +501,15 @@ export default function SmartCampaignCenter({ isActive = true }) {
     return merged.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
   }, [campaigns, historical, impact]);
 
+  const visibleCampaignRows = useMemo(() => {
+    if (!campaignFilter) return campaignRows;
+    if (campaignFilter === 'draft') return campaignRows.filter(row => ['draft', 'review', 'ready'].includes(row.status));
+    if (campaignFilter === 'decision') return campaignRows.filter(row => row.status === 'needs_decision');
+    return campaignRows.filter(row => row.status === campaignFilter);
+  }, [campaignRows, campaignFilter]);
+
+  const toggleCampaignFilter = next => setCampaignFilter(current => current === next ? '' : next);
+
   const changeObjective = next => {
     setObjective(next); setDefinition(defaultAudienceDefinition(next)); setEditingId(null);
     setName(suggestedName(next)); setStep(1);
@@ -495,6 +520,7 @@ export default function SmartCampaignCenter({ isActive = true }) {
     document.querySelector('.scc-composer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
   const openCampaign = campaign => {
+    setResultCampaign(null);
     setEditingId(campaign.id); setObjective(campaign.objective);
     setDefinition({ ...defaultAudienceDefinition(campaign.objective), ...campaign.audienceDefinition });
     setName(campaign.name); setChannel(campaign.channel || 'whatsapp');
@@ -585,14 +611,23 @@ export default function SmartCampaignCenter({ isActive = true }) {
     if (universe?.sourceState?.status === 'stale' || universe?.sourceState?.status === 'empty') {
       toast(universe.sourceState.message, 'error'); return;
     }
+    if (!audienceSummary.ready.length) {
+      toast('لا يوجد جمهور جاهز بعد تطبيق فحوص الحماية', 'error'); return;
+    }
     if (channel === 'whatsapp' && !canWhatsApp) { toast('تحتاج صلاحية إطلاق حملة واتساب', 'error'); return; }
     if (channel === 'whatsapp' && !assignedHatifUser) { toast('اختر الموظف المسؤول عن ردود الحملة في هاتف', 'error'); return; }
     if (channel === 'ivr' && !canIvr) { toast('تحتاج صلاحية إطلاق IVR', 'error'); return; }
     try {
+      if (channel === 'whatsapp') {
+        setWaCampaign(campaignPayload('ready'));
+        return;
+      }
+      if (channel === 'ivr') {
+        setIvrCampaign(campaignPayload('ready'));
+        return;
+      }
       const saved = await persistCampaign('ready', true);
-      if (channel === 'whatsapp') setWaCampaign(saved);
-      else if (channel === 'ivr') setIvrCampaign(saved);
-      else if (channel === 'employee_task') {
+      if (channel === 'employee_task') {
         const count = await createSmartCampaignTasks(saved.id, audienceSummary.ready, user?.id || null);
         await updateSmartCampaignOutcome(saved.id, {
           status: 'running', channel: 'employee_task', launchedAt: new Date().toISOString(), resultSummary: { tasks: count },
@@ -603,6 +638,8 @@ export default function SmartCampaignCenter({ isActive = true }) {
       toast(error.code === '23505' ? 'اسم الحملة مستخدم؛ استخدم اسماً فريداً' : error.message, 'error');
     }
   };
+
+  const prepareChannelExecution = useCallback(async () => persistCampaign('ready', true), [editingId, name, objective, definition, universe, channel, assignedHatifUser, audienceSummary, exclusionReasons, financialAmount, canManage, protectionsError, protections, audience, user?.id, refreshCampaigns]);
 
   const handleChannelDone = async (campaign, result, selectedChannel) => {
     try {
@@ -629,11 +666,17 @@ export default function SmartCampaignCenter({ isActive = true }) {
         </div>
       </header>
 
+      {canWhatsApp && !hatifUsersLoading && !hatifUsers.length ? <div className="scc-integration-alert" role="alert">
+        <AlertTriangle size={17}/>
+        <div><strong>إطلاق WhatsApp متوقف حتى يكتمل ربط موظفي هاتف</strong><span>{hatifUsersError || 'لم يرجع التكامل أي موظف يمكن إسناد ردود الحملة إليه.'}</span></div>
+        <button type="button" onClick={() => navigate('/settings/hatif')}>مراجعة الربط</button>
+      </div> : null}
+
       {audienceHandoff && (
         <div className="scc-audience-handoff">
-          <div><strong>جمهور من Aging Operations</strong><span>Snapshot: {new Date(audienceHandoff.snapshotAt).toLocaleString('ar-SA')} · لا توجد هواتف أو أسماء في الرابط</span></div>
+          <div><strong>جمهور من {handoffOriginLabel}</strong><span>لقطة: {new Date(audienceHandoff.snapshotAt).toLocaleString('ar-SA')} · بيانات الاتصال تُعاد مطابقتها قبل المراجعة</span></div>
           <div className={(audienceHandoff.eligibleCount ?? audienceHandoff.count) === audience.length ? 'is-same' : 'is-changed'}>
-            <span>المحدد في التحصيل <b>{fmt0(audienceHandoff.selectedCount ?? audienceHandoff.count)}</b></span>
+            <span>{handoffSelectionLabel} <b>{fmt0(audienceHandoff.selectedCount ?? audienceHandoff.count)}</b></span>
             <span>غير مؤهل قبل القناة <b>{fmt0(audienceHandoff.excludedBeforeChannelCount || 0)}</b></span>
             <span>دخل فحص القناة <b>{fmt0(audienceHandoff.eligibleCount ?? audienceHandoff.count)}</b></span>
             <span>إعادة الاحتساب الآن <b>{fmt0(audience.length)}</b></span>
@@ -645,7 +688,7 @@ export default function SmartCampaignCenter({ isActive = true }) {
               استبعادات ما قبل القناة: {audienceHandoff.eligibilityExclusions.map(item => `${item.reason} ${fmt0(item.count)}`).join(' · ')}
             </div>
           )}
-          <button type="button" onClick={() => navigate(audienceHandoff.returnTo || '/customer-money')}>العودة إلى Aging</button>
+          <button type="button" onClick={() => navigate(audienceHandoff.returnTo || '/customer-money')}>العودة إلى {handoffOriginLabel}</button>
         </div>
       )}
 
@@ -730,30 +773,30 @@ export default function SmartCampaignCenter({ isActive = true }) {
           <div className="scc-composer__footer">
             <Btn variant="ghost" icon={<Save size={14}/>} onClick={saveDraft} disabled={!canManage || saving || universeLoading}>حفظ كمسودة</Btn>
             <Btn variant="primary" icon={step < 5 ? <ChevronLeft size={15}/> : <FileDown size={15}/>} onClick={() => step < 5 ? goToStep(step + 1) : launch()}
-              disabled={!canManage || saving || universeLoading || !audience.length || !!protectionsError || !protections}>
+              disabled={!canManage || saving || universeLoading || !audienceSummary.ready.length || !!protectionsError || !protections}>
               {step < 3 ? 'متابعة إلى الحماية' : step < 4 ? 'متابعة إلى القناة' : step < 5 ? 'مراجعة الحملة' : channel === 'employee_task' ? 'إنشاء مهام الفريق' : channel === 'export' ? 'تصدير الجمهور' : 'فتح مراجعة القناة'}
             </Btn>
           </div>
         </aside>
 
-        <SummaryStrip campaigns={campaignRows}/>
+        <SummaryStrip campaigns={campaignRows} activeFilter={campaignFilter} onFilter={toggleCampaignFilter}/>
 
         <section className="scc-campaign-list">
           <div className="scc-section-head">
-            <div><h2>قائمة الحملات</h2><span>{fmt0(campaignRows.length)} حملة موحدة وسجل تاريخي</span></div>
+            <div><h2>قائمة الحملات</h2><span>{campaignFilter ? `${fmt0(visibleCampaignRows.length)} من ${fmt0(campaignRows.length)} حملة` : `${fmt0(campaignRows.length)} حملة موحدة وسجل تاريخي`}</span></div>
             <div className="scc-section-actions">
               <Btn size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refreshCampaigns} disabled={loadingCampaigns}>تحديث</Btn>
               <Btn size="sm" variant="ghost" icon={<ExternalLink size={14}/>} onClick={() => navigate('/whatsapp-settings?tab=campaigns')}>سجل القنوات</Btn>
             </div>
           </div>
-          <CampaignList rows={campaignRows} loading={loadingCampaigns} onOpen={openCampaign} onOpenLegacy={() => navigate('/whatsapp-settings?tab=campaigns')}/>
+          <CampaignList rows={visibleCampaignRows} loading={loadingCampaigns} onOpenResult={setResultCampaign} onEdit={openCampaign}/>
         </section>
       </div>
 
       <WhatsAppSendModal
         open={!!waCampaign}
         onClose={() => setWaCampaign(null)}
-        recipients={waCampaign ? audience : []}
+        recipients={waCampaign ? audienceSummary.ready : []}
         bucketLabel={waCampaign?.name || ''}
         lockedCampaignName={waCampaign?.name || null}
         assignedHatifUser={waCampaign ? {
@@ -761,15 +804,25 @@ export default function SmartCampaignCenter({ isActive = true }) {
           name: waCampaign.assignedHatifUserName,
         } : null}
         salesAudience={objective === 'sales' || objective === 'reactivation'}
-        onSent={result => handleChannelDone(waCampaign, result, 'whatsapp')}
+        onBeforeExecute={prepareChannelExecution}
+        onSent={(result, savedCampaign) => handleChannelDone(savedCampaign || waCampaign, result, 'whatsapp')}
       />
       <IvrCampaignModal
         open={!!ivrCampaign}
         onClose={() => setIvrCampaign(null)}
-        recipients={ivrCampaign ? audience.map(row => ({ phone: row.to, name: row.name, fields: row.fields })) : []}
+        recipients={ivrCampaign ? audienceSummary.ready.map(row => ({ phone: row.to, name: row.name, fields: row.fields })) : []}
         bucketLabel={ivrCampaign?.name || ''}
         lockedCampaignName={ivrCampaign?.name || null}
-        onDone={result => handleChannelDone(ivrCampaign, result, 'ivr')}
+        preflightSummary={{ source: audienceSummary.source, excluded: audienceSummary.excluded, reasons: exclusionReasons }}
+        onBeforeExecute={prepareChannelExecution}
+        onDone={(result, savedCampaign) => handleChannelDone(savedCampaign || ivrCampaign, result, 'ivr')}
+      />
+      <CampaignResultModal
+        campaign={resultCampaign}
+        onClose={() => setResultCampaign(null)}
+        onEdit={() => openCampaign(resultCampaign)}
+        onShowMessages={() => navigate(`/whatsapp-settings?tab=campaigns&panel=messages&campaign=${encodeURIComponent(resultCampaign?.name || '')}`)}
+        onShowIvrLog={() => navigate('/whatsapp-settings?tab=ivr')}
       />
     </div>
   );
@@ -781,7 +834,7 @@ function AudienceNumber({ label, value, tone }) {
 
 function ChannelButton({ id, icon: Icon, selected, disabled, onClick }) {
   return (
-    <button type="button" className={selected ? 'is-selected' : ''} disabled={disabled} onClick={() => onClick(id)}>
+    <button type="button" className={selected ? 'is-selected' : ''} aria-pressed={selected} disabled={disabled} onClick={() => onClick(id)}>
       <Icon size={16}/><span>{SMART_CAMPAIGN_CHANNELS[id].label}</span>
     </button>
   );

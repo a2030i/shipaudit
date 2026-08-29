@@ -936,8 +936,6 @@ export function deriveAccountingCycleStages({
   const completedCarriers = carrierChecklist.filter(item => COMPLETED_COLLECTION_STATUSES.has(item.status));
   const pendingCarriers = carrierChecklist.filter(item => item.status === 'pending');
   const setupCarriers = carrierChecklist.filter(item => ['unsupported', 'unclassified'].includes(item.status));
-  const dueCollectionMissing = pendingCarriers.reduce((sum, item) => sum + Number(item.dueMissingCount ?? 1), 0);
-  const upcomingCollectionMissing = pendingCarriers.reduce((sum, item) => sum + Number(item.upcomingMissingCount ?? 0), 0);
   const carrierNameById = new Map(carrierChecklist.map(item => [String(item.carrierId), item.carrierName]));
   const carrierCollectionHistory = allCarrierCollectionEvents.map(event => ({
     ...event,
@@ -947,27 +945,10 @@ export function deriveAccountingCycleStages({
     ...codIn.last,
     carrier_name: carrierNameById.get(String(codIn.last.carrier_id || '')) || codIn.last.carrier_name || null,
   } : null;
-  let carrierCollectionState;
-  if (checklistAvailable && completedCarriers.length === carrierChecklist.length) {
-    carrierCollectionState = statusMeta('complete', 'لا يوجد تحصيل COD تشغيلي جديد؛ الأرصدة التاريخية تُصفّى من المالية');
-  } else if (checklistAvailable && setupCarriers.length) {
-    carrierCollectionState = statusMeta('attention', `${setupCarriers.length} ناقل يحتاج ضبط طريقة التحصيل قبل الإقفال`);
-  } else if (checklistAvailable && pendingCarriers.length) {
-    carrierCollectionState = statusMeta(
-      dueCollectionMissing ? (completedCarriers.length ? 'attention' : 'ready') : 'pending',
-      dueCollectionMissing
-        ? `متأخر ${dueCollectionMissing} دفعة · ومجدول لاحقًا ${upcomingCollectionMissing}`
-        : `بقي ${upcomingCollectionMissing} دفعة تحصيل مجدولة لاحقًا`,
-    );
-  } else {
-    // Historical fallback for old audits/events that predate carrier metadata.
-    carrierCollectionState = carrierCollectionCount
-      ? statusMeta('complete', `${carrierCollectionCount} عملية مستلمة`)
-      : statusMeta('pending', 'لم تُرفع تحصيلات شركات الشحن');
-  }
-  if (eventFor('carrier_collections') && eventFor('carrier_collections').status !== 'success') {
-    carrierCollectionState = statusMeta('attention', 'آخر محاولة لرفع تحصيل شركة شحن لم تكتمل بنجاح');
-  }
+  // COD is a historical wind-down ledger, not a monthly operating
+  // prerequisite. Old files remain visible in history, including failed
+  // attempts, but they must never reopen or block the current cycle.
+  const carrierCollectionState = statusMeta('complete', 'لا يوجد تحصيل COD تشغيلي جديد؛ الأرصدة التاريخية تُصفّى من المالية');
   stages.push({
     ...ACCOUNTING_CYCLE_STAGES[4],
     ...carrierCollectionState,
@@ -1009,8 +990,9 @@ export function deriveAccountingCycleStages({
       : (codOut?.last ? [codOut.last] : []),
   });
 
+  const blockingSourceErrors = sourceErrors.filter(error => error && error.stage !== 'carrier_collections');
   const stageErrors = new Map();
-  for (const error of sourceErrors.filter(Boolean)) {
+  for (const error of blockingSourceErrors) {
     const current = stageErrors.get(error.stage) || [];
     current.push(error);
     stageErrors.set(error.stage, current);
@@ -1023,15 +1005,15 @@ export function deriveAccountingCycleStages({
     stage.detail = { ...(stage.detail || {}), sourceErrors: errors };
   }
 
-  const prerequisiteComplete = sourceErrors.length === 0
+  const prerequisiteComplete = blockingSourceErrors.length === 0
     && stages.slice(0, 6).every(stage => stage.status === 'complete');
   stages.push({
     ...ACCOUNTING_CYCLE_STAGES[6],
-    ...(cycle?.status === 'closed' && sourceErrors.length === 0
+    ...(cycle?.status === 'closed' && blockingSourceErrors.length === 0
       ? statusMeta('complete', 'الفترة مقفلة')
       : prerequisiteComplete
         ? statusMeta('ready', 'كل مراحل التشغيل مكتملة وجاهزة للإقفال')
-        : statusMeta('blocked', sourceErrors.length
+        : statusMeta('blocked', blockingSourceErrors.length
           ? 'تعذر التحقق من كل المصادر؛ أعد المحاولة قبل الإقفال'
           : 'أكمل المراحل السابقة قبل الإقفال')),
     count: prerequisiteComplete ? 1 : 0,
@@ -1045,7 +1027,7 @@ export function deriveAccountingCycleStages({
 
   const completed = stages.filter(stage => stage.status === 'complete').length;
   const next = stages.find(stage => !['complete', 'blocked'].includes(stage.status)) || stages.find(stage => stage.status !== 'complete') || null;
-  return { period, stages, completed, total: stages.length, next, prerequisiteComplete, cycle, sourceErrors };
+  return { period, stages, completed, total: stages.length, next, prerequisiteComplete, cycle, sourceErrors: blockingSourceErrors };
 }
 
 async function loadCodDirection(direction, start, end) {
@@ -1182,15 +1164,12 @@ export async function loadAccountingCycle(period) {
     sourceError('lamha_sources', 'store_balance_snapshots', 'كشف حساب لمحة', balanceRes.error),
     sourceError('lamha_sources', 'merchants', 'دليل المتاجر', merchantRes.error),
     sourceError('carrier_audits', 'carriers', 'تصنيفات وعقود شركات الشحن', carriersRes.error),
-    sourceError('carrier_collections', 'carriers', 'إعدادات تحصيل شركات الشحن', carriersRes.error),
     sourceError('carrier_audits', 'carrier_task_schedules', 'جداول استلام فواتير الناقلين', schedulesRes.error),
-    sourceError('carrier_collections', 'carrier_task_schedules', 'جداول تحصيلات الناقلين', schedulesRes.error),
-    sourceError('carrier_collections', 'cod_settlement_in', 'تحصيلات شركات الشحن', codIn.error),
     sourceError('lamha_collections', 'cod_settlement_out', 'تحصيل لمحة', codOut.error),
     sourceError('period_close', 'accounting_cycles', 'حالة إقفال الشهر', cycleRes.error),
   ];
   if (eventsRes.error) {
-    for (const stage of ['weight_export', 'lamha_shipments', 'lamha_sources', 'carrier_collections', 'lamha_collections', 'period_close']) {
+    for (const stage of ['weight_export', 'lamha_shipments', 'lamha_sources', 'lamha_collections', 'period_close']) {
       sourceErrors.push(sourceError(stage, 'accounting_cycle_events', 'سجل تشغيل الدورة', eventsRes.error));
     }
   }

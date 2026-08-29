@@ -232,7 +232,10 @@ export default function CustomerWatch({ isActive = true }) {
     const requested = new URLSearchParams(location.search).get('view');
     return CUSTOMER_DIRECTORY_VIEWS.some(([id]) => id === requested) ? requested : 'overview';
   });
-  const [listGroup, setListGroup] = useState('finance');
+  const [listGroup, setListGroup] = useState(() => {
+    const requested = new URLSearchParams(location.search).get('listGroup');
+    return ['finance', 'activity', 'growth'].includes(requested) ? requested : 'finance';
+  });
   const [openCustomer, setOpenCustomer] = useState(null);
   const [openAnomaly, setOpenAnomaly] = useState(null);
   const autoOpenedSearch = useRef('');
@@ -291,6 +294,8 @@ export default function CustomerWatch({ isActive = true }) {
     }
     const requested = params.get('view');
     setView(CUSTOMER_DIRECTORY_VIEWS.some(([id]) => id === requested) ? requested : 'overview');
+    const requestedGroup = params.get('listGroup');
+    if (['finance', 'activity', 'growth'].includes(requestedGroup)) setListGroup(requestedGroup);
   }, [location.search]);
 
   useEffect(() => {
@@ -346,6 +351,18 @@ export default function CustomerWatch({ isActive = true }) {
   };
 
   const t = data?.totals;
+  const recentShipmentDays = Number(routeParams.get('lastShipmentDays')) === 5 ? 5 : null;
+  const recentShipmentRows = useMemo(() => {
+    if (!recentShipmentDays || !data?.merchants?.length) return [];
+    const snapshotAt = Date.parse(data.snapshot?.merchants?.uploadedAt || data.snapshot?.merchants?.uploaded_at || '') || Date.now();
+    const lowerBound = snapshotAt - (recentShipmentDays * 86_400_000);
+    return data.merchants
+      .filter((merchant) => {
+        const lastShipmentAt = Date.parse(merchant.last_shipment_at || '');
+        return Number.isFinite(lastShipmentAt) && lastShipmentAt >= lowerBound && lastShipmentAt <= snapshotAt;
+      })
+      .sort((a, b) => Date.parse(b.last_shipment_at || '') - Date.parse(a.last_shipment_at || ''));
+  }, [data?.merchants, data?.snapshot?.merchants, recentShipmentDays]);
 
   // Cross-customer + merchant search — searches name, store_id, phone.
   // Returns up to 12 results, customer-first, then merchants without
@@ -489,7 +506,7 @@ export default function CustomerWatch({ isActive = true }) {
         title="دليل العملاء والمتاجر"
         subtitle="ابحث عن العميل أو المتجر، ثم افتح ملف العميل 360 الموحد"
         meta={data?.snapshot?.receivables
-          ? `بيانات الفواتير: snapshot ${data.snapshot.receivables.id}${data.snapshot.merchants ? ` · المتاجر: ${data.snapshot.merchants.id}` : ''}`
+          ? `المصادر: زوهو${data.snapshot.merchants ? ' + دليل متاجر لمحة' : ''}`
           : null}
         actions={
           <>
@@ -732,8 +749,8 @@ export default function CustomerWatch({ isActive = true }) {
                 <QuickStat icon={<UserPlus/>}     label="نشط حالياً"           value={fmtCount(t.activeCount)} hint={`${t.inactiveCount} غير نشط`} color="var(--green)"/>
                 <QuickStat icon={<TrendingUp/>}   label="جدد آخر 30 يوم"       value={fmtCount(t.newLast30Days)} hint={`${t.newThisMonth} هذا الشهر`} color="var(--brand)"/>
                 <QuickStat icon={<ZapOff/>}       label="لم يبدأ الشحن"        value={fmtCount(t.neverShipped)} hint="سجّل ولم ينفّذ أول شحنة" color="#EF4444"/>
-                <QuickStat icon={<Wallet/>}       label="أرصدة محافظ موجبة"    value={`${fmtCompact(t.walletPositiveTotal)} ر.س`} color="var(--green)"/>
-                <QuickStat icon={<Wallet/>}       label="أرصدة محافظ سالبة"    value={`${fmtCompact(Math.abs(t.walletNegativeTotal))} ر.س`} color="var(--red)"/>
+                <QuickStat icon={<Wallet/>} label="أرصدة محافظ موجبة" value={`${fmtCompact(t.walletPositiveTotal)} ر.س`} hint="فتح المتاجر ذات المحفظة الموجبة والفواتير المفتوحة" color="var(--green)" onClick={() => navigate('/customer-money?decision=deduct&returnTo=%2Fcustomer-360')}/>
+                <QuickStat icon={<Wallet/>} label="أرصدة محافظ سالبة" value={`${fmtCompact(Math.abs(t.walletNegativeTotal))} ر.س`} hint="فتح قائمة تشغيلية ومراجعة الإيقاف" color="var(--red)" onClick={() => navigate('/customer-money?decision=negative&returnTo=%2Fcustomer-360')}/>
               </div>
             </>
           )}
@@ -860,20 +877,20 @@ export default function CustomerWatch({ isActive = true }) {
             <TopList
               icon={<TrendingUp size={14}/>}
               accent="var(--green)"
-              title="أنشط المتاجر شحناً"
-              sub="الأكثر استخداماً للمنصّة"
-              rows={data.top.byShipments}
-              valueLabel="شحنة"
+              title={recentShipmentDays ? `شحنوا خلال آخر ${recentShipmentDays} أيام` : 'أنشط المتاجر شحناً'}
+              sub={recentShipmentDays ? `${recentShipmentRows.length.toLocaleString('en-US')} نتيجة من لقطة Lamha API الحالية` : 'الأكثر استخداماً للمنصّة'}
+              rows={recentShipmentDays ? recentShipmentRows : data.top.byShipments}
+              valueLabel={recentShipmentDays ? 'آخر شحنة' : 'شحنة'}
               renderRow={(m) => ({
                 name: m.store_name,
                 sub: m.phone ? <span style={{ direction: 'ltr' }}>{m.phone}</span> : m.store_id,
-                value: fmtCount(m.shipment_count),
+                value: recentShipmentDays ? fmtDate(m.last_shipment_at) : fmtCount(m.shipment_count),
                 meta: m.last_shipment_at ? `آخر شحنة ${daysAgo(m.last_shipment_at)}ي` : null,
               })}
               empty="لا توجد بيانات شحن"
               onRowClick={(m) => openCustomer360({ kind: 'merchant', name: m.store_name, customer: null,
                 merchant: { storeId: m.store_id, storeName: m.store_name, phone: m.phone, billingType: m.billing_type, platformStatus: m.status, shipmentCount: m.shipment_count, lastShipmentAt: m.last_shipment_at, walletBalance: Number(m.wallet_balance) || 0, createdAt: m.created_at_platform, lastTopupAt: m.last_topup_at, integrationType: m.integration_type } })}
-              onExport={() => handleExport('أنشط_المتاجر', data.top.byShipments, (kind, m) => kind === 'headers'
+              onExport={() => handleExport(recentShipmentDays ? `نشاط_آخر_${recentShipmentDays}_أيام` : 'أنشط_المتاجر', recentShipmentDays ? recentShipmentRows : data.top.byShipments, (kind, m) => kind === 'headers'
                 ? ['اسم المتجر', 'رقم المتجر', 'الهاتف', 'عدد الشحنات', 'آخر شحنة', 'حالة المتجر', 'نوع الفوترة']
                 : [m.store_name, m.store_id, m.phone || '', m.shipment_count, m.last_shipment_at || '', m.status || '', m.billing_type || ''])}
             />
@@ -1657,13 +1674,19 @@ function MiniStat({ label, value, suffix, hint, color }) {
 }
 
 // ── QuickStat ─────────────────────────────────────────────────────
-function QuickStat({ icon, label, value, hint, color }) {
+function QuickStat({ icon, label, value, hint, color, onClick }) {
+  const Component = onClick ? 'button' : 'div';
   return (
-    <div style={{
+    <Component type={onClick ? 'button' : undefined} onClick={onClick} style={{
       background: 'var(--card)',
       borderRadius: 'var(--r-lg)',
       padding: '16px 18px',
       boxShadow: 'var(--shadow-sm)',
+      border: 'none',
+      width: '100%',
+      textAlign: 'start',
+      cursor: onClick ? 'pointer' : 'default',
+      font: 'inherit',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <span style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 500 }}>{label}</span>
@@ -1678,7 +1701,7 @@ function QuickStat({ icon, label, value, hint, color }) {
         fontFamily: 'var(--font-mono)', letterSpacing: -0.4, lineHeight: 1,
       }}>{value}</div>
       {hint && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>{hint}</div>}
-    </div>
+    </Component>
   );
 }
 

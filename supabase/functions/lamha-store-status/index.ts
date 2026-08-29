@@ -1,13 +1,18 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { waitForLamhaApiSlot } from '../_shared/lamhaRateLimit.ts';
+import {
+  lamhaProfileMergeRow,
+  lamhaStoreProfileRecord,
+} from '../_shared/lamhaStoreProfile.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-const LAMHA_BASE = (Deno.env.get('LAMHA_EMPLOYEE_API_BASE') || 'https://lamha-dev.phphubx.com/api/v1').replace(/\/$/, '');
+const LAMHA_BASE = 'https://app2.lamha.sa/api/v1';
 const MAX_BATCH_SIZE = 10;
 const MAX_RESTORE_IDS = 5000;
 const STATUS_SCAN_ACTION = 'فحص حالات حسابات لمحة';
 const STATUS_CACHE_TTL_MS = 15 * 60 * 1000;
+const STATUS_CONTRACT_VERSION = 2;
 const FINANCIAL_GUARD_KEY = 'lamha_financial_guard';
 const ALLOWED_ORIGINS = new Set([
   'https://shipaudit-five.vercel.app',
@@ -19,6 +24,8 @@ const ALLOWED_ORIGINS = new Set([
   'http://127.0.0.1:5173',
 ]);
 const ACTIONS = new Set(['get', 'activate', 'deactivate', 'batch-get', 'batch-activate', 'batch-deactivate', 'restore-scan']);
+const TRANSIENT_HTTP_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const READ_RETRY_LIMIT = 1;
 
 function cors(req: Request) {
   const origin = req.headers.get('origin') || '';
@@ -74,13 +81,29 @@ function normalizeStatusText(value: unknown) {
     : '';
 }
 
-function parseLamhaVisualActive(...values: unknown[]): boolean | null {
+function parseLamhaAccountEnabled(...values: unknown[]): boolean | null {
   for (const value of values) {
     const normalized = normalizeStatusText(value);
-    if (['active', 'نشط'].includes(normalized)) return true;
+    if (['active', 'idle', 'stopped', 'نشط', 'خامل', 'متوقف', 'موقوف'].includes(normalized)) return true;
     if (['inactive', 'غير نشط'].includes(normalized)) return false;
   }
   return null;
+}
+
+function classifyLamhaReadFailure(http: number | null, responseStoreId: number | null, expectedStoreId: number) {
+  if (http === 401 || http === 403) {
+    return { error: 'lamha_auth_failed', failureClass: 'auth', retryable: false };
+  }
+  if (http === 404) {
+    return { error: 'lamha_store_not_found', failureClass: 'not_found', retryable: false };
+  }
+  if (http != null && TRANSIENT_HTTP_STATUSES.has(http)) {
+    return { error: http === 429 ? 'lamha_rate_limited' : 'lamha_upstream_unavailable', failureClass: 'transient', retryable: true };
+  }
+  if (http != null && http >= 200 && http < 300 && responseStoreId !== expectedStoreId) {
+    return { error: 'lamha_identifier_mismatch', failureClass: 'identifier_mismatch', retryable: false };
+  }
+  return { error: 'lamha_store_read_failed', failureClass: 'upstream_rejected', retryable: false };
 }
 
 function nestedRecords(value: unknown, maxDepth = 5) {
@@ -112,11 +135,10 @@ const recordStoreId = (record: Record<string, unknown>) =>
 const hasOperationalField = (record: Record<string, unknown>) =>
   ['is_active', 'isActive', 'account_active', 'accountActive'].some(key => Object.hasOwn(record, key));
 
-// Lamha's employee API does not expose a separate operational flag. Shipment
-// creation can be read with certainty only when the direct Lamha status is
-// exactly active or inactive. Idle/stopped remain informational on reads, but
-// an explicit admin activate/deactivate command may still transition them to a
-// verifiable active/inactive state.
+// Lamha's own admin UI defines an enabled store as status !== "inactive".
+// Therefore active/idle/stopped can create shipments; idle/stopped describe
+// activity or lifecycle only. ownerActivated belongs to owner credentials and
+// must never be used as the store account enablement signal.
 export function storeSummary(payload: unknown, expectedStoreId: number | null = null) {
   const records = nestedRecords(payload);
   const identity = records.find(record => expectedStoreId != null && recordStoreId(record) === expectedStoreId)
@@ -140,8 +162,8 @@ export function storeSummary(payload: unknown, expectedStoreId: number | null = 
   const explicitOperational = parseOperationalActive(
     candidate.is_active ?? candidate.isActive ?? candidate.account_active ?? candidate.accountActive,
   );
-  const visualActive = parseLamhaVisualActive(visualStatus, visualStatusLabel);
-  const canCreateShipments = explicitOperational ?? visualActive;
+  const statusAccountEnabled = parseLamhaAccountEnabled(visualStatus, visualStatusLabel);
+  const canCreateShipments = explicitOperational ?? statusAccountEnabled;
   return {
     id: recordStoreId(identity),
     name: String(candidate.name ?? candidate.store_name ?? candidate.title ?? '') || null,
@@ -150,7 +172,9 @@ export function storeSummary(payload: unknown, expectedStoreId: number | null = 
     visualStatusLabel,
     isActive: canCreateShipments,
     canCreateShipments,
-    shipmentPermissionSource: explicitOperational != null ? 'explicit_field' : visualActive != null ? 'lamha_status' : null,
+    shipmentPermissionSource: explicitOperational != null
+      ? 'explicit_field'
+      : statusAccountEnabled != null ? 'lamha_status_contract' : null,
   };
 }
 
@@ -160,23 +184,74 @@ async function lamhaRequest(
   storeId: number,
   action: string | null = null,
 ) {
-  await waitForLamhaApiSlot(admin, employeeToken, `lamha-store-status:${action || 'get'}`);
-  const response = await fetch(`${LAMHA_BASE}/stores/${storeId}${action ? '/status' : ''}`, {
-    method: action ? 'PATCH' : 'GET',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      'X-Requested-With': 'XMLHttpRequest',
-      Authorization: `Bearer ${employeeToken}`,
-    },
-    body: action ? JSON.stringify({ action }) : undefined,
-    signal: AbortSignal.timeout(15_000),
-  });
-  const payload = await response.json().catch(() => ({}));
-  return { ok: response.ok, http: response.status, store: storeSummary(payload, storeId) };
+  const maxAttempts = action ? 1 : READ_RETRY_LIMIT + 1;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await waitForLamhaApiSlot(admin, employeeToken, `lamha-store-status:${action || 'get'}`);
+      const startedAt = performance.now();
+      const response = await fetch(`${LAMHA_BASE}/stores/${storeId}${action ? '/status' : ''}`, {
+        method: action ? 'PATCH' : 'GET',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          Authorization: `Bearer ${employeeToken}`,
+        },
+        body: action ? JSON.stringify({ action }) : undefined,
+        signal: AbortSignal.timeout(15_000),
+      });
+      const payload = await response.json().catch(() => ({}));
+      const result = {
+        ok: response.ok,
+        http: response.status,
+        store: storeSummary(payload, storeId),
+        profileRecord: action ? null : lamhaStoreProfileRecord(payload, storeId),
+        latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
+        attempts: attempt,
+      };
+      if (action || response.ok || !TRANSIENT_HTTP_STATUSES.has(response.status) || attempt >= maxAttempts) return result;
+      const retryAfterSeconds = Number(response.headers.get('retry-after'));
+      const retryAfterMs = Number.isFinite(retryAfterSeconds)
+        ? Math.min(Math.max(retryAfterSeconds * 1000, 200), 1_500)
+        : 400;
+      await new Promise(resolve => setTimeout(resolve, retryAfterMs));
+    } catch (error) {
+      if (action || attempt >= maxAttempts) {
+        const timeout = error instanceof DOMException && error.name === 'TimeoutError';
+        return {
+          ok: false,
+          http: null,
+          store: storeSummary({}, storeId),
+          attempts: attempt,
+          transportError: timeout ? 'timeout' : 'network',
+        };
+      }
+      await new Promise(resolve => setTimeout(resolve, 400));
+    }
+  }
+  return { ok: false, http: null, store: storeSummary({}, storeId), attempts: maxAttempts, transportError: 'network' };
 }
 
 type AuthContext = NonNullable<Awaited<ReturnType<typeof requireAdmin>>>;
+
+async function persistReadProfile(
+  admin: AuthContext['admin'],
+  storeId: number,
+  read: Awaited<ReturnType<typeof lamhaRequest>>,
+) {
+  if (!read.ok || !('profileRecord' in read) || !read.profileRecord) return;
+  const checkedAt = new Date().toISOString();
+  const { error } = await admin.rpc('merge_lamha_store_profiles_from_api', {
+    p_rows: [lamhaProfileMergeRow({
+      storeId,
+      record: read.profileRecord,
+      detailCheckedAt: checkedAt,
+      httpStatus: read.http,
+      latencyMs: 'latencyMs' in read ? read.latencyMs : null,
+    })],
+  });
+  if (error) console.error('[lamha-store-status] profile registry:', error.message || error);
+}
 
 async function processStore(
   req: Request,
@@ -188,8 +263,23 @@ async function processStore(
 ) {
   const before = await lamhaRequest(auth.admin, employeeToken, storeId);
   if (!before.ok || before.store.id !== storeId) {
-    return { ok: false, storeId, error: 'lamha_store_read_failed', http: before.http };
+    const failure = before.transportError
+      ? {
+          error: before.transportError === 'timeout' ? 'lamha_timeout' : 'lamha_network_failed',
+          failureClass: 'transient',
+          retryable: true,
+        }
+      : classifyLamhaReadFailure(before.http, before.store.id, storeId);
+    return {
+      ok: false,
+      storeId,
+      ...failure,
+      http: before.http,
+      responseStoreId: before.store.id,
+      attempts: before.attempts,
+    };
   }
+  await persistReadProfile(auth.admin, storeId, before);
   if (action === 'get') {
     return { ok: true, changed: false, storeId, store: before.store };
   }
@@ -243,10 +333,16 @@ async function processStore(
 function cachedResult(result: Record<string, any>, checkedAt: string) {
   const store = result?.store && typeof result.store === 'object' ? result.store : {};
   return {
+    statusContractVersion: STATUS_CONTRACT_VERSION,
     ok: result?.ok === true,
     changed: result?.changed === true,
     storeId: Number(result?.storeId) || null,
     error: result?.ok === true ? null : String(result?.error || 'lamha_store_read_failed'),
+    failureClass: result?.ok === true ? null : String(result?.failureClass || 'unknown'),
+    retryable: result?.ok === true ? false : result?.retryable === true,
+    http: Number.isInteger(result?.http) ? result.http : null,
+    responseStoreId: Number(result?.responseStoreId) || null,
+    attempts: Math.max(1, Number(result?.attempts) || 1),
     checkedAt,
     store: result?.ok === true ? {
       id: Number(store.id) || Number(result?.storeId) || null,
@@ -311,6 +407,7 @@ async function restoreStatusScan(auth: AuthContext, requestedStoreIds: number[])
     const detail = row.detail && typeof row.detail === 'object' ? row.detail as Record<string, any> : {};
     for (const raw of Array.isArray(detail.results) ? detail.results : []) {
       const storeId = Number(raw?.storeId);
+      if (Number(raw?.statusContractVersion) !== STATUS_CONTRACT_VERSION) continue;
       if (!requested.has(storeId) || latestResults.has(storeId)) continue;
       latestResults.set(storeId, {
         ...raw,

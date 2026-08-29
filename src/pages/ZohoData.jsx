@@ -187,6 +187,8 @@ export default function ZohoData({ isActive = true }) {
   const requestedSectionRaw = new URLSearchParams(location.search).get('tab');
   const requestedSection = WORKSPACE_SECTION_ALIASES[requestedSectionRaw] || requestedSectionRaw;
   const requestedType = new URLSearchParams(location.search).get('type');
+  const requestedFocusRaw = new URLSearchParams(location.search).get('focus');
+  const requestedFocus = ['draft', 'zatca'].includes(requestedFocusRaw) ? requestedFocusRaw : '';
   const initialSection = WORKSPACE_SECTIONS.some(item => item.id === requestedSection)
     ? requestedSection
     : 'overview';
@@ -275,15 +277,22 @@ export default function ZohoData({ isActive = true }) {
   const [status, setStatus] = useState('');       // فلتر الحالة
   const [amtMin, setAmtMin] = useState('');        // نطاق المبلغ
   const [amtMax, setAmtMax] = useState('');
+  const [invoiceFocus, setInvoiceFocus] = useState(requestedFocus);
   const [sort, setSort] = useState({ col: 'date', dir: 'desc' });
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const requestedType = params.get('type');
     const incomingQ = params.get('q');
+    const incomingFocus = params.get('focus');
     if (requestedType && ZOHO_MIRRORS[requestedType]) {
       setType(requestedType);
       setSection(sectionForType(requestedType));
+    }
+    setInvoiceFocus(['draft', 'zatca'].includes(incomingFocus) ? incomingFocus : '');
+    if (incomingFocus === 'draft' || incomingFocus === 'zatca') {
+      setPeriod('');
+      setPeriodTo('');
     }
     if (incomingQ) {
       setQ(incomingQ);
@@ -296,6 +305,7 @@ export default function ZohoData({ isActive = true }) {
   useEffect(() => {
     setStatus(''); setAmtMin(''); setAmtMax(''); setSort({ col: 'date', dir: 'desc' });
     setSelectedInvoices(new Set());
+    if (type !== 'invoices') setInvoiceFocus('');
   }, [type]);
 
   const load = useCallback(async (t, pFrom, pTo) => {
@@ -436,6 +446,12 @@ export default function ZohoData({ isActive = true }) {
     const s = q.trim().toLowerCase();
     if (s) list = list.filter(r => Object.values(r).some(v => String(v ?? '').toLowerCase().includes(s)));
     if (status) list = list.filter(r => r.status === status);
+    if (type === 'invoices' && invoiceFocus === 'draft') {
+      list = list.filter(r => String(r.status || '').trim().toLowerCase() === 'draft');
+    }
+    if (type === 'invoices' && invoiceFocus === 'zatca') {
+      list = list.filter(r => String(r.einvoice_status || '').trim().toLowerCase() === 'yet_to_be_pushed');
+    }
     const min = amtMin === '' ? null : Number(amtMin);
     const max = amtMax === '' ? null : Number(amtMax);
     if (min != null || max != null) {
@@ -454,7 +470,7 @@ export default function ZohoData({ isActive = true }) {
       const cmp = numeric ? av - bv : av.localeCompare(bv, 'ar');
       return dir === 'asc' ? cmp : -cmp;
     });
-  }, [rows, displayRows, q, status, amtMin, amtMax, sort, cfg]);
+  }, [rows, displayRows, q, status, invoiceFocus, amtMin, amtMax, sort, cfg, type]);
   const isMobile = useMobileLayout();
   const {
     visible: displayed,
@@ -590,7 +606,14 @@ export default function ZohoData({ isActive = true }) {
     }
   };
 
-  const filtersActive = !!(q.trim() || status || amtMin || amtMax);
+  const filtersActive = !!(q.trim() || status || invoiceFocus || amtMin || amtMax);
+  const clearFilters = () => {
+    setQ(''); setStatus(''); setInvoiceFocus(''); setAmtMin(''); setAmtMax('');
+    const params = new URLSearchParams(location.search);
+    params.delete('focus');
+    params.delete('q');
+    navigate(`/zoho-data${params.size ? `?${params.toString()}` : ''}`, { replace: true });
+  };
   const toggleSort = (col) => setSort(s => s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: col === 'date' ? 'desc' : 'asc' });
   const total = useMemo(() => +filtered.reduce((s, r) => s + (Number(r[cfg.amount]) || 0), 0).toFixed(2), [filtered, cfg]);
   const totalBalance = useMemo(() => +filtered.reduce((s, r) => s + (Number(r.balance) || 0), 0).toFixed(2), [filtered]);
@@ -776,8 +799,13 @@ export default function ZohoData({ isActive = true }) {
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="بحث بالعميل/المورد/الرقم/أي حقل…"
             style={{ width: '100%', padding: '8px 36px 8px 12px', borderRadius: 8, fontSize: 13 }}/>
         </div>
+        {invoiceFocus && (
+          <span className="zoho-active-focus" role="status">
+            النتائج: {invoiceFocus === 'draft' ? 'الفواتير المسودة' : 'فواتير زاتكا المعلقة'}
+          </span>
+        )}
         {filtersActive && (
-          <Btn size="sm" variant="ghost" onClick={() => { setQ(''); setStatus(''); setAmtMin(''); setAmtMax(''); }}>
+          <Btn size="sm" variant="ghost" onClick={clearFilters}>
             مسح الفلاتر
           </Btn>
         )}

@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   UserPlus, Pencil, Trash2, RefreshCw, Shield, ShieldCheck, Lock, Check, Search,
   LayoutDashboard, Inbox, Mail, FileCheck2, Truck, Coins, Users, PhoneCall,
-  Store, Wallet, BookOpenCheck, Send, GitMerge, Settings, LifeBuoy, History,
+  Store, Wallet, BookOpenCheck, Send, GitMerge, Settings, History,
   FileBarChart,
 } from 'lucide-react';
 import { Card, Btn, Modal, Spinner, toast, PageHeader } from '../components/UI.jsx';
@@ -75,7 +75,7 @@ function closestEmployeeForRole(employees, role) {
 // Icon lookup for permission catalog sections
 const SECTION_ICONS = {
   LayoutDashboard, Inbox, Mail, FileCheck2, Truck, Coins, Users, PhoneCall,
-  Store, Wallet, BookOpenCheck, Send, GitMerge, Settings, LifeBuoy,
+  Store, Wallet, BookOpenCheck, Send, GitMerge, Settings,
   FileBarChart,
 };
 
@@ -589,7 +589,7 @@ const ACT_KINDS = {
 };
 const DATA_TABLE_AR = {
   payments: 'الدفعات', carrier_operations: 'حركات حسابات الشركات', audits: 'المراجعات',
-  period_closes: 'إقفال الشهور', support_tickets: 'تذاكر الدعم', app_settings: 'الإعدادات',
+  period_closes: 'إقفال الشهور', app_settings: 'الإعدادات',
   profiles: 'الموظفين/الصلاحيات',
 };
 const DATA_OP_AR = { insert: 'إضافة', update: 'تعديل', delete: 'حذف' };

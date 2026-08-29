@@ -20,7 +20,7 @@ import * as XLSX                          from 'xlsx';
 import {
   parseInternalSettlement, uploadBalanceSnapshot,
 } from './reconciliationService.js';
-import { parseStoresFile,      uploadMerchantsSnapshot   } from './merchantsService.js';
+import { parseStoresFile,      uploadLamhaExcelEnrichment } from './merchantsService.js';
 
 const DAY_MS = 86_400_000;
 
@@ -42,9 +42,9 @@ export const UPLOAD_SOURCES = [
   },
   {
     id:           'merchants',
-    label:        'دليل المتاجر (stores.xlsx)',
+    label:        'إثراء بيانات المتاجر (stores.xlsx)',
     origin:       'lamha',
-    subtitle:     'كشف المتاجر — هاتف، حالة، شحنات، رصيد محفظة',
+    subtitle:     'Excel إضافي فقط — محفظة، آخر شحن رصيد، ملف، ضريبة وZATCA',
     accent:       'var(--accent)',
     cadenceDays:  30,
     link:         '/merchants',
@@ -226,9 +226,9 @@ export async function uploadFile({ sourceId, file, userId }) {
     case 'merchants': {
       const parsed = parseStoresFile(rows);
       if (parsed.errors?.length) throw new Error(parsed.errors.join(' · '));
-      const r = await uploadMerchantsSnapshot({ parsed, sourceFile: file.name, userId });
+      const r = await uploadLamhaExcelEnrichment({ parsed, sourceFile: file.name });
       const duplicateNote = r.duplicateRowCount ? ` · جُمعت ${r.duplicateRowCount} صفوف مكررة` : '';
-      return { rowCount: r.count, matched: null, total: null, message: `${r.count} متجر (${r.active} نشط · ${r.prepaid} دفع مسبق · ${r.postpaid} دفع لاحق)${duplicateNote}` };
+      return { rowCount: r.count, matched: null, total: null, message: `${r.count} متجر أُثريت بياناته دون تغيير Lamha API${duplicateNote}` };
     }
     default:
       throw new Error(`نوع مصدر غير معروف: ${sourceId}`);

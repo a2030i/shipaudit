@@ -2,12 +2,12 @@ import {
   ArrowLeft, CalendarClock, Download, FileText, Megaphone, PhoneCall,
   Search, UserRoundCog, WalletCards,
 } from 'lucide-react';
-import { Btn } from '../UI.jsx';
 import { CUSTOMER_CAMPAIGN_BUCKETS } from '../../lib/customerCampaignBuckets.js';
 import { AGING_PAGE_SIZE } from '../../lib/agingOperations.js';
 import useMobileLayout from '../../lib/useMobileLayout.js';
 import { useWindowedRows } from '../../hooks/useWindowedRows.js';
 import { MobileFilterBar, ProgressiveListFooter } from '../MobileUX.jsx';
+import OperationalResultSet from './OperationalResultSet.jsx';
 import './aging-operations-queue.css';
 
 const MONEY = value => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -54,7 +54,6 @@ export default function AgingOperationsQueue({
   const rowWindow = useWindowedRows(rows, { batch: isMobile ? 10 : Math.max(rows.length, 1) });
   const pages = Math.max(1, Math.ceil(totalRows / AGING_PAGE_SIZE));
   const allSelected = rows.length > 0 && rows.every(row => selected.has(row.identityKey));
-  const hasMoreResults = totalRows > rows.length;
   const searchControl = <label className="aoq-search"><Search size={15}/><input value={filters.search} onChange={e => onFilter('search', e.target.value)} placeholder="المتجر، رقم المتجر أو حساب Zoho" aria-label="البحث في قائمة Aging"/></label>;
   const renderSecondaryFilters = () => <>
     <label><span>المبلغ من</span><input aria-label="الحد الأدنى للمبلغ" type="number" min="0" value={filters.minAmount} onChange={e => onFilter('minAmount', e.target.value)} /></label>
@@ -77,18 +76,24 @@ export default function AgingOperationsQueue({
     ...(filters.actionOnly ? [{ key: 'action', label: 'يحتاج إجراء', onRemove: () => onFilter('actionOnly', false) }] : []),
   ];
   const clearSecondaryFilters = () => onFilter('clearSecondary', true);
-  return <section className="aging-operations" dir="rtl">
-    <header className="aoq-header">
-      <div><span>AGING OPERATIONS</span><h1>قائمة عمل أعمار المستحقات</h1><p>اختر الشريحة، افتح الفواتير التي صنعت مبلغها، ثم نفّذ الإجراء وارجع إلى السياق نفسه.</p></div>
-      <div className={`aoq-reconcile ${reconciliation?.pending ? 'is-pending' : reconciliation?.ok ? 'is-pass' : 'is-fail'}`}>
-        <small>مطابقة الشريحة بالتفاصيل</small>
-        <strong>{reconciliation?.pending ? 'جاري تحديث الشريحة' : reconciliation?.ok ? 'مطابق بالهللة' : 'تحتاج مراجعة'}</strong>
-        <span>{reconciliation?.pending
-          ? 'سيظهر المبلغ بعد اكتمال نفس طلب الشريحة'
-          : `${MONEY(reconciliation?.detailsTotal)} / ${MONEY(reconciliation?.dashboardTotal)} ر.س`}</span>
-      </div>
-    </header>
-
+  const context = {
+    title: 'قائمة عمل أعمار المستحقات',
+    description: 'افتح السجلات المكوّنة للمبلغ، حافظ على سياق العميل، ثم نفّذ الإجراء من نفس مجموعة النتائج.',
+    reason: filters.aging.size
+      ? `العملاء في شرائح الأعمار المحددة: ${CUSTOMER_CAMPAIGN_BUCKETS.filter(bucket => filters.aging.has(bucket.key)).map(bucket => bucket.label).join(' + ')}`
+      : 'لديهم مبالغ مستحقة قابلة للتحصيل وفق مصدر التحصيل الحالي.',
+    metrics: [
+      { key: 'count', label: 'عدد النتائج', value: totalRows },
+      { key: 'amount', label: 'مبلغ العرض', value: `${MONEY(totalAmount)} ر.س` },
+      { key: 'oldest', label: 'أقدم استحقاق', value: `${rows.reduce((max, row) => Math.max(max, Number(row.summary?.oldestDays) || 0), 0)} يومًا`, detail: 'ضمن الصفحة الحالية' },
+      { key: 'reconcile', label: 'مطابقة التفاصيل', value: reconciliation?.pending ? 'جارية' : reconciliation?.ok ? 'مطابق' : 'تحتاج مراجعة', detail: reconciliation?.pending ? 'بانتظار نفس طلب الشريحة' : `${MONEY(reconciliation?.detailsTotal)} / ${MONEY(reconciliation?.dashboardTotal)} ر.س` },
+    ],
+    source: 'Zoho Books / customer_collectible_lines',
+    updatedAt: sourceUpdatedAt,
+    sourceState: sourceHealthy ? 'healthy' : 'error',
+    activeFilters,
+  };
+  const toolbar = <>
     <div className="aoq-buckets" aria-label="شرائح أعمار المستحقات">
       {CUSTOMER_CAMPAIGN_BUCKETS.map(bucket => <button type="button" key={bucket.key} aria-pressed={filters.aging.has(bucket.key)} onClick={() => {
         onFilter('agingToggle', bucket.key);
@@ -107,45 +112,42 @@ export default function AgingOperationsQueue({
     >
       {renderSecondaryFilters()}
     </MobileFilterBar>
-
-    {!sourceHealthy ? <div className="aoq-source-error" role="alert"><strong>مصدر التفاصيل غير متاح</strong><span>لن تظهر أرقام صفرية ولن تتاح الإجراءات الجماعية حتى تعود قراءة سطور التحصيل.</span></div> : null}
-
-    <div className="aoq-summary">
-      <span>النتائج <b>{totalRows}</b></span><span>مبلغ العرض <b>{MONEY(totalAmount)} ر.س</b></span>
-      <span>المصدر: <b>Zoho Books / customer_collectible_lines</b></span>
-      <span>آخر تحديث: <b>{sourceUpdatedAt ? new Date(sourceUpdatedAt).toLocaleString('ar-SA') : 'غير متاح'}</b></span>
-      <span>* سجل التواصل مرتبط برقم التواصل للعرض فقط، ولا يُستخدم لإثبات هوية المتجر أو احتساب مديونيته.</span>
-    </div>
-
-    {!loading ? <div className="aoq-select-page">
-      <label><input type="checkbox" checked={allSelected} onChange={e => onTogglePage(e.target.checked)}/> تحديد نتائج هذه الصفحة</label>
-      <div className="aoq-select-page__meta">
-        {hasMoreResults && !allResultsSelected ? <button type="button" onClick={() => onToggleAll(true)}>تحديد كل النتائج ({totalRows})</button> : null}
-        <span>صفحة {page} من {pages}</span>
-      </div>
-    </div> : null}
-
-    {allResultsSelected && totalRows > 0 ? <div className="aoq-selection-scope is-all" role="status">
-      <strong>تم تحديد جميع النتائج المطابقة للفلاتر ({totalRows})</strong>
-      <button type="button" onClick={() => onToggleAll(false)}>إلغاء تحديد الكل</button>
-    </div> : null}
-
-    {selectedCount ? <div className="aoq-bulk" role="toolbar" aria-label="إجراءات جماعية">
-      <strong>{selectedCount} متجر محدد</strong>
-      <Btn size="sm" variant="ghost" icon={<UserRoundCog size={14}/>} onClick={() => onBulk('assign')}>إسناد</Btn>
-      <Btn size="sm" variant="ghost" icon={<CalendarClock size={14}/>} onClick={() => onBulk('followup')}>متابعة</Btn>
-      <Btn size="sm" variant="accent" icon={<Megaphone size={14}/>} onClick={() => onBulk('campaign')}>Draft حملة</Btn>
-      <Btn size="sm" variant="ghost" icon={<PhoneCall size={14}/>} onClick={() => onBulk('ivr')}>IVR Review</Btn>
-      <Btn size="sm" variant="ghost" icon={<Download size={14}/>} onClick={() => onBulk('export')}>تصدير</Btn>
-      <button type="button" onClick={() => onToggleAll(false)}>إلغاء التحديد</button>
-    </div> : null}
-
+    {!sourceHealthy ? <div className="aoq-source-error" role="alert"><strong>مصدر التفاصيل غير متاح</strong><span>تبقى آخر بيانات ناجحة ظاهرة، لكن الإجراءات الجماعية متوقفة حتى تعود قراءة سطور التحصيل.</span></div> : null}
+    <small className="aoq-identity-note">* سجل التواصل مرتبط برقم التواصل للعرض فقط، ولا يُستخدم لإثبات هوية المتجر أو احتساب مديونيته.</small>
+  </>;
+  const selection = {
+    visibleCount: rows.length,
+    totalCount: totalRows,
+    selectedCount,
+    allVisibleSelected: allSelected,
+    allResultsSelected,
+    onToggleVisible: onTogglePage,
+    onSelectAllResults: onToggleAll,
+    onClear: () => onToggleAll(false),
+    disabled: loading || !sourceHealthy || !reconciliation?.ok,
+    actions: [
+      { key: 'assign', label: 'إسناد', icon: <UserRoundCog size={14}/>, onClick: () => onBulk('assign') },
+      { key: 'followup', label: 'متابعة', icon: <CalendarClock size={14}/>, onClick: () => onBulk('followup') },
+      { key: 'campaign', label: 'حملة WhatsApp', icon: <Megaphone size={14}/>, variant: 'accent', onClick: () => onBulk('campaign') },
+      { key: 'ivr', label: 'مراجعة IVR', icon: <PhoneCall size={14}/>, onClick: () => onBulk('ivr') },
+      { key: 'export', label: 'تصدير', icon: <Download size={14}/>, onClick: () => onBulk('export') },
+    ],
+  };
+  return <OperationalResultSet
+    context={context}
+    toolbar={toolbar}
+    selection={selection}
+    state={loading && !rows.length ? 'loading' : 'available'}
+    empty={!rows.length}
+    pagination={pages > 1 ? {
+      page, pages, total: totalRows, canPrevious: page > 1, canNext: page < pages,
+      onPrevious: () => onPage(page - 1), onNext: () => onPage(page + 1),
+    } : null}
+    className="aging-operations"
+  >
     <div className="aoq-list">
       {rowWindow.visible.map(row => <RowCard key={row.identityKey} row={row} selected={selected.has(row.identityKey)} onSelect={() => onToggle(row.identityKey)} onOpen={() => onOpen(row)} onInvoices={() => onInvoices(row)}/>) }
-      {!rows.length ? <div className="aoq-empty" role={loading ? 'status' : undefined}>{loading ? 'جاري تحديث نتائج الشريحة…' : 'لا توجد متاجر تطابق الفلاتر الحالية.'}</div> : null}
     </div>
     <ProgressiveListFooter hasMore={rowWindow.hasMore} shown={rowWindow.count} total={rows.length} onLoadMore={rowWindow.loadMore} sentinelRef={rowWindow.sentinelRef}/>
-
-    {pages > 1 ? <div className="aoq-pages"><Btn size="sm" variant="ghost" disabled={page <= 1} onClick={() => onPage(page - 1)}>السابق</Btn><span>{page} / {pages}</span><Btn size="sm" variant="ghost" disabled={page >= pages} onClick={() => onPage(page + 1)}>التالي</Btn></div> : null}
-  </section>;
+  </OperationalResultSet>;
 }

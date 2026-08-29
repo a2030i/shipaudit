@@ -4,6 +4,28 @@ import { readFile } from 'node:fs/promises';
 
 const read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
+test('customer support ticket system is retired without touching carrier claims', async () => {
+  const [app, navigation, permissions, companyOps, store360, migration] = await Promise.all([
+    read('src/App.jsx'),
+    read('src/lib/navigation.js'),
+    read('src/lib/permissions.js'),
+    read('src/lib/companyOpsService.js'),
+    read('src/pages/Store360Page.jsx'),
+    read('supabase/migrations/20260828070037_retire_support_ticket_system.sql'),
+  ]);
+
+  assert.doesNotMatch(app, /['"]\/(support|ticket)['"]/);
+  assert.doesNotMatch(navigation, /id:\s*['"]support['"]|\/workspace\/support/);
+  assert.doesNotMatch(permissions, /support\.(view|create|manage|delete)/);
+  assert.doesNotMatch(companyOps, /data\?\.support|support:/);
+  assert.doesNotMatch(store360, /params\.get\(['"]view['"]\)\s*===\s*['"]support['"]/);
+  assert.match(app, /['"]\/claims['"]/);
+  assert.match(migration, /drop table if exists public\.support_ticket_attachments/);
+  assert.match(migration, /drop table if exists public\.support_ticket_events/);
+  assert.match(migration, /drop table if exists public\.support_tickets/);
+  assert.doesNotMatch(migration, /drop table if exists public\.audit_claims/);
+});
+
 test('navigation hub is the final shell layer after the Safari scroll contract', async () => {
   const main = await read('src/main.jsx');
   const layoutIndex = main.indexOf("import './workspace-layout.css'");
@@ -98,17 +120,32 @@ test('permissions modal has one scroll region and a persistent action bar', asyn
   assert.match(css, /\.permission-modal-footer\s*\{[\s\S]*position:\s*sticky/);
 });
 
-test('visual system keeps one direct navigation catalog and no rendered sidebar', async () => {
+test('V2 shell keeps one compact desktop rail and one mobile navigation catalog', async () => {
   const app = await read('src/App.jsx');
   const css = await read('src/navigation-hub.css');
+  const sidebar = await read('src/components/ExecutiveSidebar.jsx');
 
   assert.match(app, /<NavigationHub/);
-  assert.doesNotMatch(app, /<aside className=\{`sidebar/);
+  assert.match(app, /<ExecutiveSidebar/);
+  assert.match(sidebar, /<aside className="sidebar" aria-label="التنقل الرئيسي">/);
   assert.doesNotMatch(app, /<CenterLanding/);
   assert.match(css, /\.navigation-hub__catalog\s*\{/);
   assert.match(css, /\.navigation-hub__group\s*\{[\s\S]*content-visibility:\s*auto/);
   assert.match(css, /\.navigation-hub__destinations\s*\{[\s\S]*repeat\(2,/);
-  assert.match(css, /\.app-layout,[\s\S]*display:\s*block\s*!important/);
+  assert.match(css, /\.app-layout,[\s\S]*display:\s*grid\s*!important[\s\S]*grid-template-areas:\s*"main primary"/);
+  assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.app-layout > \.sidebar,[\s\S]*display:\s*none\s*!important/);
+});
+
+test('shared modal isolates the background and restores it after the last overlay closes', async () => {
+  const modal = await read('src/components/UI.jsx');
+
+  assert.match(modal, /let activeModalCount = 0/);
+  assert.match(modal, /appRoot\.setAttribute\('inert', ''\)/);
+  assert.match(modal, /appRoot\.setAttribute\('aria-hidden', 'true'\)/);
+  assert.match(modal, /activeModalCount = Math\.max\(0, activeModalCount - 1\)/);
+  assert.match(modal, /if \(activeModalCount === 0 && appRoot\)/);
+  assert.match(modal, /role="dialog"/);
+  assert.match(modal, /aria-modal="true"/);
 });
 
 test('primary navigation rail leaves center labels comfortably readable', async () => {
@@ -269,11 +306,13 @@ test.skip('legacy four-center navigation contract', async () => {
   assert.match(shell, /@media \(max-width:\s*768px\)[\s\S]*\.mobile-context-picker\s*\{/);
   assert.match(css, /\.quick-action-backdrop\s*\{/);
 
-  assert.match(navigation, /id: 'finance',[\s\S]*?label: 'العمليات المالية'/);
+  assert.match(navigation, /id: 'finance',[\s\S]*?label: 'المالية'/);
+  assert.match(navigation, /id: 'customers',[\s\S]*?label: 'العملاء'/);
   assert.match(navigation, /id: 'sales',[\s\S]*?label: 'المبيعات'/);
-  assert.match(navigation, /id: 'support',[\s\S]*?label: 'خدمة العملاء'/);
-  assert.match(navigation, /id: 'admin',[\s\S]*?label: 'إدارة النظام'/);
-  assert.doesNotMatch(navigation, /id: '(customers|shipping|reports|settings)'/);
+  assert.match(navigation, /id: 'shipping',[\s\S]*?label: 'التشغيل'/);
+  assert.match(navigation, /id: 'reports',[\s\S]*?label: 'التقارير'/);
+  assert.match(navigation, /id: 'settings',[\s\S]*?label: 'الإدارة'/);
+  assert.doesNotMatch(navigation, /id: '(support|admin)'/);
   assert.match(navigation, /overview:\s*\{[^}]*section: 'finance'[^}]*order: 10[^}]*pinned: false/);
   assert.match(navigation, /'collections-hub':\s*\{[^}]*label: 'العملاء والذمم'[^}]*section: 'finance'[^}]*order: 20/);
   assert.match(navigation, /fulfillment:\s*\{[^}]*label: 'فواتير العملاء'[^}]*section: 'finance'[^}]*order: 30/);
@@ -292,9 +331,13 @@ test.skip('legacy four-center navigation contract', async () => {
   assert.doesNotMatch(navigation, /contracts:\s*\{[^}]*visible: true/);
   assert.match(navigation, /'app-settings':\s*\{[^}]*visible: true/);
   assert.match(navigation, /id: 'finance',[\s\S]*?path: '\/workspace\/finance'/);
+  assert.match(navigation, /id: 'customers',[\s\S]*?path: '\/workspace\/customers'/);
   assert.match(navigation, /id: 'sales',[\s\S]*?path: '\/workspace\/sales'/);
-  assert.match(navigation, /id: 'support',[\s\S]*?path: '\/workspace\/support'/);
-  assert.match(navigation, /id: 'admin',[\s\S]*?path: '\/workspace\/admin'/);
+  assert.match(navigation, /id: 'shipping',[\s\S]*?path: '\/workspace\/operations'/);
+  assert.match(navigation, /id: 'reports',[\s\S]*?path: '\/workspace\/reports'/);
+  assert.match(navigation, /id: 'settings',[\s\S]*?path: '\/workspace\/admin'/);
+  assert.doesNotMatch(navigation, /\/workspace\/support/);
+  assert.doesNotMatch(app, /['"]\/(support|ticket)['"]/);
   assert.match(app, /id: 'hatif-settings'[^\n]*path: '\/settings\/hatif'[^\n]*permKey: 'whatsapp\.configure'/);
   assert.match(app, /pathname==='\/settings\/hatif'[\s\S]*<WhatsAppSettings[^>]*settingsOnly/);
   const reportRouteBlock = app.slice(

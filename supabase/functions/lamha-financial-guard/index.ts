@@ -1,6 +1,10 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { waitForLamhaApiSlot } from '../_shared/lamhaRateLimit.ts';
 import {
+  lamhaProfileMergeRow,
+  lamhaStoreProfileRecord,
+} from '../_shared/lamhaStoreProfile.ts';
+import {
   buildFinancialGuardRows,
   extractLamhaStorePage,
   financialGuardDecision,
@@ -11,9 +15,21 @@ import {
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-const LAMHA_BASE = (Deno.env.get('LAMHA_EMPLOYEE_API_BASE') || 'https://lamha-dev.phphubx.com/api/v1').replace(/\/$/, '');
-const DIRECTORY_PAGE_SIZE = 50;
+const LAMHA_BASE = (Deno.env.get('LAMHA_EMPLOYEE_API_BASE') || 'https://app2.lamha.sa/api/v1').replace(/\/$/, '');
+// 200 keeps the complete directory plus new-store detail hydration below
+// Lamha's observed 30-request window (500 is rejected with HTTP 422).
+const DIRECTORY_PAGE_SIZE = 200;
 const MAX_DIRECTORY_PAGES = 100;
+const DATABASE_PAGE_SIZE = 1000;
+const DIRECTORY_STABLE_SORT = 'sort_by=id&sort_direction=asc';
+// Nine list requests leave room for 18 detail reads inside Lamha's observed
+// 30-request window, with three requests kept as a safety margin.
+const PROFILE_DETAIL_BUDGET = 18;
+// Detail hydration is a separate read-only lane. It can run frequently while
+// profiles are incomplete, then naturally becomes quiet until a seven-day
+// refresh is due. Six requests remain unused inside the observed limit.
+const PROFILE_DETAIL_CATCHUP_BUDGET = 24;
+const PROFILE_DETAIL_REFRESH_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_CHANGES_PER_POLICY_RUN = 10;
 const AUTOMATION_ENABLED = (Deno.env.get('LAMHA_FINANCIAL_GUARD_EXECUTION_ENABLED') || '').toLowerCase() === 'true';
 
@@ -61,20 +77,13 @@ async function sha256(value: unknown) {
   return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-function safeEqual(left: string, right: string) {
-  const a = new TextEncoder().encode(left);
-  const b = new TextEncoder().encode(right);
-  if (a.length !== b.length) return false;
-  let mismatch = 0;
-  for (let index = 0; index < a.length; index += 1) mismatch |= a[index] ^ b[index];
-  return mismatch === 0;
-}
-
 async function authorize(req: Request) {
-  const configuredCronKey = (Deno.env.get('LAMHA_FINANCIAL_GUARD_CRON_SECRET') || '').trim();
   const suppliedCronKey = (req.headers.get('x-cron-key') || '').trim();
-  if (configuredCronKey && suppliedCronKey && safeEqual(configuredCronKey, suppliedCronKey)) {
-    return { kind: 'cron' as const, userId: null };
+  if (suppliedCronKey) {
+    const { data: cronAllowed, error: cronError } = await db.rpc('authorize_lamha_directory_cron', {
+      p_secret: suppliedCronKey,
+    });
+    if (!cronError && cronAllowed === true) return { kind: 'cron' as const, userId: null };
   }
 
   const jwt = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
@@ -87,6 +96,7 @@ async function authorize(req: Request) {
 
 async function lamhaFetch(token: string, path: string, init: RequestInit = {}) {
   await waitForLamhaApiSlot(db, token, `lamha-financial-guard:${init.method || 'GET'}:${path.split('?')[0]}`, 75_000);
+  const startedAt = performance.now();
   const result = await fetch(`${LAMHA_BASE}${path}`, {
     ...init,
     headers: {
@@ -99,7 +109,18 @@ async function lamhaFetch(token: string, path: string, init: RequestInit = {}) {
     signal: AbortSignal.timeout(20_000),
   });
   const payload = await result.json().catch(() => ({}));
-  return { ok: result.ok, status: result.status, payload };
+  const rateLimitLimit = Number(result.headers.get('x-ratelimit-limit')) || null;
+  const rateLimitRemaining = Number(result.headers.get('x-ratelimit-remaining'));
+  return {
+    ok: result.ok,
+    status: result.status,
+    payload,
+    rateLimit: {
+      limit: rateLimitLimit,
+      remaining: Number.isFinite(rateLimitRemaining) ? rateLimitRemaining : null,
+    },
+    latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
+  };
 }
 
 function nestedStoreRecords(payload: unknown): Json[] {
@@ -119,6 +140,22 @@ function nestedStoreRecords(payload: unknown): Json[] {
     queue.push(...Object.values(record));
   }
   return records;
+}
+
+function excelOperationalEnrichment(value: unknown): Json {
+  const row = value && typeof value === 'object' && !Array.isArray(value) ? value as Json : {};
+  const out: Json = {};
+  const put = (sourceKey: string, targetKey: string) => {
+    if (Object.hasOwn(row, sourceKey)) out[targetKey] = row[sourceKey];
+  };
+  // Only fields not currently offered by Lamha API may flow from Excel into
+  // the operational snapshot. Shared identity/account fields are excluded.
+  put('profileStatus', 'profile_status');
+  put('vatRegistered', 'vat_registered');
+  put('zatcaCompleted', 'zatca_completed');
+  put('lastTopupAt', 'last_topup_at');
+  put('walletBalance', 'wallet_balance');
+  return out;
 }
 
 function liveStoreSummary(payload: unknown, storeId: number) {
@@ -151,9 +188,16 @@ async function latestMerchantRows() {
     .select('snapshot_id,uploaded_at').order('uploaded_at', { ascending: false }).limit(1).maybeSingle();
   if (markerError) throw new Error(`merchant_snapshot_marker_failed:${markerError.message}`);
   if (!marker?.snapshot_id) return { rows: [] as Json[], snapshot: null };
-  const { data, error } = await db.from('merchants').select('*').eq('snapshot_id', marker.snapshot_id);
-  if (error) throw new Error(`merchant_snapshot_read_failed:${error.message}`);
-  return { rows: (data || []) as Json[], snapshot: marker };
+  const rows: Json[] = [];
+  for (let from = 0; ; from += DATABASE_PAGE_SIZE) {
+    const { data, error } = await db.from('merchants').select('*')
+      .eq('snapshot_id', marker.snapshot_id)
+      .range(from, from + DATABASE_PAGE_SIZE - 1);
+    if (error) throw new Error(`merchant_snapshot_read_failed:${error.message}`);
+    rows.push(...((data || []) as Json[]));
+    if ((data || []).length < DATABASE_PAGE_SIZE) break;
+  }
+  return { rows, snapshot: marker };
 }
 
 async function syncDirectory(token: string, actorId: string | null) {
@@ -162,26 +206,172 @@ async function syncDirectory(token: string, actorId: string | null) {
   const rawRows: Json[] = [];
   let page = 1;
   let lastPage = 1;
+  let reportedTotal: number | null = null;
+  let reportedPerPage: number | null = null;
+  let rateLimitLimit: number | null = null;
+  let lowestRateLimitRemaining: number | null = null;
 
   do {
-    const result = await lamhaFetch(token, `/stores?page=${page}&per_page=${DIRECTORY_PAGE_SIZE}`);
+    const result = await lamhaFetch(
+      token,
+      `/stores?page=${page}&per_page=${DIRECTORY_PAGE_SIZE}&${DIRECTORY_STABLE_SORT}`,
+    );
     if (!result.ok) throw new Error(`lamha_directory_page_failed:${page}:${result.status}`);
+    rateLimitLimit = result.rateLimit.limit ?? rateLimitLimit;
+    if (result.rateLimit.remaining != null) {
+      lowestRateLimitRemaining = lowestRateLimitRemaining == null
+        ? result.rateLimit.remaining
+        : Math.min(lowestRateLimitRemaining, result.rateLimit.remaining);
+    }
     const parsed = extractLamhaStorePage(result.payload);
     if (!parsed.rows.length && page === 1) throw new Error('lamha_directory_empty');
+    if (page === 1) {
+      reportedTotal = parsed.total;
+      reportedPerPage = parsed.perPage;
+    }
     rawRows.push(...parsed.rows);
     lastPage = Math.min(MAX_DIRECTORY_PAGES, Math.max(page, parsed.lastPage || page));
     page += 1;
-  } while (page <= lastPage && page <= MAX_DIRECTORY_PAGES);
+  } while (
+    page <= MAX_DIRECTORY_PAGES
+    && (page <= lastPage || (reportedTotal != null && rawRows.length < reportedTotal))
+  );
 
-  const normalized = rawRows.map(row => {
+  if (reportedTotal != null && rawRows.length !== reportedTotal) {
+    throw new Error(`lamha_directory_incomplete:reported=${reportedTotal}:received=${rawRows.length}:pages=${page - 1}`);
+  }
+
+  const listCheckedAt = new Date().toISOString();
+  const profileState: Json[] = [];
+  for (let from = 0; ; from += DATABASE_PAGE_SIZE) {
+    const { data, error } = await db.from('lamha_store_profiles')
+      .select('store_id,api_detail_checked_at,excel_imported_at,excel_data')
+      .order('store_id', { ascending: true })
+      .range(from, from + DATABASE_PAGE_SIZE - 1);
+    if (error) throw new Error(`lamha_profile_registry_read_failed:${error.message}`);
+    profileState.push(...((data || []) as Json[]));
+    if ((data || []).length < DATABASE_PAGE_SIZE) break;
+  }
+  const detailCheckedByStore = new Map(profileState.map(row => [
+    String(row.store_id),
+    Date.parse(String(row.api_detail_checked_at || '')) || 0,
+  ]));
+  const excelEnrichmentByStore = new Map(profileState.map(row => [
+    String(row.store_id), excelOperationalEnrichment(row.excel_data),
+  ]));
+  const operationalPrevious = (id: string) => {
+    const previous = previousByStore.get(id) || {};
+    const excel = excelEnrichmentByStore.get(id) || {};
+    // Shared API fields may use the preceding API snapshot as a continuity
+    // fallback. Excel-only fields must reflect the current enrichment registry
+    // exactly: when the latest file has no value, keep it unknown instead of
+    // carrying an old value or an invented zero into the new snapshot.
+    return {
+      ...previous,
+      profile_status: Object.hasOwn(excel, 'profile_status') ? excel.profile_status : null,
+      vat_registered: Object.hasOwn(excel, 'vat_registered') ? excel.vat_registered : null,
+      zatca_completed: Object.hasOwn(excel, 'zatca_completed') ? excel.zatca_completed : null,
+      last_topup_at: Object.hasOwn(excel, 'last_topup_at') ? excel.last_topup_at : null,
+      wallet_balance: Object.hasOwn(excel, 'wallet_balance') ? excel.wallet_balance : null,
+    };
+  };
+  const excelFallbackStores = new Set(profileState
+    .filter(row => row.excel_imported_at)
+    .map(row => String(row.store_id)));
+  const rawByStore = new Map(rawRows.map(row => [
+    String(Number(row.id ?? row.store_id ?? row.storeId ?? row.business_id ?? row.businessId) || ''),
+    row,
+  ]).filter(([id]) => id));
+  const needsRequiredDetail = (row: Json) => {
+    const normalized = normalizeLamhaStoreRow(row, operationalPrevious(String(
+      Number(row.id ?? row.store_id ?? row.storeId ?? row.business_id ?? row.businessId) || '',
+    )));
+    return !normalized.store_name || !normalized.phone;
+  };
+  const detailCandidates = [...rawByStore.entries()]
+    .sort(([aId, a], [bId, b]) => {
+      const requiredDelta = Number(needsRequiredDetail(b)) - Number(needsRequiredDetail(a));
+      if (requiredDelta) return requiredDelta;
+      const missingExcelDelta = Number(!excelFallbackStores.has(bId)) - Number(!excelFallbackStores.has(aId));
+      if (missingExcelDelta) return missingExcelDelta;
+      const checkedDelta = (detailCheckedByStore.get(aId) || 0) - (detailCheckedByStore.get(bId) || 0);
+      return checkedDelta || Number(aId) - Number(bId);
+    })
+    .slice(0, PROFILE_DETAIL_BUDGET);
+
+  const detailByStore = new Map<string, Json>();
+  const detailMeta = new Map<string, { checkedAt: string; http: number; latencyMs: number }>();
+  for (const [id] of detailCandidates) {
+    const detail = await lamhaFetch(token, `/stores/${id}`);
+    rateLimitLimit = detail.rateLimit.limit ?? rateLimitLimit;
+    if (detail.rateLimit.remaining != null) {
+      lowestRateLimitRemaining = lowestRateLimitRemaining == null
+        ? detail.rateLimit.remaining
+        : Math.min(lowestRateLimitRemaining, detail.rateLimit.remaining);
+    }
+    if (!detail.ok) {
+      if (detail.status === 401 || detail.status === 403) {
+        throw new Error(`lamha_directory_detail_auth_failed:${id}:${detail.status}`);
+      }
+      continue;
+    }
+    const detailRecord = lamhaStoreProfileRecord(detail.payload, Number(id));
+    if (!detailRecord) continue;
+    detailByStore.set(id, detailRecord);
+    detailMeta.set(id, {
+      checkedAt: new Date().toISOString(),
+      http: detail.status,
+      latencyMs: detail.latencyMs,
+    });
+  }
+
+  const normalized = [];
+  for (const row of rawRows) {
     const id = String(Number(row.id ?? row.store_id ?? row.storeId ?? row.business_id ?? row.businessId) || '');
-    return normalizeLamhaStoreRow(row, previousByStore.get(id));
-  });
+    const previousRow = operationalPrevious(id);
+    const normalizedRow = normalizeLamhaStoreRow({ ...row, ...(detailByStore.get(id) || {}) }, previousRow);
+    normalized.push(normalizedRow);
+  }
   const unique = new Map(normalized.filter(row => row.store_id).map(row => [row.store_id, row]));
   const rows = [...unique.values()];
-  const invalid = rows.filter(row => !row.store_name || !row.phone);
-  if (invalid.length) throw new Error(`lamha_directory_missing_required_fields:${invalid.length}`);
-  if (rows.length !== rawRows.length) throw new Error(`lamha_directory_duplicate_or_invalid_ids:${rawRows.length - rows.length}`);
+  const invalidIds = normalized.filter(row => !row.store_id).length;
+  const duplicateIds = normalized.length - invalidIds - rows.length;
+  const missingNames = rows.filter(row => !row.store_name).length;
+  const missingPhones = rows.filter(row => !row.phone).length;
+  const previousMatches = rows.filter(row => previousByStore.has(row.store_id)).length;
+  if (missingNames || missingPhones) {
+    throw new Error([
+      'lamha_directory_missing_required_fields',
+      `names=${missingNames}`,
+      `phones=${missingPhones}`,
+      `previous_matches=${previousMatches}`,
+      `previous_rows=${previous.rows.length}`,
+      `directory_rows=${rows.length}`,
+      `reported_total=${reportedTotal ?? 'unknown'}`,
+      `reported_per_page=${reportedPerPage ?? 'unknown'}`,
+      `reported_pages=${lastPage}`,
+    ].join(':'));
+  }
+
+  const profileRows = [...rawByStore.entries()].map(([id, listRecord]) => {
+    const detailRecord = detailByStore.get(id);
+    const meta = detailMeta.get(id);
+    return lamhaProfileMergeRow({
+      storeId: id,
+      record: { ...listRecord, ...(detailRecord || {}) },
+      listCheckedAt,
+      detailCheckedAt: meta?.checkedAt || null,
+      httpStatus: meta?.http || 200,
+      latencyMs: meta?.latencyMs || null,
+    });
+  });
+  const { data: profileMerge, error: profileMergeError } = await db.rpc('merge_lamha_store_profiles_from_api', {
+    p_rows: profileRows,
+  });
+  if (profileMergeError) throw new Error(`lamha_profile_registry_write_failed:${profileMergeError.message}`);
+  if (rows.length !== rawRows.length) {
+    throw new Error(`lamha_directory_duplicate_or_invalid_ids:duplicates=${duplicateIds}:invalid=${invalidIds}`);
+  }
 
   const payloadHash = await sha256(rows);
   const snapshotAt = new Date().toISOString();
@@ -199,10 +389,114 @@ async function syncDirectory(token: string, actorId: string | null) {
     user_id: actorId,
     kind: 'sync',
     action: 'مزامنة دليل متاجر لمحة اليومية',
-    detail: { automation_key: LAMHA_FINANCIAL_GUARD_KEY, run_date: riyadhDateKey(), rows: rows.length, pages: page - 1, result: data },
+    detail: {
+      automation_key: LAMHA_FINANCIAL_GUARD_KEY,
+      run_date: riyadhDateKey(),
+      rows: rows.length,
+      pages: page - 1,
+      reported_total: reportedTotal,
+      reported_per_page: reportedPerPage,
+      rate_limit: rateLimitLimit,
+      lowest_rate_limit_remaining: lowestRateLimitRemaining,
+      profile_list_rows: profileRows.length,
+      profile_detail_rows: detailByStore.size,
+      profile_merge: profileMerge,
+      result: data,
+    },
     path: '/customers?source=lamha-daily-sync',
   });
-  return { rows: rows.length, pages: page - 1, result: data };
+  return {
+    rows: rows.length,
+    pages: page - 1,
+    reportedTotal,
+    reportedPerPage,
+    rateLimit: rateLimitLimit,
+    lowestRateLimitRemaining,
+    profileListRows: profileRows.length,
+    profileDetailRows: detailByStore.size,
+    result: data,
+  };
+}
+
+async function syncProfileDetails(token: string, actorId: string | null) {
+  const staleBefore = new Date(Date.now() - PROFILE_DETAIL_REFRESH_MS).toISOString();
+  const { data: candidates, error: candidateError } = await db.from('lamha_store_profiles')
+    .select('store_id,api_detail_checked_at')
+    .or(`api_detail_checked_at.is.null,api_detail_checked_at.lt.${staleBefore}`)
+    .order('api_detail_checked_at', { ascending: true, nullsFirst: true })
+    .order('store_id', { ascending: true })
+    .limit(PROFILE_DETAIL_CATCHUP_BUDGET);
+  if (candidateError) throw new Error(`lamha_profile_candidates_failed:${candidateError.message}`);
+  if (!candidates?.length) {
+    return { selected: 0, hydrated: 0, notFound: 0, failed: 0, remaining: 0 };
+  }
+
+  const rows = [];
+  let hydrated = 0;
+  let notFound = 0;
+  let failed = 0;
+  let rateLimitLimit: number | null = null;
+  let lowestRateLimitRemaining: number | null = null;
+  for (const candidate of candidates) {
+    const id = String(candidate.store_id || '').trim();
+    if (!id) continue;
+    const detail = await lamhaFetch(token, `/stores/${id}`);
+    rateLimitLimit = detail.rateLimit.limit ?? rateLimitLimit;
+    if (detail.rateLimit.remaining != null) {
+      lowestRateLimitRemaining = lowestRateLimitRemaining == null
+        ? detail.rateLimit.remaining
+        : Math.min(lowestRateLimitRemaining, detail.rateLimit.remaining);
+    }
+    if (detail.status === 401 || detail.status === 403) {
+      throw new Error(`lamha_profile_detail_auth_failed:${id}:${detail.status}`);
+    }
+    const checkedAt = new Date().toISOString();
+    const record = detail.ok ? lamhaStoreProfileRecord(detail.payload, Number(id)) : null;
+    if (detail.ok && record) hydrated += 1;
+    else if (detail.status === 404) notFound += 1;
+    else failed += 1;
+    rows.push(lamhaProfileMergeRow({
+      storeId: id,
+      record,
+      detailCheckedAt: checkedAt,
+      httpStatus: detail.status,
+      latencyMs: detail.latencyMs,
+    }));
+  }
+  const { data: merge, error: mergeError } = await db.rpc('merge_lamha_store_profiles_from_api', { p_rows: rows });
+  if (mergeError) throw new Error(`lamha_profile_detail_merge_failed:${mergeError.message}`);
+  const { count: remaining, error: remainingError } = await db.from('lamha_store_profiles')
+    .select('store_id', { count: 'exact', head: true })
+    .is('api_detail_checked_at', null);
+  if (remainingError) throw new Error(`lamha_profile_remaining_failed:${remainingError.message}`);
+
+  await db.from('user_activity_log').insert({
+    user_id: actorId,
+    kind: 'sync',
+    action: 'إثراء تفاصيل متاجر لمحة من API',
+    detail: {
+      automation_key: LAMHA_FINANCIAL_GUARD_KEY,
+      read_only: true,
+      selected: candidates.length,
+      hydrated,
+      not_found: notFound,
+      failed,
+      remaining_without_detail: remaining || 0,
+      rate_limit: rateLimitLimit,
+      lowest_rate_limit_remaining: lowestRateLimitRemaining,
+      merge,
+    },
+    path: '/customers?source=lamha-profile-sync',
+  });
+  return {
+    selected: candidates.length,
+    hydrated,
+    notFound,
+    failed,
+    remaining: remaining || 0,
+    rateLimit: rateLimitLimit,
+    lowestRateLimitRemaining,
+  };
 }
 
 async function sourceReadiness() {
@@ -411,8 +705,14 @@ Deno.serve(async req => {
   try {
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || 'preview');
+    if (auth.kind === 'cron' && !['sync-directory', 'sync-profile-details'].includes(action)) {
+      return response(req, { ok: false, error: 'cron_read_only' }, 403);
+    }
     if (action === 'sync-directory') {
       return response(req, { ok: true, action, data: await syncDirectory(token, auth.userId) });
+    }
+    if (action === 'sync-profile-details') {
+      return response(req, { ok: true, action, data: await syncProfileDetails(token, auth.userId) });
     }
     if (action === 'preview') {
       return response(req, { action, ...(await runPolicy(token, auth.userId, false)) });

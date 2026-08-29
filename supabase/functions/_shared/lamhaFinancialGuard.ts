@@ -36,13 +36,30 @@ const dateText = (...values: unknown[]) => {
 
 const isDraft = (value: unknown) => ['draft', 'مسودة'].includes(text(value).toLowerCase());
 
+const normalizeBillingType = (...values: unknown[]) => {
+  const value = text(...values);
+  const normalized = value.toLowerCase().replace(/[\s_-]+/g, ' ');
+  if (['prepaid', 'pre paid', 'دفع مسبق'].includes(normalized)) return 'دفع مسبق';
+  if (['postpaid', 'post paid', 'دفع لاحق'].includes(normalized)) return 'دفع لاحق';
+  return value || null;
+};
+
 export function parseLamhaAccountActive(...values: unknown[]): boolean | null {
   for (const value of values) {
+    if (typeof value === 'boolean') return value;
+    if (value === 1 || value === '1') return true;
+    if (value === 0 || value === '0') return false;
     const record = asRecord(value);
     const candidate = text(record.value, record.key, record.slug, record.name, value)
       .toLowerCase().replace(/[\s_-]+/g, ' ');
-    if (['active', 'enabled', 'نشط'].includes(candidate)) return true;
-    if (['inactive', 'disabled', 'غير نشط'].includes(candidate)) return false;
+    if (candidate === 'true') return true;
+    if (candidate === 'false') return false;
+    if (['inactive', 'غير نشط'].includes(candidate)) return false;
+    // Lamha's account contract is negative: only `inactive` blocks shipment
+    // creation. idle/stopped are lifecycle or activity labels, not account
+    // disablement. Keep unknown non-empty Lamha statuses operational rather
+    // than silently turning them into an indeterminate financial-guard state.
+    if (candidate) return true;
   }
   return null;
 }
@@ -83,18 +100,32 @@ export function normalizeLamhaStoreRow(raw: unknown, previous: AnyRecord = {}) {
     ) || 0)),
     last_shipment_at: dateText(
       row.last_shipment_at, row.lastShipmentAt, row.last_shipment, row.lastShipment,
+      row.last_shipment_date, row.lastShipmentDate,
       metrics.last_shipment_at, metrics.lastShipmentAt, previous.last_shipment_at,
     ),
     integration_type: text(row.integration_type, row.integrationType, row.platform, row.store_type, profile.integration_type, previous.integration_type) || null,
-    billing_type: text(row.billing_type, row.billingType, row.invoice_type, row.invoiceType, profile.billing_type, previous.billing_type) || null,
+    billing_type: normalizeBillingType(
+      row.billing_type, row.billingType, row.invoice_type, row.invoiceType,
+      row.invoice_status, row.invoiceStatus, profile.billing_type, previous.billing_type,
+    ),
     status: text(asRecord(status).label, asRecord(status).name, asRecord(status).value, status, previous.status) || null,
-    created_at_platform: dateText(row.joined_at, row.joinedAt, row.created_at, row.createdAt, profile.created_at, previous.created_at_platform),
+    created_at_platform: dateText(
+      row.joined_at, row.joinedAt, row.join_date, row.joinDate,
+      row.created_at, row.createdAt, profile.created_at, previous.created_at_platform,
+    ),
     last_topup_at: dateText(row.last_topup_at, row.lastTopupAt, metrics.last_topup_at, metrics.lastTopupAt, previous.last_topup_at),
-    wallet_balance: number(row.wallet_balance, row.walletBalance, metrics.wallet_balance, metrics.walletBalance, previous.wallet_balance) || 0,
+    // Unknown is not zero. Lamha currently exposes wallet-transaction presence
+    // but not the balance itself, so a missing Excel enrichment must remain
+    // null instead of manufacturing a financial value.
+    wallet_balance: number(row.wallet_balance, row.walletBalance, metrics.wallet_balance, metrics.walletBalance, previous.wallet_balance) ?? null,
     profile_status: text(row.profile_status, row.profileStatus, profile.profile_status, previous.profile_status) || null,
-    vat_registered: bool(row.vat_registered, row.vatRegistered, profile.vat_registered, previous.vat_registered) ?? false,
-    zatca_completed: bool(row.zatca_completed, row.zatcaCompleted, profile.zatca_completed, previous.zatca_completed) ?? false,
-    verification_status: text(row.verification_status, row.verificationStatus, profile.verification_status, previous.verification_status) || null,
+    vat_registered: bool(row.vat_registered, row.vatRegistered, profile.vat_registered, previous.vat_registered) ?? null,
+    zatca_completed: bool(row.zatca_completed, row.zatcaCompleted, profile.zatca_completed, previous.zatca_completed) ?? null,
+    verification_status: bool(row.verified, profile.verified) === true
+      ? 'موثق'
+      : bool(row.verified, profile.verified) === false
+        ? 'غير موثق'
+        : text(row.verification_status, row.verificationStatus, profile.verification_status, previous.verification_status) || null,
   };
   return normalized;
 }

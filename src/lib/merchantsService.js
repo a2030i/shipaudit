@@ -26,6 +26,12 @@
 //   computeMerchantInsights(merchants)               → { signupCounts, dormant, churned, topVolume, ... }
 
 import { supabase } from './supabase.js';
+import {
+  isLamhaAccountDisabled,
+  isLamhaAccountEnabled,
+  isLamhaLifecycleStopped,
+  normalizeLamhaStatus,
+} from './lamhaAccountState.js';
 
 const PAGE = 1000;
 async function loadAll(table, columns, filters = {}) {
@@ -168,6 +174,41 @@ function isMissingMerchantColumnError(error) {
   return /profile_status|vat_registered|zatca_completed|verification_status|schema cache|column/i.test(msg);
 }
 
+function excelJsonValue(v) {
+  if (v == null || v === '') return null;
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === 'number' || typeof v === 'boolean') return v;
+  return String(v).trim() || null;
+}
+
+function excelRowData(headerRow, row) {
+  const rawExcel = {};
+  for (let idx = 0; idx < headerRow.length; idx++) {
+    const header = String(headerRow[idx] ?? '').trim();
+    if (!header) continue;
+    const value = excelJsonValue(row[idx]);
+    if (value != null) rawExcel[header] = value;
+  }
+  return rawExcel;
+}
+
+function canonicalExcelProfile(row, rawExcel = row.excelData?._excel || {}, presentFields = null) {
+  // Excel is an enrichment source, never a competing Lamha directory.
+  // Shared identity/account fields (name, phone, status, billing, shipments,
+  // verification and integration) are intentionally retained only inside
+  // `_excel` for audit. Their effective values must come from Lamha API.
+  const profile = { _excel: rawExcel };
+  const put = (field, key, value) => {
+    if (!presentFields || presentFields.has(field)) profile[key] = value;
+  };
+  put('profileStatus', 'profileStatus', row.profileStatus);
+  put('vatRegistered', 'vatRegistered', row.vatRegistered);
+  put('zatcaCompleted', 'zatcaCompleted', row.zatcaCompleted);
+  put('lastTopupAt', 'lastTopupAt', row.lastTopupAt);
+  put('walletBalance', 'walletBalance', row.walletBalance);
+  return profile;
+}
+
 function normalizeStoreId(value) {
   const raw = String(value ?? '').trim();
   if (!raw) return '';
@@ -227,6 +268,11 @@ export function consolidateMerchantSnapshotRows(rows) {
     for (const key of Object.keys(fallback)) {
       if (merged[key] == null || merged[key] === '') merged[key] = fallback[key];
     }
+    merged.excelData = {
+      ...(fallback.excelData || {}),
+      ...(winner.excelData || {}),
+      _excel: { ...(fallback.excelData?._excel || {}), ...(winner.excelData?._excel || {}) },
+    };
     byStoreId.set(storeId, {
       row: merged,
       score: merchantRowScore(merged, Math.max(sourceIndex, existing.score[3] || 0)),
@@ -260,7 +306,7 @@ export function parseStoresFile(allRows) {
     const storeName = String(r[cols.storeName] ?? '').trim();
     if (!storeId || !storeName) continue;
 
-    rawRows.push({
+    const parsedRow = {
       storeId,
       storeName,
       phone:               cols.phone >= 0           ? toPhoneString(r[cols.phone])              : null,
@@ -275,8 +321,16 @@ export function parseStoresFile(allRows) {
       verificationStatus:  cols.verificationStatus >= 0 ? toText(r[cols.verificationStatus])     : null,
       createdAtPlatform:   cols.createdAtPlatform >= 0 ? toIsoDate(r[cols.createdAtPlatform])    : null,
       lastTopupAt:         cols.lastTopupAt >= 0     ? toIsoDate(r[cols.lastTopupAt])            : null,
-      walletBalance:       cols.walletBalance >= 0   ? toNum(r[cols.walletBalance])              : 0,
-    });
+      // A blank wallet cell means "not supplied", not a real zero balance.
+      walletBalance:       cols.walletBalance >= 0   ? toNum(r[cols.walletBalance], null)        : null,
+    };
+    const presentFields = new Set(Object.entries(cols).filter(([, column]) => column >= 0).map(([field]) => field));
+    parsedRow.excelData = canonicalExcelProfile(
+      parsedRow,
+      excelRowData(allRows[headerIdx] || [], r),
+      presentFields,
+    );
+    rawRows.push(parsedRow);
   }
   const consolidated = consolidateMerchantSnapshotRows(rawRows);
   return {
@@ -345,6 +399,30 @@ export async function uploadMerchantsSnapshot({ parsed, sourceFile, userId }) {
     }
     throw error;
   }
+  // Preserve every Excel column as a fallback profile source. The registry
+  // merges it separately from Lamha API data, so an Excel upload can fill a
+  // missing API field without overwriting a non-null API value.
+  let profileEnrichment = { merged: 0, error: null };
+  try {
+    for (let from = 0; from < consolidated.rows.length; from += 500) {
+      const profileRows = consolidated.rows.slice(from, from + 500).map(row => ({
+        store_id: row.storeId,
+        excel_data: row.excelData || canonicalExcelProfile(row),
+      }));
+      const { data, error: profileError } = await supabase.rpc('merge_lamha_store_profiles_from_excel', {
+        p_rows: profileRows,
+        p_source_file: sourceFile || null,
+      });
+      if (profileError) throw profileError;
+      profileEnrichment.merged += Number(data?.merged || profileRows.length);
+    }
+  } catch (profileError) {
+    profileEnrichment = {
+      merged: profileEnrichment.merged,
+      error: String(profileError?.message || profileError),
+    };
+    console.error('Lamha Excel profile enrichment failed:', profileError);
+  }
   // التقط انتقالات دورة حياة المتجر بعد اكتمال كل دفعات الـsnapshot.
   // الإثراء best-effort عمداً: غياب المهاجرة أثناء النشر المتدرّج أو فشل
   // التحليل لا يحوّل رفعاً ناجحاً إلى فشل. الرفع هو مصدر الحقيقة، والـRPC
@@ -369,12 +447,48 @@ export async function uploadMerchantsSnapshot({ parsed, sourceFile, userId }) {
     duplicateStoreIds: parsed.duplicateStoreIds || consolidated.duplicateStoreIds || [],
     prepaid:       inserts.filter(r => r.billing_type === 'دفع مسبق').length,
     postpaid:      inserts.filter(r => r.billing_type === 'دفع لاحق').length,
-    active:        inserts.filter(r => r.status === 'نشط').length,
+    active:        inserts.filter(r => isLamhaAccountEnabled(r.status)).length,
     profileDone:   inserts.filter(r => r.profile_status === 'مكتمل').length,
     vatRegistered: inserts.filter(r => r.vat_registered).length,
     zatcaDone:     inserts.filter(r => r.zatca_completed).length,
     verified:      inserts.filter(r => r.verification_status === 'موثق').length,
+    profileEnrichment,
     lifecycle,
+  };
+}
+
+// V2 Lamha contract: the Employee API owns the operational directory. An
+// uploaded stores.xlsx file can only enrich fields Lamha API does not expose
+// today. It must not create a newer merchant snapshot or replace API account
+// state, identity, billing, shipment, verification or integration values.
+export async function uploadLamhaExcelEnrichment({ parsed, sourceFile }) {
+  if (!parsed?.rows?.length) throw new Error('لا توجد صفوف للإثراء');
+  const consolidated = consolidateMerchantSnapshotRows(parsed.rows);
+  let merged = 0;
+  for (let from = 0; from < consolidated.rows.length; from += 500) {
+    const profileRows = consolidated.rows.slice(from, from + 500).map(row => ({
+      store_id: row.storeId,
+      excel_data: row.excelData || canonicalExcelProfile(row),
+    }));
+    const { data, error } = await supabase.rpc('merge_lamha_store_profiles_from_excel', {
+      p_rows: profileRows,
+      p_source_file: sourceFile || null,
+    });
+    if (error) throw error;
+    merged += Number(data?.merged || profileRows.length);
+  }
+  return {
+    mode: 'excel_enrichment',
+    count: consolidated.rows.length,
+    merged,
+    sourceRowCount: parsed.sourceRowCount || parsed.rows.length,
+    duplicateRowCount: parsed.duplicateRowCount || consolidated.duplicateRowCount || 0,
+    duplicateStoreIds: parsed.duplicateStoreIds || consolidated.duplicateStoreIds || [],
+    profileDone: consolidated.rows.filter(r => r.profileStatus === 'مكتمل').length,
+    vatRegistered: consolidated.rows.filter(r => r.vatRegistered).length,
+    zatcaDone: consolidated.rows.filter(r => r.zatcaCompleted).length,
+    walletRows: consolidated.rows.filter(r => r.walletBalance != null).length,
+    topupRows: consolidated.rows.filter(r => r.lastTopupAt).length,
   };
 }
 
@@ -784,8 +898,8 @@ export function computeMerchantInsights(merchants, today = new Date()) {
   for (const m of merchants) {
     if (m.billing_type === 'دفع مسبق') prepaid++;
     if (m.billing_type === 'دفع لاحق') postpaid++;
-    if (m.status === 'نشط') active++;
-    if (m.status === 'غير نشط') inactive++;
+    if (isLamhaAccountEnabled(m.status)) active++;
+    if (isLamhaAccountDisabled(m.status)) inactive++;
     if (m.profile_status === 'مكتمل') profileDone++;
     if (m.vat_registered === true) vatRegistered++;
     if (m.zatca_completed === true) zatcaDone++;
@@ -793,8 +907,8 @@ export function computeMerchantInsights(merchants, today = new Date()) {
     if (m.created_at_platform && days(m.created_at_platform, today) <= 30) newLast30++;
     if (m.created_at_platform && days(m.created_at_platform, today) <= 90) newLast90++;
     if ((m.shipment_count || 0) === 0) neverShipped++;
-    if (m.status === 'نشط' && m.last_shipment_at && days(m.last_shipment_at, today) > 60) dormantActive++;
-    if (m.status === 'غير نشط' && (m.shipment_count || 0) > 0) churnedList.push(m);
+    if (['active', 'نشط'].includes(normalizeLamhaStatus(m.status)) && m.last_shipment_at && days(m.last_shipment_at, today) > 60) dormantActive++;
+    if (isLamhaLifecycleStopped(m.status) && (m.shipment_count || 0) > 0) churnedList.push(m);
     if (m.billing_type === 'دفع مسبق' && (m.wallet_balance || 0) > 0 && m.last_shipment_at && days(m.last_shipment_at, today) > 60) {
       walletPilesUp++;
       walletPilesList.push(m);

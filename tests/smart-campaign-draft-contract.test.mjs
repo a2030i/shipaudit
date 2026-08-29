@@ -36,5 +36,32 @@ test('opening channel review remains separate from saving a draft', async () => 
   const page = await read('../src/pages/SmartCampaignCenter.jsx');
   assert.match(page, /onClick=\{saveDraft\}[\s\S]{0,200}>حفظ كمسودة<\/Btn>/);
   assert.match(page, /step < 5 \? goToStep\(step \+ 1\) : launch\(\)/);
-  assert.match(page, /channel === 'whatsapp'\) setWaCampaign\(saved\)/);
+  assert.match(page, /setWaCampaign\(campaignPayload\('ready'\)\)/);
+  assert.match(page, /setIvrCampaign\(campaignPayload\('ready'\)\)/);
+  assert.doesNotMatch(page, /const saved = await persistCampaign\('ready', true\);\s*if \(channel === 'whatsapp'/);
+  assert.match(page, /onBeforeExecute=\{prepareChannelExecution\}/);
+});
+
+test('channel review receives only the protected ready audience', async () => {
+  const [page, ivr] = await Promise.all([
+    read('../src/pages/SmartCampaignCenter.jsx'),
+    read('../src/components/IvrCampaignModal.jsx'),
+  ]);
+  assert.match(page, /recipients=\{waCampaign \? audienceSummary\.ready : \[\]\}/);
+  assert.match(page, /audienceSummary\.ready\.map\(row => \(\{ phone: row\.to/);
+  assert.doesNotMatch(page, /ivrCampaign \? audience\.map/);
+  assert.match(ivr, /نتيجة الفلتر/);
+  assert.match(ivr, /مستبعد بالحماية/);
+  assert.match(ivr, /سيتلقى الاتصال/);
+});
+
+test('external channel execution persists only from the final channel action', async () => {
+  const [whatsapp, ivr] = await Promise.all([
+    read('../src/components/WhatsAppSendModal.jsx'),
+    read('../src/components/IvrCampaignModal.jsx'),
+  ]);
+  assert.match(whatsapp, /onBeforeExecute\?\.\(\{[\s\S]*mode: 'immediate'/);
+  assert.match(whatsapp, /onBeforeExecute\?\.\(\{[\s\S]*mode: 'scheduled'/);
+  assert.match(ivr, /onBeforeExecute\?\.\(\{[\s\S]*mode: 'immediate'/);
+  assert.match(ivr, /onBeforeExecute\?\.\(\{[\s\S]*mode: 'scheduled'/);
 });

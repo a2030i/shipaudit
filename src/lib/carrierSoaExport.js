@@ -14,6 +14,7 @@ import * as XLSX from 'xlsx';
 import { rtl } from './xlsxRtl.js';
 import { supabase } from './supabase.js';
 import { loadCarrierNetBalances } from './codSettlementService.js';
+import { persistAndDownloadExport } from './internalExportsService.js';
 
 const fmtMoney = (n) =>
   (n == null || Number.isNaN(n)) ? ''
@@ -134,7 +135,6 @@ export async function exportCarrierSOA({ carrierId, carrierName, persist = false
 
   if (persist) {
     // من مركز التقارير: تخزين + سجل + تنزيل (قاعدة §1.13)
-    const { persistAndDownloadExport } = await import('./internalExportsService.js');
     await persistAndDownloadExport({ wb, fileName, kind: 'carrier_soa', rowCount: ops.length, total: balance, userId });
   } else {
     XLSX.writeFile(rtl(wb), fileName);

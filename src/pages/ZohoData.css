@@ -4,6 +4,20 @@
   min-width: 0;
 }
 
+.zoho-active-focus {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding-inline: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .zoho-bank-review-note {
   padding: 11px 13px;
   border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);

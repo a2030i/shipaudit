@@ -42,6 +42,51 @@ test('normalization updates visible directory fields and preserves unavailable s
   assert.equal(row.last_topup_at, '2026-08-01T00:00:00.000Z');
 });
 
+test('financial guard uses the Lamha account contract: inactive alone is disabled', () => {
+  for (const status of ['active', 'idle', 'stopped', 'enabled', 'نشط', 'خامل', 'متوقف', 'موقوف', 'future_status']) {
+    assert.equal(helper.parseLamhaAccountActive(status), true, status);
+  }
+  assert.equal(helper.parseLamhaAccountActive('inactive'), false);
+  assert.equal(helper.parseLamhaAccountActive('غير نشط'), false);
+  assert.equal(helper.parseLamhaAccountActive('false'), false, 'an explicit operational boolean is not a status label');
+  assert.equal(helper.parseLamhaAccountActive(null), null);
+});
+
+test('Lamha detail field aliases update only matching merchant meanings', () => {
+  const row = helper.normalizeLamhaStoreRow({
+    id: 1258,
+    name: 'متجر تجريبي',
+    phone: '966500000000',
+    status: 'idle',
+    invoiceStatus: 'postpaid',
+    joinDate: '2025-11-09',
+    lastShipmentDate: '2026-08-20',
+    monthlyAvgOrders: 16,
+    ownerActivated: false,
+    hasWalletTransactions: true,
+    verified: false,
+  }, { shipment_count: 240, wallet_balance: 90 });
+  assert.equal(row.status, 'idle');
+  assert.equal(row.billing_type, 'دفع لاحق');
+  assert.equal(row.created_at_platform, '2025-11-09T00:00:00.000Z');
+  assert.equal(row.last_shipment_at, '2026-08-20T00:00:00.000Z');
+  assert.equal(row.shipment_count, 240, 'monthlyAvgOrders must not replace total shipments');
+  assert.equal(row.wallet_balance, 90, 'wallet transaction presence must not replace wallet balance');
+  assert.equal(row.verification_status, 'غير موثق', 'Lamha API verification must replace the Excel fallback');
+});
+
+test('missing Excel-only financial fields remain unknown instead of becoming zero', () => {
+  const row = helper.normalizeLamhaStoreRow({
+    id: 1258,
+    name: 'متجر بلا رصيد في الملف',
+    status: 'active',
+    invoiceStatus: 'prepaid',
+  });
+  assert.equal(row.wallet_balance, null);
+  assert.equal(row.vat_registered, null);
+  assert.equal(row.zatca_completed, null);
+});
+
 test('financial guard includes opening balances older than 30 days and excludes invoice drafts', () => {
   const rows = helper.buildFinancialGuardRows({
     merchants: [{ store_id: '847', store_name: 'متجر الأندية', status: 'نشط' }],
@@ -84,6 +129,10 @@ test('cron template maps midnight Riyadh to 21:00 UTC and never embeds a secret'
   const cron = await readFile(new URL('../supabase/cron/lamha-financial-guard.sql.template', import.meta.url), 'utf8');
   assert.match(cron, /'0 21 \* \* \*'/);
   assert.match(cron, /lamha_financial_guard_cron_secret/);
+  assert.match(cron, /"action":"sync-directory"/);
+  assert.match(cron, /"action":"sync-profile-details"/);
+  assert.match(cron, /'7,22,37,52 \* \* \* \*'/);
+  assert.doesNotMatch(cron, /"action":"policy"/);
   assert.doesNotMatch(cron, /Bearer\s+[A-Za-z0-9._-]{20,}/);
 });
 
@@ -97,4 +146,38 @@ test('automation stays disabled unless explicitly provisioned and verifies both 
   assert.match(source, /latest\.createdAt <= policy\.snapshotAt/);
   assert.match(source, /latest\?\.automatic && latest\.action === 'deactivate'/);
   assert.match(source, /source_read_failed/);
+  assert.match(source, /db\.rpc\('authorize_lamha_directory_cron'/);
+  assert.match(source, /sync-profile-details/);
+  assert.match(source, /PROFILE_DETAIL_CATCHUP_BUDGET = 24/);
+  assert.match(source, /PROFILE_DETAIL_REFRESH_MS = 7/);
+  assert.match(source, /read_only: true/);
+  assert.match(source, /previous_matches=/);
+  assert.match(source, /\.range\(from, from \+ DATABASE_PAGE_SIZE - 1\)/);
+  assert.match(source, /reportedTotal/);
+  assert.match(source, /DIRECTORY_PAGE_SIZE = 200/);
+  assert.match(source, /DIRECTORY_STABLE_SORT = 'sort_by=id&sort_direction=asc'/);
+  assert.match(source, /rawRows\.length < reportedTotal/);
+  assert.match(source, /lamha_directory_incomplete/);
+  assert.match(source, /`\/stores\/\$\{id\}`/);
+  assert.match(source, /x-ratelimit-remaining/);
+  assert.match(source, /PROFILE_DETAIL_BUDGET = 18/);
+  assert.match(source, /merge_lamha_store_profiles_from_api/);
+  assert.match(source, /profile_detail_rows/);
+  assert.match(source, /excelFallbackStores/);
+});
+
+test('daily Lamha migration schedules read-only sync and removes the policy worker', async () => {
+  const migration = await readFile(new URL('../supabase/migrations/20260828082515_lamha_daily_read_sync.sql', import.meta.url), 'utf8');
+  assert.match(migration, /'0 21 \* \* \*'/);
+  assert.match(migration, /"action":"sync-directory"/);
+  assert.match(migration, /lamha-financial-guard-0005-0255-riyadh/);
+  assert.match(migration, /authorize_lamha_directory_cron/);
+  assert.match(migration, /revoke execute[\s\S]*from public, anon, authenticated/);
+  assert.match(migration, /grant execute[\s\S]*to service_role/);
+  assert.doesNotMatch(migration, /"action":"policy"/);
+  assert.doesNotMatch(migration, /PATCH|activate|deactivate/i);
+  const timeoutMigration = await readFile(new URL('../supabase/migrations/20260828083439_lamha_daily_read_sync_timeout.sql', import.meta.url), 'utf8');
+  assert.match(timeoutMigration, /timeout_milliseconds := 300000/);
+  assert.match(timeoutMigration, /"action":"sync-directory"/);
+  assert.doesNotMatch(timeoutMigration, /"action":"policy"|PATCH|activate|deactivate/i);
 });

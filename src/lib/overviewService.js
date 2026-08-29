@@ -14,7 +14,13 @@ import { supabase } from './supabase.js';
 import { carrierScore } from './carrierScore.js';
 import { summarizeEffectiveBankBalance } from './bankBalanceService.js';
 import { deriveAccountingCycleStages } from './accountingCycleService.js';
-import { merchantSnapshotSourceState } from './merchantsService.js';
+import { loadLatestMerchants, merchantSnapshotSourceState } from './merchantsService.js';
+import {
+  isLamhaAccountDisabled,
+  isLamhaAccountEnabled,
+  isLamhaLifecycleStopped,
+} from './lamhaAccountState.js';
+import { DEFAULT_SUSPENSION_MIN_OVERDUE } from './lamhaDecisionActions.js';
 
 const runtimeEnv = import.meta.env || {};
 // The production cutover is deliberately limited to the first-screen Lite
@@ -72,8 +78,8 @@ const billingKey = (value) => decisionKey(value);
 const platformKey = (value) => decisionKey(value);
 const isPostpaid = (value) => ['دفعلاحق', 'postpaid'].includes(billingKey(value));
 const isPrepaid = (value) => ['دفعمسبق', 'prepaid'].includes(billingKey(value));
-const isPlatformActive = (value) => ['نشط', 'active', 'مفعل'].includes(platformKey(value));
-const isPlatformInactive = (value) => ['غيرنشط', 'inactive', 'موقوف', 'متوقف'].includes(platformKey(value));
+const isPlatformActive = isLamhaAccountEnabled;
+const isPlatformInactive = isLamhaAccountDisabled;
 
 // Merchant snapshots are raw database rows (snake_case), while
 // customer_money_dashboard is mapped by pnlService to the React-facing
@@ -164,7 +170,6 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
 
   const { loadEffectiveBankBalance } = await import('./bankBalanceService.js');
   const { loadCarrierNetBalances } = await import('./codSettlementService.js');
-  const { loadLatestMerchants, merchantSnapshotSourceState } = await import('./merchantsService.js');
   const { loadAccountingCycle } = await import('./accountingCycleService.js');
   // رصيد البنك = نقطة الحقيقة المشتركة `loadEffectiveBankBalance` (تجمع ختامي
   // آخر كشف **لكل بنك**). كان هنا استعلام مكرَّر بـ`.limit(1)` = آخر كشف واحد
@@ -431,8 +436,7 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
     },
     merchantPulse: (() => {
       const rows = Array.isArray(merchantSnapshot?.merchants) ? merchantSnapshot.merchants : [];
-      const normalize = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, '');
-      const isActive = (value) => ['نشط', 'active', 'مفعل'].includes(normalize(value));
+      const isActive = isLamhaAccountEnabled;
       const asTime = (value) => {
         const stamp = Date.parse(value || '');
         return Number.isFinite(stamp) ? stamp : null;
@@ -444,7 +448,7 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
         const stamp = asTime(row.last_shipment_at);
         return stamp != null && stamp >= fiveDaysAgo && stamp <= referenceAt;
       });
-      const stoppedWithWallet = rows.filter(row => !isActive(row.status) && num(row.wallet_balance) > 0.5);
+      const stoppedWithWallet = rows.filter(row => isLamhaLifecycleStopped(row.status) && num(row.wallet_balance) > 0.5);
       const neverShipped = rows.filter(row => num(row.shipment_count) === 0 || !row.last_shipment_at);
       const paidThisPeriod = new Set((customerMoney?.customers || [])
         .filter(row => String(row.last_payment_date || '').startsWith(monthPrefix))
@@ -455,7 +459,7 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
         snapshotAt: merchantSnapshot?.snapshot?.uploadedAt || null,
         total: rows.length,
         active: rows.filter(row => isActive(row.status)).length,
-        inactive: rows.filter(row => !isActive(row.status)).length,
+        inactive: rows.filter(row => isLamhaAccountDisabled(row.status)).length,
         newThisPeriod: rows.filter(row => String(row.created_at_platform || '').startsWith(monthPrefix)).length,
         recentFiveDays: recentFiveDays.length,
         neverShipped: neverShipped.length,
@@ -595,11 +599,13 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
       const bank = bankBalance?.balance ?? null;
       // AR من زوهو الحي إن توفّر (نفس رقم «تحصيل العملاء» و/zoho-data) —
       // كان من snapshot غير مفلتر (314K) يخالف /receivables (191K) وزوهو (250K)
-      const collectibleAr = Number(customerMoney?.outstanding);
       const openingBalance = Number(customerMoney?.aging?.opening_balance);
-      const invoiceCollectibleAr = Number.isFinite(collectibleAr) && Number.isFinite(openingBalance)
-        ? Math.max(0, collectibleAr - openingBalance)
-        : collectibleAr;
+      const operationalAging = customerMoney?.aging || {};
+      const invoiceCollectibleAr = Number((
+        num(operationalAging.b0_15) + num(operationalAging.b16_30)
+        + num(operationalAging.b31_60) + num(operationalAging.b61_90)
+        + Math.max(0, num(operationalAging.b90p) - num(operationalAging.opening_balance))
+      ).toFixed(2));
       const grossZohoAr = Number(customerMoney?.gross_outstanding ?? zohoDash?.open_ar);
       const creditOffset = Number(customerMoney?.credit_offset);
       const arFromZoho = Number.isFinite(invoiceCollectibleAr) && invoiceCollectibleAr >= 0;
@@ -800,19 +806,18 @@ export function adaptOverviewCore(payload) {
   };
 
   const merchants = merchantSnapshot?.merchants || [];
-  const normalize = value => String(value || '').trim().toLowerCase().replace(/\s+/g, '');
-  const active = value => ['نشط', 'active', 'مفعل'].includes(normalize(value));
+  const active = isLamhaAccountEnabled;
   const asTime = value => { const stamp = Date.parse(value || ''); return Number.isFinite(stamp) ? stamp : null; };
   const referenceAt = asTime(merchantSnapshot?.snapshot?.uploadedAt) || Date.parse(checkedAt);
   const monthPrefix = `${payload.period}-`;
-  const stoppedWithWallet = merchants.filter(row => !active(row.status) && n(row.wallet_balance) > 0.5);
+  const stoppedWithWallet = merchants.filter(row => isLamhaLifecycleStopped(row.status) && n(row.wallet_balance) > 0.5);
   const paidThisPeriod = new Set((customerMoney?.customers || [])
     .filter(row => String(row.last_payment_date || '').startsWith(monthPrefix))
     .map(row => row.store_id || row.zoho_id || row.name).filter(Boolean));
   const merchantPulse = {
     available: !!merchantSnapshot?.snapshot, snapshotAt: merchantSnapshot?.snapshot?.uploadedAt || null,
     total: merchants.length, active: merchants.filter(row => active(row.status)).length,
-    inactive: merchants.filter(row => !active(row.status)).length,
+    inactive: merchants.filter(row => isLamhaAccountDisabled(row.status)).length,
     newThisPeriod: merchants.filter(row => String(row.created_at_platform || '').startsWith(monthPrefix)).length,
     recentFiveDays: merchants.filter(row => {
       const stamp = asTime(row.last_shipment_at);
@@ -834,9 +839,7 @@ export function adaptOverviewCore(payload) {
   customerAging.total = +(customerAging.b0_15 + customerAging.b16_30 + customerAging.b31_60
     + customerAging.b61_90 + customerAging.b90p).toFixed(2);
 
-  const collectibleAr = Number(customerMoney?.outstanding);
-  const invoiceCollectibleAr = Number.isFinite(collectibleAr)
-    ? Math.max(0, collectibleAr - openingBalance) : null;
+  const invoiceCollectibleAr = customerAging.total;
   const totalAR = Number.isFinite(invoiceCollectibleAr) ? invoiceCollectibleAr : n(workingCapital.total_ar);
   const totalAP = n(workingCapital.total_ap);
   const bank = bankBalance?.balance ?? null;
@@ -960,7 +963,9 @@ export function adaptOverviewLite(payload) {
         total: Number(aging.total) || 0,
       },
       cashPosition: {
-        totalAR: Number(financial.collectibleDue) || 0,
+        // Use the same line-backed operational buckets as the receivables
+        // result set. The compatibility field can include a residual cent.
+        totalAR: Number(aging.total) || 0,
         openingBalanceExcluded: Number(aging.openingBalanceExcluded) || 0,
         bankBalance: null,
         bankBalanceComplete: false,
@@ -979,6 +984,9 @@ export function adaptOverviewLite(payload) {
       lamhaSourceNeedsUpdate: Number(actions.refreshLamhaSources?.count) > 0,
       lamhaUploads: {
         merchants: {
+          // The newest merchant snapshot is the Lamha API mirror timestamp.
+          // It is not proof that the optional Excel enrichment was uploaded.
+          apiSyncedAt: payload.sources.merchants?.dataAsOf || null,
           uploadedAt: payload.sources.merchants?.dataAsOf || null,
           rowCount: payload.sources.merchants?.recordCount ?? null,
           available: payload.sources.merchants?.status !== 'unavailable',
@@ -992,7 +1000,40 @@ export function adaptOverviewLite(payload) {
   };
 }
 
-export function mergeOverviewLiteLazy(overview, merchantPayload, cashPayload) {
+const OVERVIEW_UPLOAD_EVIDENCE = [
+  { key: 'carrier_audits', stage: 'carrier_audits', label: 'فواتير شركات الشحن', action: 'فتح مراجعات الناقلين' },
+  { key: 'lamha_shipments', stage: 'lamha_shipments', label: 'Admin Order Export من لمحة', action: 'فتح استيراد الشحنات' },
+  { key: 'lamha_merchants_excel', stage: 'lamha_sources', sourceKind: 'merchants', label: 'إثراء متاجر لمحة من Excel', action: 'فتح رفع ملف المتاجر' },
+  { key: 'lamha_balance', stage: 'lamha_sources', sourceKind: 'internal_settlement', label: 'كشف حساب لمحة', action: 'فتح رفع كشف الحساب' },
+  { key: 'lamha_collections', stage: 'lamha_collections', label: 'ملف تحصيل لمحة', action: 'فتح رفع التحصيل' },
+];
+
+export function summarizeOverviewUploadEvidence(rows, { available = true } = {}) {
+  if (!available || !Array.isArray(rows)) {
+    return { available: false, items: [], error: 'تعذر قراءة سجل الرفع الحالي.' };
+  }
+  const successfulFiles = rows.filter(row => (
+    row?.status === 'success' && String(row?.file_name || '').trim()
+  ));
+  return {
+    available: true,
+    items: OVERVIEW_UPLOAD_EVIDENCE.map((definition) => {
+      const event = successfulFiles.find(row => (
+        row.stage === definition.stage
+        && (!definition.sourceKind || row.source_kind === definition.sourceKind)
+      ));
+      return {
+        ...definition,
+        uploaded: !!event,
+        uploadedAt: event?.created_at || null,
+        fileName: event?.file_name || null,
+        rowCount: event?.row_count ?? null,
+      };
+    }),
+  };
+}
+
+export function mergeOverviewLiteLazy(overview, merchantPayload, cashPayload, uploadEvidence = null) {
   if (overview?.readPath !== 'overview_core_lite') return overview;
   if (!merchantPayload?.merchantPulse || !cashPayload?.cashPosition) {
     throw new Error('استجابة أقسام overview_core_lite غير مكتملة');
@@ -1002,11 +1043,39 @@ export function mergeOverviewLiteLazy(overview, merchantPayload, cashPayload) {
   const totalAP = Number(bank.totalAP) || 0;
   const bankBalance = bank.bankBalance == null ? null : Number(bank.bankBalance);
   const checkedAt = cashPayload.generatedAt || overview.loadedAt || new Date().toISOString();
+  const merchantUploads = merchantPayload.lamhaUploads || overview.lamhaUploads || {};
+  const merchantExcel = uploadEvidence?.items?.find(item => item.key === 'lamha_merchants_excel');
+  const balanceExcel = uploadEvidence?.items?.find(item => item.key === 'lamha_balance');
   return {
     ...overview,
     lazyStatus: 'ready',
     merchantPulse: { ...merchantPayload.merchantPulse, loading: false },
-    lamhaUploads: merchantPayload.lamhaUploads || overview.lamhaUploads,
+    customerDecisionSummary: {
+      ...(overview.customerDecisionSummary || {}),
+      negativeWallet: {
+        count: Number(merchantPayload.merchantPulse.negativeWallet) || 0,
+        amount: Number(merchantPayload.merchantPulse.negativeWalletAmount) || 0,
+      },
+    },
+    lamhaUploads: {
+      ...merchantUploads,
+      merchants: {
+        ...(merchantUploads.merchants || {}),
+        apiSyncedAt: merchantPayload.source?.dataAsOf
+          || merchantPayload.source?.lastSuccessfulSyncAt
+          || merchantUploads.merchants?.apiSyncedAt
+          || merchantUploads.merchants?.uploadedAt
+          || null,
+        excelUploadedAt: merchantExcel?.uploadedAt || null,
+        excelFileName: merchantExcel?.fileName || null,
+      },
+      balance: {
+        ...(merchantUploads.balance || {}),
+        uploadedAt: balanceExcel?.uploadedAt || merchantUploads.balance?.uploadedAt || null,
+        fileName: balanceExcel?.fileName || merchantUploads.balance?.fileName || null,
+      },
+    },
+    operationalUploads: uploadEvidence,
     cashPosition: {
       ...overview.cashPosition,
       ...bank,
@@ -1032,27 +1101,71 @@ export function mergeOverviewLiteLazy(overview, merchantPayload, cashPayload) {
 }
 
 export async function loadOverviewLite({ period = null, client = supabase } = {}) {
-  const { data, error } = await client.rpc('overview_core_lite', {
-    p_period: period || currentPeriod(),
+  const [coreResult, suspensionResult] = await Promise.all([
+    withSourceTimeout(
+      client.rpc('overview_core_lite', { p_period: period || currentPeriod() }),
+      OVERVIEW_SOURCE_TIMEOUT_MS,
+      'ملخص مركز القيادة',
+    ),
+    withSourceTimeout(
+      client.rpc('overview_actionable_suspension_lite', {
+        p_min_overdue: DEFAULT_SUSPENSION_MIN_OVERDUE,
+      }),
+      OVERVIEW_SOURCE_TIMEOUT_MS,
+      'استحقاق إيقاف حسابات لمحة',
+    ),
+  ]);
+  if (coreResult.error) throw coreResult.error;
+  if (suspensionResult.error) throw suspensionResult.error;
+
+  return adaptOverviewLite({
+    ...coreResult.data,
+    actions: {
+      ...(coreResult.data?.actions || {}),
+      stopPostpaid: suspensionResult.data || { count: 0, amount: 0 },
+    },
   });
-  if (error) throw error;
-  return adaptOverviewLite(data);
 }
 
 export async function loadOverviewLiteLazy({ period = null, client = supabase } = {}) {
-  const [merchantResult, cashResult] = await Promise.all([
-    client.rpc('overview_merchant_pulse_lite', { p_period: period || currentPeriod() }),
-    client.rpc('overview_cash_lite'),
+  const selectedPeriod = period || currentPeriod();
+  const uploadEvidencePromise = typeof client.from === 'function'
+    ? withSourceTimeout(
+        client.from('accounting_cycle_events')
+          .select('stage, source_kind, status, file_name, row_count, created_at')
+          .eq('period', `${selectedPeriod}-01`)
+          .in('stage', ['carrier_audits', 'lamha_shipments', 'lamha_sources', 'lamha_collections'])
+          .order('created_at', { ascending: false }),
+        OVERVIEW_SOURCE_TIMEOUT_MS,
+        'سجل ملفات دورة المحاسب',
+      ).catch(error => ({ data: null, error }))
+    : Promise.resolve({ data: null, error: new Error('مصدر سجل الرفع غير متاح') });
+  const [merchantResult, cashResult, uploadResult] = await Promise.all([
+    withSourceTimeout(
+      client.rpc('overview_merchant_pulse_lite', { p_period: selectedPeriod }),
+      OVERVIEW_SOURCE_TIMEOUT_MS,
+      'نبض متاجر لمحة',
+    ),
+    withSourceTimeout(client.rpc('overview_cash_lite'), OVERVIEW_SOURCE_TIMEOUT_MS, 'الموقف النقدي'),
+    uploadEvidencePromise,
   ]);
   if (merchantResult.error) throw merchantResult.error;
   if (cashResult.error) throw cashResult.error;
-  return { merchant: merchantResult.data, cash: cashResult.data };
+  return {
+    merchant: merchantResult.data,
+    cash: cashResult.data,
+    uploads: summarizeOverviewUploadEvidence(uploadResult.data, { available: !uploadResult.error }),
+  };
 }
 
 export async function loadOverviewCore({ period = null, topN = 5, client = supabase } = {}) {
-  const { data, error } = await client.rpc('overview_core', {
-    p_period: period || currentPeriod(), p_top_n: Math.min(20, Math.max(1, Number(topN) || 5)),
-  });
+  const { data, error } = await withSourceTimeout(
+    client.rpc('overview_core', {
+      p_period: period || currentPeriod(), p_top_n: Math.min(20, Math.max(1, Number(topN) || 5)),
+    }),
+    OVERVIEW_SOURCE_TIMEOUT_MS,
+    'ملخص مركز القيادة الموسع',
+  );
   if (error) throw error;
   return adaptOverviewCore(data);
 }

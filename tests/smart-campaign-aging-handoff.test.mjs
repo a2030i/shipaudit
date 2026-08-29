@@ -29,6 +29,8 @@ test('smart campaign renders pre-channel exclusions and Arabic period names', as
   assert.match(page, /المحدد في التحصيل/);
   assert.match(page, /غير مؤهل قبل القناة/);
   assert.match(page, /دخل فحص القناة/);
+  assert.match(page, /!audienceSummary\.ready\.length/);
+  assert.match(page, /لا يوجد جمهور جاهز بعد تطبيق فحوص الحماية/);
   assert.match(page, /campaignBucketLabel\(new Set\(Array\.isArray\(context\.aging\)/);
   assert.match(service, /describeCollectionAgingFilter\(buckets\)/);
   assert.match(service, /aging_filter:\s*agingLabel/);

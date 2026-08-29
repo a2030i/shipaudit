@@ -12,6 +12,7 @@ import { loadEmployees } from '../lib/employeeService.js';
 import { normalizeSaudiPhone, loadWhatsAppCampaignStatus, waStatusBadge } from '../lib/whatsappService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import { CustomerCampaignHistory } from '../components/WhatsAppCampaignLog.jsx';
+import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 
 const fmt0 = (n) => Number(n || 0).toLocaleString('en-US');
 const fmtDate = (d) => { if (!d) return '—'; try { return new Date(d).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short', year: 'numeric' }); } catch { return String(d).slice(0, 10); } };
@@ -99,7 +100,6 @@ export default function HatifLeads({ isActive = true }) {
     try {
       const XLSX = await import('xlsx');
       const { rtl } = await import('../lib/xlsxRtl.js');
-      const { persistAndDownloadExport } = await import('../lib/internalExportsService.js');
       const data = filtered.map(l => ({
         'الاسم': l.name || '', 'الجوال': l.phone,
         'معروف': l.leadMatched ? 'مرتبط بعميل' : l.hatifName ? 'مسمّى في هاتف' : 'جديد',

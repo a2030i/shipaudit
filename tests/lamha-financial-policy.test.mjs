@@ -5,7 +5,7 @@ import {
   buildLamhaFinancialPolicyRows, lamhaFinancialDecision, policyCandidates,
 } from '../src/lib/lamhaFinancialPolicy.js';
 import {
-  isLamhaStatusResultFresh, needsLamhaStatusRefresh,
+  isLamhaStatusResultFresh, lamhaStatusFailureLabel, needsLamhaStatusRefresh,
 } from '../src/lib/lamhaStoreStatusService.js';
 
 const merchants = [
@@ -77,6 +77,48 @@ test('saved Lamha observations are reused only inside the freshness window', () 
   assert.equal(needsLamhaStatusRefresh(failed, now), true);
 });
 
+test('financial policy excludes residual balances up to 0.50 and admits 0.51 exactly', () => {
+  const thresholdMerchants = [
+    { store_id: 40, store_name: 'رصيد هامشي', status: 'نشط' },
+    { store_id: 50, store_name: 'رصيد تشغيلي', status: 'نشط' },
+  ];
+  const thresholdLinks = new Map([
+    ['عميل هامشي', { storeId: 40 }],
+    ['عميل تشغيلي', { storeId: 50 }],
+  ]);
+  const thresholdLines = [
+    { contact_name: 'عميل هامشي', line_kind: 'opening_balance', line_id: 'r1', age_days: 90, collectible_amount: 0.01 },
+    { contact_name: 'عميل هامشي', line_kind: 'opening_balance', line_id: 'r2', age_days: 90, collectible_amount: 0.50 },
+    { contact_name: 'عميل تشغيلي', line_kind: 'invoice', line_id: 'c1', age_days: 31, collectible_amount: 0.51 },
+  ];
+
+  const { rows } = buildLamhaFinancialPolicyRows({
+    merchants: thresholdMerchants,
+    links: thresholdLinks,
+    lines: thresholdLines,
+  });
+  const residual = rows.find(row => row.storeId === 40);
+  const collectible = rows.find(row => row.storeId === 50);
+
+  assert.equal(residual.overdue30Amount, 0);
+  assert.equal(residual.policyGroup, 'clear');
+  assert.equal(collectible.overdue30Amount, 0.51);
+  assert.equal(collectible.overdue30InvoiceCount, 1);
+  assert.equal(collectible.policyGroup, 'overdue');
+});
+
+test('Lamha read failures stay diagnostically distinct without exposing raw responses', () => {
+  assert.equal(
+    lamhaStatusFailureLabel({ ok: false, error: 'lamha_store_not_found', http: 404 }),
+    'رقم المتجر غير موجود في واجهة موظف لمحة أو خارج نطاق التوكن · HTTP 404',
+  );
+  assert.equal(
+    lamhaStatusFailureLabel({ ok: false, error: 'lamha_rate_limited', http: 429 }),
+    'وصل فحص لمحة إلى حد الطلبات المؤقت · HTTP 429',
+  );
+  assert.equal(lamhaStatusFailureLabel({ ok: true }), null);
+});
+
 test('UI requires review, refreshes finance before writes, and keeps Lamha throttling in the shared runner', async () => {
   const component = await readFile(new URL('../src/components/LamhaFinancialAccountReview.jsx', import.meta.url), 'utf8');
   const page = await readFile(new URL('../src/pages/CustomerMoney.jsx', import.meta.url), 'utf8');
@@ -97,5 +139,11 @@ test('UI requires review, refreshes finance before writes, and keeps Lamha throt
   assert.match(edge, /restore-scan/);
   assert.match(edge, /STATUS_SCAN_ACTION/);
   assert.match(edge, /financial_policy/);
+  assert.match(edge, /READ_RETRY_LIMIT = 1/);
+  assert.match(edge, /TRANSIENT_HTTP_STATUSES/);
+  assert.match(edge, /lamha_identifier_mismatch/);
+  assert.match(edge, /responseStoreId/);
+  assert.match(edge, /failureClass/);
+  assert.doesNotMatch(edge, /payload:\s*payload/);
   assert.match(merchantsService, /customer_merchant_links'[\s\S]*?\.range\(from, from \+ PAGE - 1\)/);
 });

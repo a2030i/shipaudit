@@ -6,6 +6,7 @@ import { listTasks } from './collectionsService.js';
 import { loadPlatformSalesAccount } from './retargetingService.js';
 import { listInteractions } from './customerInteractionsService.js';
 import { normalizeStoreTimeline } from './store360Timeline.js';
+import { loadCustomerFinancialPosition } from './customerFinancialPosition.js';
 import {
   loadStore360CoreRpc, scheduleStore360CoreShadow, STORE_360_CORE_READ_MODE,
 } from './store360Shadow.js';
@@ -20,6 +21,26 @@ const normalizePhone = (raw) => {
 
 const exactText = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
 const source = (status, label, updatedAt = null, error = null) => ({ status, label, updatedAt, error });
+
+async function attachFinancialPosition(core) {
+  const finance = core?.financial;
+  if (!finance?.zohoId) return core;
+  const position = await loadCustomerFinancialPosition(finance.zohoId);
+  if (!position) return core;
+  return {
+    ...core,
+    financial: {
+      ...finance,
+      accountingOutstanding: position.accountingOutstanding,
+      operationalCollectible: position.operationalCollectible,
+      residualBalance: position.residualBalance,
+      creditOffset: position.creditOffset,
+      financialPositionReconciled: position.sourceReconciledExactly && position.reconciledExactly,
+      balanceSyncIssue: finance.balanceSyncIssue || !(position.sourceReconciledExactly && position.reconciledExactly),
+      outstanding: position.operationalCollectible,
+    },
+  };
+}
 
 function merchantView(row) {
   if (!row) return null;
@@ -83,7 +104,12 @@ async function loadStore360CoreLegacy(identity, { shadow = true } = {}) {
     customerName: directMoney?.name || null,
     financial: directMoney ? {
       zohoId: directMoney.zohoId || null,
-      outstanding: Number(directMoney.owed) || 0, overdue: Number(directMoney.overdue) || 0,
+      accountingOutstanding: Number(directMoney.accountingOutstanding) || 0,
+      operationalCollectible: Number(directMoney.operationalCollectible) || 0,
+      residualBalance: Number(directMoney.residualBalance) || 0,
+      creditOffset: Number(directMoney.creditOffset) || 0,
+      financialPositionReconciled: directMoney.financialPositionReconciled !== false,
+      outstanding: Number(directMoney.operationalCollectible) || 0, overdue: Number(directMoney.overdue) || 0,
       oldestDays: Number(directMoney.oldestDays) || 0,
       aging: { b0_15: directMoney.inv1_15, b16_30: directMoney.inv16_30, b31_60: directMoney.inv31_60, b61_90: directMoney.inv61_90, b90p: directMoney.inv90p, opening: directMoney.opening },
       lastPaymentDate: directMoney.lastPaymentDate || null,
@@ -117,7 +143,7 @@ export async function loadStore360Core(identity) {
   const storeId = String(identity || '').trim();
   if (STORE_360_CORE_READ_MODE === 'core' && /^\d+$/.test(storeId)) {
     try {
-      return await loadStore360CoreRpc(storeId);
+      return await attachFinancialPosition(await loadStore360CoreRpc(storeId));
     } catch {
       return loadStore360CoreLegacy(identity, { shadow: false });
     }

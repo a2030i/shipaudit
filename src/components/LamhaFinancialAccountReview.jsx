@@ -4,12 +4,14 @@ import {
   Power, PowerOff, RefreshCw, ShieldCheck, XCircle,
 } from 'lucide-react';
 import { Btn, Modal, Spinner, toast } from './UI.jsx';
+import { ActionResult } from './operations/BulkPreflightDialog.jsx';
 import { loadLamhaFinancialPolicyData } from '../lib/lamhaFinancialPolicyService.js';
 import { lamhaFinancialDecision, policyCandidates } from '../lib/lamhaFinancialPolicy.js';
 import {
   estimateLamhaOperationSeconds, isLamhaStatusResultFresh, loadCachedLamhaStoreStatuses,
-  needsLamhaStatusRefresh, runLamhaStoreOperation,
+  lamhaStatusFailureLabel, needsLamhaStatusRefresh, runLamhaStoreOperation,
 } from '../lib/lamhaStoreStatusService.js';
+import { createSubmissionGuard, summarizeActionResults } from '../lib/operationalWorkflows.js';
 import './lamha-financial-account-review.css';
 
 const PAGE_SIZE = 30;
@@ -28,7 +30,7 @@ function DecisionBadge({ decision }) {
   return <span className={`lfar-decision is-${decision.key}`}><Icon size={13}/>{decision.label}</span>;
 }
 
-export default function LamhaFinancialAccountReview({ onClose, initialView = 'all' }) {
+export default function LamhaFinancialAccountReview({ onClose, initialView = 'all', initialStoreIds = [] }) {
   const [source, setSource] = useState({ state: 'loading', data: null, error: null });
   const [results, setResults] = useState(() => new Map());
   const [financialHoldStoreIds, setFinancialHoldStoreIds] = useState(() => new Set());
@@ -40,8 +42,11 @@ export default function LamhaFinancialAccountReview({ onClose, initialView = 'al
   ));
   const [page, setPage] = useState(1);
   const [review, setReview] = useState(null);
+  const [actionResult, setActionResult] = useState(null);
   const [selected, setSelected] = useState(() => new Set());
   const stopRef = useRef(false);
+  const submissionGuardRef = useRef(createSubmissionGuard());
+  const focusStoreIds = useMemo(() => new Set((initialStoreIds || []).map(Number).filter(Number.isSafeInteger)), [initialStoreIds]);
 
   const loadSource = useCallback(async () => {
     setSource({ state: 'loading', data: null, error: null });
@@ -70,12 +75,17 @@ export default function LamhaFinancialAccountReview({ onClose, initialView = 'al
   useEffect(() => { loadSource(); }, [loadSource]);
 
   const rows = source.data?.rows || [];
-  const stopCandidates = useMemo(() => policyCandidates(rows, results, 'deactivate', financialHoldStoreIds), [financialHoldStoreIds, results, rows]);
-  const activateCandidates = useMemo(() => policyCandidates(rows, results, 'activate', financialHoldStoreIds), [financialHoldStoreIds, results, rows]);
-  const checked = useMemo(() => [...results.values()].filter(result => isLamhaStatusResultFresh(result)).length, [results]);
-  const stale = useMemo(() => [...results.values()].filter(result => result?.ok && !isLamhaStatusResultFresh(result)).length, [results]);
-  const errors = useMemo(() => [...results.values()].filter(result => result && !result.ok).length, [results]);
-  const filtered = useMemo(() => rows.filter(row => {
+  const scopedRows = useMemo(() => focusStoreIds.size ? rows.filter(row => focusStoreIds.has(Number(row.storeId))) : rows, [focusStoreIds, rows]);
+  const stopCandidates = useMemo(() => policyCandidates(scopedRows, results, 'deactivate', financialHoldStoreIds), [financialHoldStoreIds, results, scopedRows]);
+  const activateCandidates = useMemo(() => policyCandidates(scopedRows, results, 'activate', financialHoldStoreIds), [financialHoldStoreIds, results, scopedRows]);
+  const scopedResultValues = useMemo(() => {
+    const scopedIds = new Set(scopedRows.map(row => Number(row.storeId)));
+    return [...results.entries()].filter(([storeId]) => scopedIds.has(Number(storeId))).map(([, result]) => result);
+  }, [results, scopedRows]);
+  const checked = useMemo(() => scopedResultValues.filter(result => isLamhaStatusResultFresh(result)).length, [scopedResultValues]);
+  const stale = useMemo(() => scopedResultValues.filter(result => result?.ok && !isLamhaStatusResultFresh(result)).length, [scopedResultValues]);
+  const errors = useMemo(() => scopedResultValues.filter(result => result && !result.ok).length, [scopedResultValues]);
+  const filtered = useMemo(() => scopedRows.filter(row => {
     const decision = lamhaFinancialDecision(row, results.get(row.storeId), { financialHold: financialHoldStoreIds.has(row.storeId) });
     if (view === 'overdue') return row.policyGroup === 'overdue';
     if (view === 'clear') return row.policyGroup === 'clear';
@@ -83,13 +93,13 @@ export default function LamhaFinancialAccountReview({ onClose, initialView = 'al
     if (view === 'activate') return decision.key === 'activate';
     if (view === 'review') return ['error', 'unknown', 'excluded'].includes(decision.key);
     return true;
-  }), [financialHoldStoreIds, results, rows, view]);
+  }), [financialHoldStoreIds, results, scopedRows, view]);
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
   const pageRows = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const runStatusCheck = useCallback(async policyGroup => {
-    const scoped = rows.filter(row => row.eligible
+    const scoped = scopedRows.filter(row => row.eligible
       && (!policyGroup || row.policyGroup === policyGroup)
       && (policyGroup !== 'clear' || financialHoldStoreIds.has(row.storeId)));
     const targets = scoped.filter(row => needsLamhaStatusRefresh(results.get(row.storeId)));
@@ -117,17 +127,19 @@ export default function LamhaFinancialAccountReview({ onClose, initialView = 'al
     if (summary.stopped) toast(`توقف الفحص بعد ${summary.completed} من ${summary.requested}`, 'info');
     else if (summary.failed) toast(`اكتمل الفحص مع ${summary.failed} حساب يحتاج مراجعة`, 'warn');
     else toast(`تم فحص ${summary.succeeded} حساب من لمحة`, 'success');
-  }, [busy, financialHoldStoreIds, results, rows]);
+  }, [busy, financialHoldStoreIds, results, scopedRows]);
 
   const openReview = action => {
     const candidates = action === 'deactivate' ? stopCandidates : activateCandidates;
     setSelected(new Set(candidates.map(row => row.storeId)));
+    setActionResult(null);
     setReview(action);
     setPage(1);
   };
 
-  const confirmAction = async () => {
+  const confirmAction = async () => submissionGuardRef.current.run(async () => {
     if (!review || !selected.size || busy) return;
+    const action = review;
     setBusy(true);
     const fresh = await loadLamhaFinancialPolicyData().catch(error => {
       toast(`توقف التنفيذ: تعذرت إعادة قراءة البيانات المالية — ${error.message}`, 'error');
@@ -148,22 +160,34 @@ export default function LamhaFinancialAccountReview({ onClose, initialView = 'al
       return;
     }
     stopRef.current = false; setProgress({ completed: 0, total: selected.size });
-    const summary = await runLamhaStoreOperation({
-      storeIds: [...selected],
-      mode: review,
-      context: 'financial_policy',
-      shouldStop: () => stopRef.current,
-      onProgress: ({ completed, total, results: nextResults }) => {
-        setProgress({ completed, total });
-        setResults(current => {
-          const next = new Map(current);
-          nextResults.forEach(result => next.set(Number(result.storeId), result));
-          return next;
-        });
-      },
-    });
-    setBusy(false); setReview(null); setSelected(new Set());
-    if (review === 'deactivate') {
+    let summary;
+    try {
+      summary = await runLamhaStoreOperation({
+        storeIds: [...selected],
+        mode: action,
+        context: 'financial_policy',
+        shouldStop: () => stopRef.current,
+        onProgress: ({ completed, total, results: nextResults }) => {
+          setProgress({ completed, total });
+          setResults(current => {
+            const next = new Map(current);
+            nextResults.forEach(result => next.set(Number(result.storeId), result));
+            return next;
+          });
+        },
+      });
+    } catch (error) {
+      setActionResult(summarizeActionResults([...selected].map(storeId => ({ key: storeId, status: 'failed', reason: error?.message || 'تعذر تنفيذ العملية' }))));
+      setBusy(false);
+      return;
+    }
+    setBusy(false); setSelected(new Set());
+    const scopedNameById = new Map(scopedRows.map(row => [Number(row.storeId), row.storeName]));
+    setActionResult(summarizeActionResults(summary.results.map(item => ({
+      key: Number(item.storeId), label: scopedNameById.get(Number(item.storeId)) || `متجر #${item.storeId}`,
+      status: item.ok ? 'success' : 'failed', reason: item.error || item.message || null,
+    }))));
+    if (action === 'deactivate') {
       setFinancialHoldStoreIds(current => new Set([...current, ...summary.results.filter(item => item.ok).map(item => Number(item.storeId))]));
     } else {
       setFinancialHoldStoreIds(current => {
@@ -174,8 +198,8 @@ export default function LamhaFinancialAccountReview({ onClose, initialView = 'al
     }
     if (!summary.cacheSaved) toast('تم التنفيذ، لكن تعذر حفظ نتيجة التحقق الأخيرة', 'warn');
     if (summary.failed) toast(`نُفذ ${summary.succeeded} حساب و${summary.failed} يحتاج مراجعة`, 'warn');
-    else toast(`${review === 'deactivate' ? 'تم إيقاف' : 'تم تشغيل'} ${summary.succeeded} حساب والتحقق منها`, 'success');
-  };
+    else toast(`${action === 'deactivate' ? 'تم إيقاف' : 'تم تشغيل'} ${summary.succeeded} حساب والتحقق منها`, 'success');
+  });
 
   const reviewRows = review === 'deactivate' ? stopCandidates : activateCandidates;
   const reviewAmount = reviewRows.filter(row => selected.has(row.storeId))
@@ -187,6 +211,7 @@ export default function LamhaFinancialAccountReview({ onClose, initialView = 'al
   if (review) {
     const deactivating = review === 'deactivate';
     return <Modal title={deactivating ? 'مراجعة إيقاف حسابات لمحة' : 'مراجعة تشغيل حسابات لمحة'} onClose={busy ? undefined : () => setReview(null)} width={820}>
+      {actionResult ? <ActionResult summary={actionResult} title={deactivating ? 'نتيجة إيقاف حسابات لمحة' : 'نتيجة تشغيل حسابات لمحة'} onClose={() => { setActionResult(null); setReview(null); }}/> :
       <div className="lfar-review">
         <div className={`lfar-review__hero ${deactivating ? 'is-danger' : 'is-active'}`}>
           {deactivating ? <PowerOff size={26}/> : <Power size={26}/>}<div><strong>{COUNT(selected.size)} حساب محدد</strong><span>{deactivating ? `${MONEY(reviewAmount)} ر.س مستحقات متجاوزة 30 يومًا` : 'لا توجد مستحقات متجاوزة 30 يومًا'}</span></div>
@@ -199,7 +224,7 @@ export default function LamhaFinancialAccountReview({ onClose, initialView = 'al
         {reviewPageCount > 1 ? <div className="lfar-pages"><Btn size="sm" variant="ghost" onClick={() => setPage(Math.max(1, reviewSafePage - 1))} disabled={reviewSafePage <= 1}>السابق</Btn><span>{reviewSafePage} / {reviewPageCount}</span><Btn size="sm" variant="ghost" onClick={() => setPage(Math.min(reviewPageCount, reviewSafePage + 1))} disabled={reviewSafePage >= reviewPageCount}>التالي</Btn></div> : null}
         {busy ? <div className="lfar-progress"><Spinner size={17}/><span>{progress.completed} / {progress.total} · يُحترم حد 30 طلبًا بالدقيقة</span></div> : null}
         <div className="lfar-review__actions"><Btn variant="ghost" onClick={() => setReview(null)} disabled={busy}>إلغاء</Btn><Btn variant={deactivating ? 'danger' : 'accent'} onClick={confirmAction} disabled={busy || !selected.size}>{busy ? 'جارٍ التنفيذ والتحقق…' : deactivating ? `تأكيد إيقاف ${COUNT(selected.size)}` : `تأكيد تشغيل ${COUNT(selected.size)}`}</Btn></div>
-      </div>
+      </div>}
     </Modal>;
   }
 
@@ -208,12 +233,12 @@ export default function LamhaFinancialAccountReview({ onClose, initialView = 'al
       {source.state === 'loading' ? <div className="lfar-loading"><Spinner size={22}/><span>جارٍ قراءة الفواتير وروابط المتاجر…</span></div> : null}
       {source.state === 'error' ? <div className="lfar-error" role="alert"><AlertTriangle size={22}/><div><strong>تعذر تجهيز المراجعة</strong><p>{source.error}</p></div><Btn variant="ghost" onClick={loadSource}>إعادة المحاولة</Btn></div> : null}
       {source.state === 'available' ? <>
-        <div className="lfar-policy"><ShieldCheck size={22}/><div><strong>قاعدة القرار</strong><p>فواتير أو رصيد افتتاحي غير مدفوع متجاوز 30 يومًا + حساب نشط = إيقاف. لا مستحقات متجاوزة 30 يومًا + حساب غير نشط = تشغيل.</p><small>المسودات مستبعدة، والحالة البصرية للعرض فقط.</small></div></div>
+        <div className="lfar-policy"><ShieldCheck size={22}/><div><strong>قاعدة القرار</strong><p>فواتير أو رصيد افتتاحي غير مدفوع متجاوز 30 يومًا + حساب نشط = إيقاف. لا مستحقات متجاوزة 30 يومًا + حساب غير نشط = تشغيل.</p><small>المسودات مستبعدة، والحالة البصرية للعرض فقط.{focusStoreIds.size ? ` نطاق المراجعة الحالي: ${COUNT(scopedRows.length)} متجر من مجموعة النتائج.` : ''}</small></div></div>
         <div className="lfar-summary">
           <button type="button" onClick={() => { setView('deactivate'); setPage(1); }}><span>مرشحون للإيقاف</span><strong>{COUNT(stopCandidates.length)}</strong><small>{MONEY(stopCandidates.reduce((sum, row) => sum + row.overdue30Amount, 0))} ر.س</small></button>
           <button type="button" onClick={() => { setView('activate'); setPage(1); }}><span>مرشحون للتشغيل</span><strong>{COUNT(activateCandidates.length)}</strong><small>أوقفهم النظام ماليًا ثم زال التجاوز</small></button>
-          <div><span>حالات حديثة من لمحة</span><strong>{COUNT(checked)}</strong><small>{stale ? `${COUNT(stale)} نتيجة قديمة تُفحص عند الحاجة` : `من ${COUNT(rows.length)} متجر مرتبط`}</small></div>
-          <div className={errors ? 'is-error' : ''}><span>تحتاج مراجعة</span><strong>{COUNT(errors + rows.filter(row => !row.eligible).length)}</strong><small>فشل فحص أو فرق مطابقة</small></div>
+          <div><span>حالات حديثة من لمحة</span><strong>{COUNT(checked)}</strong><small>{stale ? `${COUNT(stale)} نتيجة قديمة تُفحص عند الحاجة` : `من ${COUNT(scopedRows.length)} متجر في النطاق`}</small></div>
+          <div className={errors ? 'is-error' : ''}><span>تحتاج مراجعة</span><strong>{COUNT(errors + scopedRows.filter(row => !row.eligible).length)}</strong><small>فشل فحص أو فرق مطابقة</small></div>
         </div>
         <div className="lfar-scan-actions">
           <Btn variant="danger" icon={<PowerOff size={15}/>} onClick={() => runStatusCheck('overdue')} disabled={busy || !rows.some(row => row.eligible && row.policyGroup === 'overdue')}>فحص حسابات المتجاوزين</Btn>
@@ -238,7 +263,12 @@ export default function LamhaFinancialAccountReview({ onClose, initialView = 'al
             const decision = lamhaFinancialDecision(row, live, { financialHold: financialHoldStoreIds.has(row.storeId) });
             const liveLabel = !live ? 'لم يُفحص' : !live.ok ? 'فشل الفحص' : live.store?.canCreateShipments === true ? 'نشط' : live.store?.canCreateShipments === false ? 'غير نشط' : 'غير متاح';
             const checkedAt = live?.checkedAt || live?.checked_at;
-            return <article key={row.storeId}><div data-label="المتجر"><b>{row.storeName}</b><small>#{row.storeId} · {row.customerNames.length} حساب مالي</small></div><div data-label="مستحقات +30"><b>{MONEY(row.overdue30Amount)} ر.س</b><small>{MONEY(row.overdue30InvoiceAmount)} ر.س فواتير · {MONEY(row.overdue30OpeningBalanceAmount)} ر.س رصيد افتتاحي · الأقدم {row.oldestOverdueDays || 0} يوم</small></div><div data-label="حساب لمحة الفعلي"><b>{liveLabel}</b><small>{checkedAt ? `${isLamhaStatusResultFresh(live) ? 'فحص حديث' : 'فحص قديم'} · ${new Date(checkedAt).toLocaleString('ar-SA')}` : `الحالة البصرية: ${row.visualStatus || '—'} (للعرض فقط)`}</small></div><div data-label="القرار"><DecisionBadge decision={decision}/></div></article>;
+            const liveDetail = !live
+              ? `الحالة البصرية: ${row.visualStatus || '—'} (للعرض فقط)`
+              : live.ok
+                ? `${isLamhaStatusResultFresh(live) ? 'فحص حديث' : 'فحص قديم'} · ${new Date(checkedAt).toLocaleString('ar-SA')}`
+                : `${lamhaStatusFailureLabel(live)} · ${new Date(checkedAt).toLocaleString('ar-SA')}`;
+            return <article key={row.storeId}><div data-label="المتجر"><b>{row.storeName}</b><small>#{row.storeId} · {row.customerNames.length} حساب مالي</small></div><div data-label="مستحقات +30"><b>{MONEY(row.overdue30Amount)} ر.س</b><small>{MONEY(row.overdue30InvoiceAmount)} ر.س فواتير · {MONEY(row.overdue30OpeningBalanceAmount)} ر.س رصيد افتتاحي · الأقدم {row.oldestOverdueDays || 0} يوم</small></div><div data-label="حساب لمحة الفعلي"><b>{liveLabel}</b><small>{liveDetail}</small></div><div data-label="القرار"><DecisionBadge decision={decision}/></div></article>;
           })}
           {!pageRows.length ? <div className="lfar-empty">لا توجد حسابات في هذا العرض.</div> : null}
         </div>

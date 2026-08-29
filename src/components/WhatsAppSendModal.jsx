@@ -86,6 +86,7 @@ export default function WhatsAppSendModal({
   lockedCampaignName = null,
   salesAudience = false,
   assignedHatifUser = null,
+  onBeforeExecute = null,
 }) {
   const { user, can } = useAuth();
   const [cfg, setCfg]       = useState(null);
@@ -373,6 +374,13 @@ export default function WhatsAppSendModal({
     }
     setSending(true);
     try {
+      const executionContext = await onBeforeExecute?.({
+        channel: 'whatsapp',
+        mode: 'scheduled',
+        campaignName: campName.trim(),
+        recipientCount: selectedValid.length,
+        scheduledAt: new Date(schedAt).toISOString(),
+      });
       const batches = await scheduleCampaign({
         scheduledAt: new Date(schedAt).toISOString(), templateName: tpl,
         recipients: selectedValid.map(v => ({
@@ -385,7 +393,7 @@ export default function WhatsAppSendModal({
       });
       if (mapCustomized) saveTemplateVarMap(tpl, varMap).catch(() => {});
       toast(`⏰ جُدولت «${campName.trim()}» (${fmt(selectedValid.length)} مستلم على ${batches} دفعة) — تبدأ ${new Date(schedAt).toLocaleString('ar-SA')}`, 'success');
-      onSent?.({ scheduled: true, scheduledAt: new Date(schedAt).toISOString() });
+      onSent?.({ scheduled: true, scheduledAt: new Date(schedAt).toISOString() }, executionContext);
       onClose?.();
     } catch (e) { toast(`فشلت الجدولة: ${e.message}`, 'error'); }
     setSending(false);
@@ -400,6 +408,19 @@ export default function WhatsAppSendModal({
     if (!tpl) { toast('اختر قالباً — أو أضفه من «إعدادات واتساب»', 'warn'); return; }
     if (!selectedValid.length) { toast('اختر مستلِماً واحداً على الأقل', 'warn'); return; }
     setSending(true);
+    let executionContext = null;
+    try {
+      executionContext = await onBeforeExecute?.({
+        channel: 'whatsapp',
+        mode: 'immediate',
+        campaignName: campName.trim(),
+        recipientCount: selectedValid.length,
+      });
+    } catch (error) {
+      setSending(false);
+      toast(error?.message || 'تعذّر تجهيز سجل الحملة قبل الإرسال', 'error');
+      return;
+    }
     const items = selectedValid.map(v => ({
       to: v.to, vars: resolveVarsFor(v), name: v.name, amount: v.amount,
       idempotency_ref: v._rk,
@@ -448,7 +469,7 @@ export default function WhatsAppSendModal({
     setResults(agg);
     if (hardError) toast(`توقّف الإرسال: ${hardError} — نجحت ${agg.sent} قبل التوقف`, 'error');
     else toast(`تمت المعالجة — ${agg.sent} أُرسلت · ${agg.skipped} لم تُكرّر · ${agg.failed} فشلت`, (agg.failed ? 'warn' : 'success'));
-    onSent?.(agg);
+    onSent?.(agg, executionContext);
   };
 
   return (

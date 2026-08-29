@@ -23,7 +23,7 @@ import {
 import { Card, Btn, Spinner, Empty, Modal, toast, PageHeader, DropZone } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
-  parseStoresFile, uploadMerchantsSnapshot, loadLatestMerchants,
+  parseStoresFile, uploadLamhaExcelEnrichment, loadLatestMerchants,
   computeMerchantInsights, autoLinkFromZoho,
   loadUnmatchedCustomers, setCustomerMerchantLink,
   filterMerchantsByShipmentMonth, merchantLastShipmentMonth,
@@ -31,6 +31,7 @@ import {
 import { SalesMobileBadge, SalesMobileCard, SalesMobileList } from '../components/SalesMobileCard.jsx';
 import useMobileLayout from '../lib/useMobileLayout.js';
 import LamhaStoreOperations from '../components/LamhaStoreOperations.jsx';
+import { lamhaAccountState } from '../lib/lamhaAccountState.js';
 
 const fmt = (n) =>
   (n == null || Number.isNaN(n)) ? '—'
@@ -201,13 +202,13 @@ function UploadModal({ onClose, onDone, userId }) {
     if (!parsed) return;
     setBusy(true);
     try {
-      const res = await uploadMerchantsSnapshot({
-        parsed, sourceFile: file?.name || null, userId,
+      const res = await uploadLamhaExcelEnrichment({
+        parsed, sourceFile: file?.name || null,
       });
       const duplicateNote = res.duplicateRowCount
         ? ` · جُمعت ${fmtCount(res.duplicateRowCount)} صفوف مكررة بأرقام متاجرها`
         : '';
-      toast(`تم رفع ${fmtCount(res.count)} متجر · ${res.prepaid} دفع مسبق · ${res.postpaid} دفع لاحق${duplicateNote}`, 'success');
+      toast(`تم إثراء ${fmtCount(res.count)} متجر من Excel دون تغيير بيانات Lamha API${duplicateNote}`, 'success');
       // ربط تلقائي فوري: كشف جديد = متاجر جديدة تنتظر ربطها بعملاء زوهو.
       // كانت خطوة يدوية بزر منفصل تُنسى غالباً، فيبقى العميل الجديد بلا
       // متجر (بلا هاتف ولا سياق) في كل شاشات التحصيل والحملات.
@@ -225,24 +226,22 @@ function UploadModal({ onClose, onDone, userId }) {
     if (!parsed?.rows) return null;
     return {
       total:    parsed.rows.length,
-      prepaid:  parsed.rows.filter(r => r.billingType === 'دفع مسبق').length,
-      postpaid: parsed.rows.filter(r => r.billingType === 'دفع لاحق').length,
-      active:   parsed.rows.filter(r => r.status === 'نشط').length,
       profileDone: parsed.rows.filter(r => r.profileStatus === 'مكتمل').length,
       vatRegistered: parsed.rows.filter(r => r.vatRegistered).length,
       zatcaDone: parsed.rows.filter(r => r.zatcaCompleted).length,
-      verified: parsed.rows.filter(r => r.verificationStatus === 'موثق').length,
+      walletRows: parsed.rows.filter(r => r.walletBalance != null).length,
+      topupRows: parsed.rows.filter(r => r.lastTopupAt).length,
     };
   }, [parsed]);
 
   return (
-    <Modal title="رفع كشف المتاجر" onClose={onClose} width={520}>
+    <Modal title="إثراء بيانات لمحة من Excel" onClose={onClose} width={520}>
       {!file && (
         <DropZone
           onFile={handleFile}
           accept=".xlsx,.xls"
           title="اسحب كشف المتاجر هنا"
-          hint={<>يحتاج رأس فيه «رقم المتجر» و«اسم المتجر». الهاتف ونوع الفوترة والحالة اختيارية لكنها مهمة.<br/>اسحب الملف أو <span style={{ color: 'var(--accent)', fontWeight: 600 }}>اضغط للاختيار</span></>}
+          hint={<>يُستخدم فقط للرصيد وآخر شحن رصيد والملف والضريبة وZATCA. حالة الحساب وبقية الحقول تبقى من Lamha API.<br/>اسحب الملف أو <span style={{ color: 'var(--accent)', fontWeight: 600 }}>اضغط للاختيار</span></>}
         />
       )}
 
@@ -274,18 +273,16 @@ function UploadModal({ onClose, onDone, userId }) {
                 value={fmtCount(parsed.duplicateRowCount)}
               />
             )}
-            <Row label="دفع مسبق" value={fmtCount(counts.prepaid)}/>
-            <Row label="دفع لاحق" value={fmtCount(counts.postpaid)}/>
-            <Row label="نشط حالياً" value={fmtCount(counts.active)}/>
             <Row label="ملف مكتمل" value={fmtCount(counts.profileDone)}/>
             <Row label="مسجل في الضريبة" value={fmtCount(counts.vatRegistered)}/>
             <Row label="زاتكا مكتملة" value={fmtCount(counts.zatcaDone)}/>
-            <Row label="موثق" value={fmtCount(counts.verified)}/>
+            <Row label="أرصدة محفظة متاحة" value={fmtCount(counts.walletRows)}/>
+            <Row label="تواريخ شحن رصيد متاحة" value={fmtCount(counts.topupRows)}/>
           </div>
           <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:14 }}>
             <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
             <Btn variant="accent" icon={<CheckCircle2 size={14}/>} onClick={handleSave} disabled={busy}>
-              حفظ كنسخة
+              حفظ الإثراء
             </Btn>
           </div>
         </>
@@ -411,8 +408,8 @@ export default function Merchants({ isActive = true }) {
       pool = pool.filter(m => m.billing_type === target);
     }
     if (filterStatus !== 'all') {
-      const target = filterStatus === 'active' ? 'نشط' : 'غير نشط';
-      pool = pool.filter(m => m.status === target);
+      const target = filterStatus === 'active' ? 'enabled' : 'disabled';
+      pool = pool.filter(m => lamhaAccountState(m.status) === target);
     }
     return [...pool].sort((a, b) => (b.shipment_count || 0) - (a.shipment_count || 0));
   }, [data.merchants, search, filterType, filterStatus, lastShipmentMonth]);
@@ -543,8 +540,8 @@ export default function Merchants({ isActive = true }) {
               <Chip
                 options={[
                   { v:'all',      l:'كل الحالات' },
-                  { v:'active',   l:'نشط' },
-                  { v:'inactive', l:'غير نشط' },
+                  { v:'active',   l:'الحساب يعمل' },
+                  { v:'inactive', l:'الحساب موقوف' },
                 ]}
                 value={filterStatus}
                 onChange={setFilterStatus}
@@ -610,10 +607,10 @@ export default function Merchants({ isActive = true }) {
                       title={m.store_name}
                       subtitle={<span dir="ltr">{m.phone || 'بلا رقم جوال'}</span>}
                       eyebrow={`متجر ${m.store_id || 'بلا ID'}`}
-                      tone={m.status === 'نشط' ? 'var(--green)' : 'var(--muted)'}
+                      tone={lamhaAccountState(m.status) === 'enabled' ? 'var(--green)' : 'var(--muted)'}
                       badges={<>
-                        <SalesMobileBadge color={m.status === 'نشط' ? 'var(--green)' : 'var(--muted)'}>
-                          {m.status === 'نشط' ? '● نشط' : '○ غير نشط'}
+                        <SalesMobileBadge color={lamhaAccountState(m.status) === 'enabled' ? 'var(--green)' : 'var(--muted)'}>
+                          {lamhaAccountState(m.status) === 'enabled' ? '● الحساب يعمل' : lamhaAccountState(m.status) === 'disabled' ? '○ الحساب موقوف' : '— غير معروف'}
                         </SalesMobileBadge>
                         {m.billing_type && (
                           <SalesMobileBadge color={m.billing_type === 'دفع لاحق' ? 'var(--gold)' : 'var(--brand)'}>
@@ -682,10 +679,12 @@ export default function Merchants({ isActive = true }) {
                           ) : <span style={{ color:'var(--muted)' }}>—</span>}
                         </td>
                         <td data-label="الحالة">
-                          {m.status === 'نشط' ? (
-                            <span style={statusChip('var(--green)')}>● نشط</span>
+                          {lamhaAccountState(m.status) === 'enabled' ? (
+                            <span style={statusChip('var(--green)')}>● الحساب يعمل</span>
+                          ) : lamhaAccountState(m.status) === 'disabled' ? (
+                            <span style={statusChip('var(--muted)')}>○ الحساب موقوف</span>
                           ) : (
-                            <span style={statusChip('var(--muted)')}>○ غير نشط</span>
+                            <span style={statusChip('var(--muted)')}>— غير معروف</span>
                           )}
                         </td>
                         <td data-label="الشحنات" style={{ textAlign:'center', fontFamily:'var(--font-mono)', fontWeight:700 }}>{fmtCount(m.shipment_count)}</td>

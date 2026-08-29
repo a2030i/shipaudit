@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import {
   Activity,
   ArrowLeft,
@@ -11,7 +12,6 @@ import {
   PhoneCall,
   ReceiptText,
   RefreshCw,
-  Search,
   ShieldCheck,
   UploadCloud,
   UserPlus,
@@ -21,6 +21,15 @@ import {
   WalletCards,
   Workflow,
 } from 'lucide-react';
+import {
+  DEFAULT_SUSPENSION_MIN_OVERDUE, filterActionableSuspensionRows, suspensionDecisionAmount,
+} from '../../lib/lamhaDecisionActions.js';
+import {
+  LAMHA_STATUS_UPDATED_EVENT,
+  loadCachedLamhaStoreStatuses,
+  readRecentLamhaFinancialHolds,
+  readRecentLamhaStoreStatuses,
+} from '../../lib/lamhaStoreStatusService.js';
 import './figma-command-center.css';
 
 const money = (value, digits = 0) => Number(value || 0).toLocaleString('en-US', {
@@ -50,6 +59,18 @@ const uploadDateLabel = (iso) => {
   }).format(new Date(iso))}`;
 };
 
+const syncDateLabel = (iso) => {
+  if (!iso) return 'لم تُسجل مزامنة بعد';
+  return `آخر مزامنة ${new Intl.DateTimeFormat('ar-SA-u-ca-gregory', {
+    day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit',
+  }).format(new Date(iso))}`;
+};
+
+const uploadEvidencePath = (item, period) => {
+  const source = item?.sourceKind ? `&source=${encodeURIComponent(item.sourceKind)}` : '';
+  return `/accounting-cycle?period=${period}&stage=${item?.stage || 'carrier_audits'}${source}`;
+};
+
 const updatedLabel = (iso) => {
   if (!iso) return 'وقت التحديث غير متاح';
   const value = new Date(iso);
@@ -73,16 +94,37 @@ const sourceLabel = (state) => {
   return 'يحتاج تحديث';
 };
 
-function ActionCard({ tone, icon: Icon, title, count, value, note, action, onClick, unavailable = false }) {
+const operationalBlockerReason = (reason) => {
+  const value = String(reason || '').trim();
+  if (!value) return 'تعذر التحقق من المصدر؛ لا يمكن تأكيد الجاهزية الآن.';
+  if (/(column|relation)\s+.+does not exist|undefined|null reference|sql|pgrst|schema cache|syntax error/i.test(value)) {
+    return 'تعذر التحقق من المصدر؛ آخر البيانات المتاحة لا تكفي لتأكيد الجاهزية.';
+  }
+  return value;
+};
+
+function ActionCard({ tone, icon: Icon, title, count, value, note, action, onClick, unavailable = false, source, statusMessage = null }) {
+  const sourceName = source?.label || source?.source || 'المصدر التشغيلي';
   return (
-    <button className={`fco-action-card fco-action-card--${tone}`} type="button" onClick={onClick}>
-      <span className="fco-action-card__icon"><Icon size={20}/></span>
-      <span className="fco-action-card__content">
-        <small>{note}</small>
+    <button className={`fco-action-row fco-action-row--${tone}`} type="button" onClick={onClick}>
+      <span className="fco-action-row__icon"><Icon size={19}/></span>
+      <span className="fco-action-row__content">
         <strong>{title}</strong>
-        <span>{unavailable ? 'المصدر غير متاح' : `${count || 0} حالة${value ? ` · ${value}` : ''}`}</span>
+        <small>{note}</small>
       </span>
-      <span className="fco-action-card__action">{action}<ArrowLeft size={14}/></span>
+      <span className="fco-action-row__metric">
+        <small>الحالات</small>
+        <strong>{unavailable ? '—' : money(count || 0)}</strong>
+      </span>
+      <span className="fco-action-row__metric">
+        <small>الأثر</small>
+        <strong>{unavailable ? '—' : value || '—'}</strong>
+      </span>
+      <span className="fco-action-row__source">
+        <small>{sourceName}</small>
+        <strong>{unavailable ? 'غير متاح' : statusMessage || sourceLabel(source)}</strong>
+      </span>
+      <span className="fco-action-row__action">{action}<ArrowLeft size={14}/></span>
     </button>
   );
 }
@@ -159,13 +201,64 @@ export default function FigmaCommandCenter({
   const stopRows = decisions.stopPostpaid || [];
   const activateRows = decisions.activatePostpaid || [];
   const deductRows = decisions.deductPrepaid || [];
-  const stopCount = decisionSummary.stopPostpaid?.count ?? stopRows.length;
+  const negativeRows = decisions.negativePrepaid || [];
+  const thresholdStopRows = stopRows.filter(row => suspensionDecisionAmount(row) > DEFAULT_SUSPENSION_MIN_OVERDUE);
+  const stopStoreIds = thresholdStopRows.map(row => Number(row.storeId)).filter(Number.isSafeInteger);
+  const stopStoreIdsKey = stopStoreIds.join(',');
+  const [recentStopStatuses, setRecentStopStatuses] = useState(() => readRecentLamhaStoreStatuses(stopStoreIds));
+  const [financialHoldStoreIds, setFinancialHoldStoreIds] = useState(() => readRecentLamhaFinancialHolds());
+  const [stopStatusLoading, setStopStatusLoading] = useState(stopStoreIds.length > 0);
+  const [stopStatusError, setStopStatusError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refreshLocalState = () => {
+      setRecentStopStatuses(readRecentLamhaStoreStatuses(stopStoreIds));
+      setFinancialHoldStoreIds(readRecentLamhaFinancialHolds());
+    };
+    refreshLocalState();
+    if (!stopStoreIds.length) {
+      setStopStatusLoading(false);
+      setStopStatusError(false);
+      return undefined;
+    }
+    setStopStatusLoading(true);
+    setStopStatusError(false);
+    loadCachedLamhaStoreStatuses(stopStoreIds).then(result => {
+      if (cancelled) return;
+      setRecentStopStatuses(new Map((result.results || []).map(item => [Number(item.storeId), item])));
+      setFinancialHoldStoreIds(new Set((result.financialHoldStoreIds || []).map(Number)));
+    }).catch(() => {
+      if (!cancelled) setStopStatusError(true);
+    }).finally(() => {
+      if (!cancelled) setStopStatusLoading(false);
+    });
+    window.addEventListener(LAMHA_STATUS_UPDATED_EVENT, refreshLocalState);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(LAMHA_STATUS_UPDATED_EVENT, refreshLocalState);
+    };
+  }, [stopStoreIdsKey]);
+
+  const actionableStopRows = filterActionableSuspensionRows(thresholdStopRows, {
+    minAmount: DEFAULT_SUSPENSION_MIN_OVERDUE,
+    financialHoldStoreIds,
+    liveStatuses: recentStopStatuses,
+  });
+  const stopCount = Array.isArray(decisions.stopPostpaid)
+    ? actionableStopRows.length
+    : decisionSummary.stopPostpaid?.count ?? 0;
   const activateCount = decisionSummary.activatePostpaid?.count ?? activateRows.length;
   const deductCount = decisionSummary.deductPrepaid?.count ?? deductRows.length;
-  const stopAmount = decisionSummary.stopPostpaid?.amount
-    ?? stopRows.reduce((sum, row) => sum + Number(row.over30 || 0), 0);
+  const negativeCount = decisionSummary.negativeWallet?.count ?? decisionSummary.negativePrepaid?.count ?? negativeRows.length;
+  const stopAmount = Array.isArray(decisions.stopPostpaid)
+    ? actionableStopRows.reduce((sum, row) => sum + suspensionDecisionAmount(row), 0)
+    : decisionSummary.stopPostpaid?.amount ?? 0;
   const deductAmount = decisionSummary.deductPrepaid?.amount
     ?? deductRows.reduce((sum, row) => sum + Math.min(Number(row.walletBalance || 0), Number(row.debt || 0)), 0);
+  const negativeAmount = decisionSummary.negativeWallet?.amount ?? decisionSummary.negativePrepaid?.amount
+    ?? negativeRows.reduce((sum, row) => sum + Math.abs(Math.min(0, Number(row.walletBalance || 0))), 0);
+  const negativeAvailable = Array.isArray(decisions.negativePrepaid) || !!decisionSummary.negativeWallet || !!decisionSummary.negativePrepaid;
   const invoiceOps = data?.invoiceOperations || {};
   const zatcaCount = Number(invoiceOps.zatcaTodayCount || 0) + Number(invoiceOps.zatcaOverdueCount || 0);
   const zatcaAmount = Number(invoiceOps.zatcaTodayTotal || 0) + Number(invoiceOps.zatcaOverdueTotal || 0);
@@ -181,15 +274,30 @@ export default function FigmaCommandCenter({
   const sourcePercent = sourceEntries.length ? Math.round((freshSources / sourceEntries.length) * 100) : 0;
   const closeReadiness = data?.closeReadiness || { ready: false, completed: 0, required: 6, blockers: [] };
   const firstCloseBlocker = closeReadiness.blockers?.[0];
-  const merchantNeedsUpdate = data?.lamhaSourceNeedsUpdate ?? (!merchantPulse.available || sourceTone(states.merchants) !== 'green');
+  const operationalUploads = data?.operationalUploads || null;
+  const uploadItems = operationalUploads?.items || [];
+  const merchantExcelEvidence = uploadItems.find(item => item.key === 'lamha_merchants_excel');
+  const apiNeedsUpdate = !merchantPulse.available || sourceTone(states.merchants) !== 'green';
+  const merchantExcelMissing = operationalUploads?.available && merchantExcelEvidence && !merchantExcelEvidence.uploaded;
+  const merchantNeedsUpdate = (data?.lamhaSourceNeedsUpdate ?? apiNeedsUpdate) || merchantExcelMissing;
+  const missingUploadCount = operationalUploads?.available
+    ? uploadItems.filter(item => !item.uploaded).length
+    : null;
+  const decisionSourceUnavailable = [states.customerMoney || states.finance, states.merchants]
+    .some(source => source?.status === 'unavailable');
+  const decisionGuard = {
+    status: decisionSourceUnavailable ? 'unavailable' : data?.customerDecisionFresh ? 'ready' : 'stale',
+    message: decisionSourceUnavailable
+      ? 'تعذر التحقق من أحد المصدرين'
+      : data?.customerDecisionFresh ? 'جاهز للقرار' : 'للعرض فقط · يُعاد التحقق داخل النتائج',
+  };
 
   return (
     <div className="figma-command-center" dir="rtl">
       <section className="fco-heading">
         <div>
-          <span className="fco-eyebrow">مركز قيادة العمليات</span>
-          <h1>ما الذي يحتاج قرارك اليوم؟</h1>
-          <p>صورة موحدة للعملاء والسيولة والفوترة والتكاملات، مرتبة حسب الأثر.</p>
+          <h1>مركز القيادة</h1>
+          <p>ما الذي يحتاج قرارك اليوم؟ صورة موحدة مرتبة حسب الأثر والخطر وقابلية التنفيذ.</p>
         </div>
         <div className="fco-heading__actions">
           <div className="fco-period" aria-label="الفترة المعروضة">
@@ -198,8 +306,15 @@ export default function FigmaCommandCenter({
             {!isCurrent && <button type="button" onClick={onNext} aria-label="الشهر التالي">‹</button>}
           </div>
           {!isCurrent && <button className="fco-current" type="button" onClick={onCurrent}>الشهر الحالي</button>}
-          <button className="fco-refresh" type="button" onClick={onRefresh} disabled={refreshing}>
-            <RefreshCw size={16} className={refreshing ? 'is-spinning' : ''}/><span>تحديث</span>
+          <button
+            className="fco-refresh"
+            type="button"
+            onClick={onRefresh}
+            disabled={refreshing}
+            aria-label="تحديث بيانات العرض فقط"
+            title="تحديث بيانات العرض فقط"
+          >
+            <RefreshCw size={16} className={refreshing ? 'is-spinning' : ''}/><span>تحديث العرض</span>
           </button>
         </div>
       </section>
@@ -208,45 +323,40 @@ export default function FigmaCommandCenter({
         <div className="fco-readiness-facts" aria-label="توفر المصادر وحداثة البيانات وجاهزية الإقفال">
           <span><Database size={17}/><strong>توفر المصادر {availabilityPercent}%</strong><small>{availableSources} من {sourceEntries.length || 0} متاحة</small></span>
           <span><Activity size={17}/><strong>حداثة البيانات {sourcePercent}%</strong><small>{freshSources} من {sourceEntries.length || 0} حديثة</small></span>
-          <span className={closeReadiness.ready ? 'is-ready' : 'is-blocked'}><CheckCircle2 size={17}/><strong>جاهزية الإقفال: {closeReadiness.ready ? 'جاهز' : 'متوقف'}</strong><small>{closeReadiness.ready ? 'المراحل الحرجة مكتملة' : `${firstCloseBlocker?.source || 'مصدر حرج'}: ${firstCloseBlocker?.reason || 'تعذر التحقق'}`}</small></span>
+          <span className={closeReadiness.ready ? 'is-ready' : 'is-blocked'}><CheckCircle2 size={17}/><strong>جاهزية الإقفال: {closeReadiness.ready ? 'جاهز' : 'متوقف'}</strong><small>{closeReadiness.ready ? 'المراحل الحرجة مكتملة' : `${firstCloseBlocker?.source || 'مصدر حرج'}: ${operationalBlockerReason(firstCloseBlocker?.reason)}`}</small></span>
         </div>
         <button type="button" onClick={() => navigate('/operations')}>مراقبة التكاملات <ArrowLeft size={14}/></button>
       </div>
 
-      <label className="fco-search">
-        <Search size={18}/><input placeholder="ابحث عن عميل أو متجر لفتح مستحقاته…" onKeyDown={(event) => {
-          if (event.key === 'Enter' && event.currentTarget.value.trim()) navigate(`/customer-money?q=${encodeURIComponent(event.currentTarget.value.trim())}`);
-        }}/><kbd>Enter</kbd>
-      </label>
-
       <section className="fco-section">
-        <div className="fco-section__heading"><div><span>أولوية اليوم</span><h2>قرارات تحتاج إجراءً الآن</h2></div><small>مرتبة حسب الخطر المالي والتشغيلي</small></div>
-        <div className="fco-actions-grid">
-          <ActionCard tone="red" icon={UserRoundX} title="أوقف الحسابات المتأخرة" count={stopCount} value={`${compactMoney(stopAmount)} ر.س`} note="دفع لاحق · نشط · دين +30 يومًا" action="عرض النتائج ومراجعة الإيقاف" onClick={() => navigate('/customer-money?decision=stop&returnTo=%2Foverview')} unavailable={!data?.customerDecisionFresh}/>
-          <ActionCard tone="blue" icon={WalletCards} title="اخصم الرصيد المدفوع مقدمًا" count={deductCount} value={`${compactMoney(deductAmount)} ر.س`} note="رصيد محفظة مع فواتير مفتوحة" action="عرض نتائج الخصم" onClick={() => navigate('/customer-money?decision=deduct&returnTo=%2Foverview')} unavailable={!data?.customerDecisionFresh}/>
-          <ActionCard tone={zatcaCount ? 'amber' : 'green'} icon={ReceiptText} title="اعتمد وأرسل فواتير زاتكا" count={zatcaCount} value={`${compactMoney(zatcaAmount)} ر.س`} note={`${invoiceOps.draftCount || 0} مسودة في زوهو`} action="فتح دورة الفاتورة" onClick={() => navigate('/zoho-data?tab=customers')} unavailable={!invoiceOps.zatcaAvailable}/>
-          <ActionCard tone={merchantNeedsUpdate ? 'amber' : 'green'} icon={FileSpreadsheet} title="حدّث ملفات لمحة" count={merchantNeedsUpdate ? 1 : 0} value={merchantPulse.total ? `${money(merchantPulse.total)} متجر` : ''} note="دليل المتاجر · كشف الحساب" action="رفع الملفات الآن" onClick={() => navigate(`/accounting-cycle?period=${period}&stage=lamha_sources`)} unavailable={!merchantPulse.loading && !merchantPulse.available}/>
+        <div className="fco-section__heading"><div><h2>يتطلب تدخلك الآن</h2><span>مرتبة حسب الخطر المالي والتشغيلي</span></div><small>كل صف يفتح الحالات التي كوّنته</small></div>
+        <div className="fco-actions-list">
+          <ActionCard tone="red" icon={UserRoundX} title="حسابات مرشحة للإيقاف" count={stopCount} value={`${compactMoney(stopAmount)} ر.س`} note={`دفع لاحق · الحساب يعمل · تجاوز 30 يومًا · أكثر من ${money(DEFAULT_SUSPENSION_MIN_OVERDUE)} ر.س`} action="عرض النتائج" onClick={() => navigate(`/customer-money?decision=stop&decisionMin=${DEFAULT_SUSPENSION_MIN_OVERDUE}&returnTo=%2Foverview`)} unavailable={decisionGuard.status === 'unavailable'} statusMessage={stopStatusLoading ? 'جارٍ التحقق الحي' : stopStatusError ? 'يُعاد الفحص داخل النتائج' : decisionGuard.message} source={states.customerMoney || states.finance || states.zohoInvoices}/>
+          <ActionCard tone="blue" icon={WalletCards} title="محفظة موجبة مع فواتير غير مسددة" count={deductCount} value={`${compactMoney(deductAmount)} ر.س`} note="مراجعة تشغيلية للإيقاف؛ تسوية Zoho إجراء مستقل" action="عرض النتائج" onClick={() => navigate('/customer-money?decision=deduct&returnTo=%2Foverview')} unavailable={decisionGuard.status === 'unavailable'} statusMessage={decisionGuard.message} source={states.customerMoney || states.finance || states.zohoInvoices}/>
+          <ActionCard tone="red" icon={CircleAlert} title="محافظ سالبة تحتاج قرارًا" count={negativeCount} value={`${compactMoney(negativeAmount)} ر.س`} note="إشارة من محفظة لمحة؛ حالة تشغيل الحساب تُفحص حيًا قبل أي إيقاف" action="عرض النتائج" onClick={() => navigate('/customer-money?decision=negative&returnTo=%2Foverview')} unavailable={!negativeAvailable} source={states.merchants}/>
+          <ActionCard tone={zatcaCount ? 'amber' : 'green'} icon={ReceiptText} title="فواتير زاتكا تحتاج إجراء" count={zatcaCount} value={`${compactMoney(zatcaAmount)} ر.س`} note={`${invoiceOps.draftCount || 0} مسودة في Zoho Books`} action="عرض الفواتير" onClick={() => navigate('/zoho-data?tab=customers&type=invoices&focus=zatca')} unavailable={!invoiceOps.zatcaAvailable} source={states.zatcaPending}/>
+          <ActionCard tone={merchantNeedsUpdate ? 'amber' : 'green'} icon={FileSpreadsheet} title="مصدر Lamha يحتاج مراجعة" count={merchantNeedsUpdate ? 1 : 0} value={merchantPulse.total ? `${money(merchantPulse.total)} متجر` : ''} note={apiNeedsUpdate ? 'مزامنة Lamha API تحتاج مراجعة' : merchantExcelMissing ? 'ملف إثراء المتاجر من Excel غير مرفوع لهذه الفترة' : 'API محدث وملفات الإثراء مسجلة'} action={apiNeedsUpdate ? 'مراقبة المزامنة' : 'فتح مرحلة الرفع'} onClick={() => navigate(apiNeedsUpdate ? '/operations' : `/accounting-cycle?period=${period}&stage=lamha_sources`)} unavailable={!merchantPulse.loading && !merchantPulse.available} source={states.merchants}/>
         </div>
       </section>
 
       <section className="fco-section">
         <div className="fco-section__heading"><div><span>نبض الشركة</span><h2>المؤشرات التي تغيّر القرار</h2></div><button type="button" onClick={() => navigate('/reports')}>التقارير <ArrowLeft size={14}/></button></div>
         <div className="fco-kpi-grid">
-          <KpiCard icon={Landmark} label="إجمالي مديونيات العملاء" value={`${compactMoney(cash.totalAR)} ر.س`} note={`${compactMoney(overdue30)} ر.س تجاوزت 30 يومًا`} source="Zoho Books" updatedAt={(states.customerMoney || states.zohoInvoices)?.sourceUpdatedAt || (states.customerMoney || states.zohoInvoices)?.checkedAt} unavailable={(states.customerMoney || states.zohoInvoices)?.status === 'unavailable'} tone="red" onClick={() => navigate('/customer-money')}/>
+          <KpiCard icon={Landmark} label="القابل للتحصيل تشغيليًا" value={`${compactMoney(cash.totalAR)} ر.س`} note={`${compactMoney(overdue30)} ر.س تجاوزت 30 يومًا`} source="Zoho Books · سطور التحصيل" updatedAt={(states.customerMoney || states.zohoInvoices)?.sourceUpdatedAt || (states.customerMoney || states.zohoInvoices)?.checkedAt} unavailable={(states.customerMoney || states.zohoInvoices)?.status === 'unavailable'} tone="red" onClick={() => navigate('/customer-money')}/>
           <KpiCard icon={ReceiptText} label={`ضريبة ${vat?.quarter || 'الربع الحالي'}`} value={vat ? `${compactMoney(vat.netDue)} ر.س` : 'غير متاح'} note={vat ? `${vat.from} ← ${vat.to} · مخرجات ${compactMoney(vat.outputTax)} · مدخلات ${compactMoney(vat.inputTax)}` : 'تحتاج قراءة زوهو'} source="Zoho Books" updatedAt={vat?.fetchedAt || states.zatcaPending?.checkedAt} unavailable={!vat} tone="amber" onClick={() => navigate('/zoho-data?tab=reports')}/>
-          <KpiCard icon={UserRoundCheck} label="نشطون خلال آخر 5 أيام" value={money(merchantPulse.recentFiveDays)} note={merchantPulse.snapshotAt ? `حسب لقطة ${new Date(merchantPulse.snapshotAt).toLocaleDateString('ar-SA')}` : 'ارفع ملف متاجر لمحة'} source="دليل متاجر لمحة" updatedAt={merchantPulse.snapshotAt || states.merchants?.checkedAt} loading={merchantPulse.loading} unavailable={!merchantPulse.loading && !merchantPulse.available} tone="green" onClick={() => navigate('/customer-360?view=lists')}/>
-          <KpiCard icon={FileSpreadsheet} label="فواتير مسودة" value={money(invoiceOps.draftCount)} note={`${compactMoney(invoiceOps.draftTotal)} ر.س بانتظار الاعتماد`} source="Zoho Books" updatedAt={states.zohoInvoiceSync?.sourceUpdatedAt || states.zatcaPending?.checkedAt} unavailable={!invoiceOps.zatcaAvailable} tone="blue" onClick={() => navigate('/zoho-data?tab=customers')}/>
+          <KpiCard icon={UserRoundCheck} label="نشطون خلال آخر 5 أيام" value={money(merchantPulse.recentFiveDays)} note={merchantPulse.snapshotAt ? `حسب لقطة ${new Date(merchantPulse.snapshotAt).toLocaleDateString('ar-SA')}` : 'تحتاج مزامنة Lamha API'} source="Lamha API" updatedAt={merchantPulse.snapshotAt || states.merchants?.checkedAt} loading={merchantPulse.loading} unavailable={!merchantPulse.loading && !merchantPulse.available} tone="green" onClick={() => navigate('/customer-360?view=lists&listGroup=activity&lastShipmentDays=5')}/>
+          <KpiCard icon={FileSpreadsheet} label="فواتير مسودة" value={money(invoiceOps.draftCount)} note={`${compactMoney(invoiceOps.draftTotal)} ر.س بانتظار الاعتماد`} source="Zoho Books" updatedAt={states.zohoInvoiceSync?.sourceUpdatedAt || states.zatcaPending?.checkedAt} unavailable={!invoiceOps.zatcaAvailable} tone="blue" onClick={() => navigate('/zoho-data?tab=customers&type=invoices&focus=draft')}/>
         </div>
       </section>
 
       <section className="fco-section fco-lamha-upload">
         <div className="fco-section__heading">
-          <div><span>مصادر لمحة الأساسية</span><h2>ارفع الملفات باستمرار ولا تعتمد على التذكّر</h2></div>
+          <div><span>مصادر Lamha الأساسية</span><h2>مزامنة API يومية وملفات Excel للإثراء فقط</h2></div>
           <details className="fco-upload-menu">
             <summary><UploadCloud size={16}/> رفع ملف لمحة</summary>
             <div className="fco-upload-menu__popover">
               <button type="button" onClick={() => navigate(`/accounting-cycle?period=${period}&stage=lamha_sources&source=merchants`)}>
-                <FileSpreadsheet size={18}/><span><strong>ملف متاجر لمحة</strong><small>{uploadDateLabel(data?.lamhaUploads?.merchants?.uploadedAt)}</small></span><ArrowLeft size={15}/>
+                <FileSpreadsheet size={18}/><span><strong>إثراء المتاجر من Excel</strong><small>{uploadDateLabel(data?.lamhaUploads?.merchants?.excelUploadedAt)}</small></span><ArrowLeft size={15}/>
               </button>
               <button type="button" onClick={() => navigate(`/accounting-cycle?period=${period}&stage=lamha_sources&source=internal_settlement`)}>
                 <ReceiptText size={18}/><span><strong>كشف حساب لمحة</strong><small>{uploadDateLabel(data?.lamhaUploads?.balance?.uploadedAt)}</small></span><ArrowLeft size={15}/>
@@ -255,8 +365,26 @@ export default function FigmaCommandCenter({
           </details>
         </div>
         <div className="fco-lamha-upload__status">
-          <button type="button" onClick={() => navigate(`/accounting-cycle?period=${period}&stage=lamha_sources&source=merchants`)}><FileSpreadsheet size={17}/><span><strong>متاجر لمحة</strong><small>{uploadDateLabel(data?.lamhaUploads?.merchants?.uploadedAt)}</small></span></button>
-          <button type="button" onClick={() => navigate(`/accounting-cycle?period=${period}&stage=lamha_sources&source=internal_settlement`)}><ReceiptText size={17}/><span><strong>كشف حساب لمحة</strong><small>{uploadDateLabel(data?.lamhaUploads?.balance?.uploadedAt)}</small></span></button>
+          <button type="button" onClick={() => navigate('/operations')}><RefreshCw size={17}/><span><strong>دليل المتاجر من Lamha API</strong><small>{syncDateLabel(data?.lamhaUploads?.merchants?.apiSyncedAt || data?.lamhaUploads?.merchants?.uploadedAt)}</small></span></button>
+          <button type="button" onClick={() => navigate(`/accounting-cycle?period=${period}&stage=lamha_sources&source=merchants`)}><FileSpreadsheet size={17}/><span><strong>إثراء المتاجر من Excel</strong><small>{data?.lamhaUploads?.merchants?.excelFileName ? `${data.lamhaUploads.merchants.excelFileName} · ${uploadDateLabel(data.lamhaUploads.merchants.excelUploadedAt)}` : uploadDateLabel(data?.lamhaUploads?.merchants?.excelUploadedAt)}</small></span></button>
+          <button type="button" onClick={() => navigate(`/accounting-cycle?period=${period}&stage=lamha_sources&source=internal_settlement`)}><ReceiptText size={17}/><span><strong>كشف حساب Lamha</strong><small>{data?.lamhaUploads?.balance?.fileName ? `${data.lamhaUploads.balance.fileName} · ${uploadDateLabel(data.lamhaUploads.balance.uploadedAt)}` : uploadDateLabel(data?.lamhaUploads?.balance?.uploadedAt)}</small></span></button>
+        </div>
+        <div className="fco-upload-evidence" aria-label="حالة ملفات الدورة الحالية">
+          <div className="fco-upload-evidence__heading">
+            <strong>ملفات {monthLabel(period)}</strong>
+            <small>{missingUploadCount == null ? 'تعذر التحقق من سجل الرفع' : missingUploadCount ? `${missingUploadCount} عناصر بلا رفع ناجح مسجل` : 'كل الملفات المطلوبة مسجلة'}</small>
+          </div>
+          {operationalUploads?.available ? (
+            <div className="fco-upload-evidence__rows">
+              {uploadItems.map(item => (
+                <button key={item.key} type="button" onClick={() => navigate(uploadEvidencePath(item, period))}>
+                  <span className={`fco-upload-evidence__state ${item.uploaded ? 'is-complete' : 'is-missing'}`}>{item.uploaded ? <CheckCircle2 size={15}/> : <Clock3 size={15}/>}</span>
+                  <span><strong>{item.label}</strong><small>{item.uploaded ? `${item.fileName} · ${uploadDateLabel(item.uploadedAt)}` : 'لا يوجد رفع ناجح مسجل لهذه الفترة'}</small></span>
+                  <em>{item.uploaded ? 'مسجل' : item.action}</em><ArrowLeft size={14}/>
+                </button>
+              ))}
+            </div>
+          ) : <p className="fco-upload-evidence__error">تعذر قراءة سجل الملفات؛ افتح دورة المحاسب للتحقق دون افتراض أن الملفات ناقصة.</p>}
         </div>
       </section>
 
@@ -275,10 +403,10 @@ export default function FigmaCommandCenter({
         <section className="fco-panel fco-routine">
           <div className="fco-card-heading"><span><Workflow size={18}/> مهام التشغيل الروتينية</span><small>لا تعتمد على الذاكرة</small></div>
           <div className="fco-task-list">
-            <TaskRow icon={UploadCloud} title="رفع ملفات لمحة" note="دليل المتاجر وكشف الحساب · المرحلة 4" status={merchantNeedsUpdate ? 'مطلوب' : 'محدّث'} tone={merchantNeedsUpdate ? 'amber' : 'green'} onClick={() => navigate(`/accounting-cycle?period=${period}&stage=lamha_sources`)}/>
+            <TaskRow icon={UploadCloud} title="ملفات إثراء Lamha" note="Excel للحقول غير المتاحة في API · المرحلة 4" status={merchantNeedsUpdate ? 'مطلوب' : 'محدّث'} tone={merchantNeedsUpdate ? 'amber' : 'green'} onClick={() => navigate(`/accounting-cycle?period=${period}&stage=lamha_sources`)}/>
             <TaskRow icon={ReceiptText} title="إرسال الفواتير إلى زاتكا" note={`${zatcaCount} معلقة · ${invoiceOps.draftCount || 0} مسودة`} status={zatcaCount ? 'يحتاج إجراء' : 'سليم'} tone={zatcaCount ? 'red' : 'green'} onClick={() => navigate('/work-agents')}/>
             <TaskRow icon={Landmark} title="مطابقة البنوك" note="اقرأ زوهو وصدّر النواقص فقط" status={sourceLabel(states.banks)} tone={sourceTone(states.banks)} onClick={() => navigate('/bank')}/>
-            <TaskRow icon={CheckCircle2} title="إقفال الفترة المحاسبية" note={closeReadiness.ready ? `${closeReadiness.required} من ${closeReadiness.required} مراحل حرجة مكتملة` : `${firstCloseBlocker?.source || 'مصدر حرج'} — ${firstCloseBlocker?.reason || 'الإقفال متوقف حتى اكتمال التحقق'}`} status={closeReadiness.ready ? 'جاهز' : 'متوقف'} tone={closeReadiness.ready ? 'green' : 'red'} onClick={() => navigate(`/accounting-cycle?period=${period}`)}/>
+            <TaskRow icon={CheckCircle2} title="إقفال الفترة المحاسبية" note={closeReadiness.ready ? `${closeReadiness.required} من ${closeReadiness.required} مراحل حرجة مكتملة` : `${firstCloseBlocker?.source || 'مصدر حرج'} — ${operationalBlockerReason(firstCloseBlocker?.reason)}`} status={closeReadiness.ready ? 'جاهز' : 'متوقف'} tone={closeReadiness.ready ? 'green' : 'red'} onClick={() => navigate(`/accounting-cycle?period=${period}`)}/>
           </div>
         </section>
 

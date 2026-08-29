@@ -19,12 +19,19 @@
 //   pullCustomerInvoicing({ userId, auditIds })
 //                                          → Excel + marks exported
 
-import * as XLSX from 'xlsx';
 import { rtl } from './xlsxRtl.js';
 import { supabase } from './supabase.js';
 import { logActivity } from './activityLogger.js';
 
 const EXPORT_BUCKET = 'internal-exports';
+
+// Excel is almost 500 kB minified. Export history and pending-count reads do
+// not need it, so load it only after the operator explicitly starts an export.
+let xlsxPromise;
+async function loadXlsx() {
+  xlsxPromise ||= import('xlsx').then((module) => module.default || module);
+  return xlsxPromise;
+}
 
 // Supabase Storage rejects non-ASCII object keys (see AGENTS.md §1.7).
 // The Arabic display name is kept in the DB row; the storage key is
@@ -42,6 +49,7 @@ function asciiKey(kind, fileName) {
 export async function persistAndDownloadExport({ wb, fileName, kind, rowCount, total = null, userId = null }) {
   // سجل التحركات (§1.36): كل تصدير يمرّ من هنا (قاعدة §1.13) = نقطة تسجيل واحدة
   logActivity('export', `تصدير ملف (${kind})`, { fileName, rowCount: rowCount ?? null });
+  const XLSX = await loadXlsx();
   const buf = XLSX.write(rtl(wb), { type: 'array', bookType: 'xlsx' });
   const blob = new Blob([buf], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -199,6 +207,7 @@ export async function pullCodReceipts({ userId = null } = {}) {
 
   // 1) Build the Excel first — if the file write fails we don't want
   // to mark rows as pulled.
+  const XLSX = await loadXlsx();
   const headers = ['رقم الشحنة', 'المبلغ (ر.س)', 'شركة الشحن', 'تاريخ التحصيل'];
   const data = pending.map(r => [
     r.awb,
@@ -293,6 +302,7 @@ export async function pullCustomerInvoicing({ userId = null, auditIds = null } =
     .map(s => [carrierByAuditId.get(s.audit_id) || '—', String(s.awb)]);
   if (!data.length) return { ok: false, reason: 'no_shipments', count: 0 };
 
+  const XLSX = await loadXlsx();
   const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
   ws['!cols'] = [{ wch: 22 }, { wch: 22 }];
   const wb = XLSX.utils.book_new();

@@ -34,7 +34,7 @@
 //     → drops the snapshot entirely
 
 import { supabase } from './supabase.js';
-import { loadLatestMerchants } from './merchantsService.js';
+import { autoLinkCustomers, loadLatestMerchants } from './merchantsService.js';
 
 // Arabic month abbreviations → 1-12. Covers what the user's export
 // uses ("12 أبر 2026" etc.). Full names also accepted for safety.
@@ -203,7 +203,6 @@ export async function uploadReceivablesSnapshot({ parsed, sourceFile, userId }) 
   let linkedCount = 0;
   try {
     const names = [...new Set(parsed.rows.map(r => r.customer).filter(Boolean))];
-    const { autoLinkCustomers } = await import('./merchantsService.js');
     const res = await autoLinkCustomers(names, null, { userId });
     linkedCount = [...res.values()].filter(l => l?.storeId).length;
   } catch (e) {

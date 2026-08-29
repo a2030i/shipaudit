@@ -24,7 +24,8 @@ test('collection assignment RPC is permission-guarded, scoped, and audited', () 
 test('collections page supports explicit multi-select assignment without auto-running it', () => {
   const page = read('src/pages/Collections.jsx');
   assert.match(page, /can\('collections\.assign'\)/);
-  assert.match(page, /تحديد المعروض/);
+  assert.match(page, /<OperationalResultSet/);
+  assert.match(page, /onToggleVisible:\s*toggleVisibleSelection/);
   assert.match(page, /إسناد المحدد/);
   assert.match(page, /إلغاء الإسناد/);
   assert.match(page, /aria-label={`تحديد مهمة \$\{t\.customer_name\}`}/);

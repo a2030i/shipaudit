@@ -47,7 +47,7 @@ begin
   end if;
 
   v_identity_allowed := public.app_has_any_permission(array[
-    'merchants.view','receivables.view','sales.view','crm.view','support.view'
+    'merchants.view','receivables.view','sales.view','crm.view'
   ]);
   v_finance_allowed := public.app_has_any_permission(array['receivables.view']);
   v_collections_allowed := public.app_has_any_permission(array['collections.view']);

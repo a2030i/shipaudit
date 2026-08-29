@@ -1,0 +1,41 @@
+.customer-context-drawer__body { padding: 0 !important; overflow: auto !important; }
+.customer-context-drawer__identity { padding: 9px 22px 0; color: var(--muted); font-size: 10.5px; }
+.customer-context-drawer__state { min-height: 280px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 28px; text-align: center; color: var(--muted); }
+.customer-context-drawer__state.is-error { color: var(--red); }
+.customer-context-drawer__tabs { display: flex; gap: 4px; padding: 8px 22px 0; border-bottom: 1px solid var(--border); }
+.customer-context-drawer__tabs button { display: inline-flex; align-items: center; gap: 6px; padding: 9px 12px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.customer-context-drawer__tabs button.is-active { color: var(--text); border-bottom-color: var(--accent); font-weight: 750; }
+.customer-context-drawer__content { display: grid; gap: 14px; padding: 18px 22px; }
+.customer-context-drawer__status { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.customer-context-drawer__status span { padding: 10px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--r-md); }
+.customer-context-drawer__status small,.customer-context-drawer__finance small,.customer-context-drawer__evidence small { display: block; color: var(--muted); font-size: 10.5px; margin-bottom: 3px; }
+.customer-context-drawer__finance { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
+.customer-context-drawer__finance div { padding: 12px 14px; border-bottom: 1px solid var(--border); border-inline-start: 1px solid var(--border); }
+.customer-context-drawer__finance div:nth-last-child(-n+2) { border-bottom: 0; }
+.customer-context-drawer__finance strong { font-family: var(--font-mono); font-size: 15px; }
+.customer-context-drawer__finance .is-primary strong { color: var(--gold); }
+.customer-context-drawer__evidence { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--r-lg); }
+.customer-context-drawer__evidence > span { flex: 1; }
+.customer-context-drawer__evidence button { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 11.5px; cursor: pointer; }
+.customer-context-drawer__invoice-summary { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; align-items: center; }
+.customer-context-drawer__invoice-summary strong { text-align: end; font-family: var(--font-mono); }
+.customer-context-drawer__invoice-summary small { grid-column: 1 / -1; color: var(--muted); }
+.customer-context-drawer__invoices { border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
+.customer-context-drawer__invoices article { display: flex; justify-content: space-between; gap: 16px; padding: 11px 13px; border-bottom: 1px solid var(--border); }
+.customer-context-drawer__invoices article:last-child { border-bottom: 0; }
+.customer-context-drawer__invoices article span:last-child { text-align: end; }
+.customer-context-drawer__invoices small { display: block; margin-top: 3px; color: var(--muted); font-size: 10.5px; }
+.customer-context-drawer__invoices strong { font-family: var(--font-mono); }
+.customer-context-drawer__empty { padding: 34px 14px; text-align: center; color: var(--muted); border: 1px dashed var(--border); border-radius: var(--r-lg); }
+.customer-context-drawer__footer { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 22px; background: color-mix(in srgb,var(--card) 94%,transparent); border-top: 1px solid var(--border); backdrop-filter: blur(8px); }
+.customer-context-drawer__footer small { color: var(--muted); font-size: 10px; }
+@keyframes context-drawer-in { from { transform: translateX(-24px); opacity: .4; } to { transform: translateX(0); opacity: 1; } }
+.context-drawer-in { animation: context-drawer-in .18s ease-out; }
+@media (max-width: 640px) {
+  .modal-overlay.is-context-drawer { align-items: flex-end !important; }
+  .context-drawer-panel { width: 100% !important; max-width: 100% !important; height: min(88dvh,760px) !important; border-radius: var(--r-xl) var(--r-xl) 0 0 !important; }
+  .customer-context-drawer__content,.customer-context-drawer__footer { padding-inline: 15px; }
+  .customer-context-drawer__finance { grid-template-columns: 1fr 1fr; }
+  .customer-context-drawer__footer { align-items: stretch; flex-direction: column; }
+  .customer-context-drawer__footer button { justify-content: center; }
+}

@@ -4,6 +4,13 @@ const LAMHA_ERROR_LABELS = {
   forbidden: 'هذا الإجراء متاح للمدير فقط',
   LAMHA_EMPLOYEE_TOKEN_not_configured: 'توكن موظف لمحة غير مهيأ',
   lamha_store_read_failed: 'تعذر قراءة حساب المتجر من لمحة قبل التنفيذ',
+  lamha_store_not_found: 'رقم المتجر غير موجود في واجهة موظف لمحة أو خارج نطاق التوكن',
+  lamha_auth_failed: 'رفضت لمحة صلاحية توكن الموظف',
+  lamha_rate_limited: 'وصل فحص لمحة إلى حد الطلبات المؤقت',
+  lamha_upstream_unavailable: 'خدمة لمحة غير متاحة مؤقتًا',
+  lamha_timeout: 'انتهت مهلة قراءة حساب المتجر من لمحة',
+  lamha_network_failed: 'تعذر الاتصال بخدمة لمحة',
+  lamha_identifier_mismatch: 'أعادت لمحة حسابًا لا يطابق رقم المتجر المطلوب',
   lamha_status_write_failed: 'رفضت لمحة تحديث حالة حساب المتجر',
   lamha_status_verification_failed: 'أُرسل الطلب لكن لم تؤكد لمحة حالة الحساب الجديدة',
   lamha_rate_limit_wait_timeout: 'تعذر تنفيذ الطلب ضمن حد لمحة الآمن؛ أعد المحاولة بعد قليل',
@@ -34,6 +41,65 @@ export const updateLamhaStoreStatus = (storeId, active) => callLamhaStoreStatus(
 
 export const LAMHA_BATCH_SIZE = 10;
 export const LAMHA_STATUS_FRESH_MS = 15 * 60 * 1000;
+export const LAMHA_STATUS_UPDATED_EVENT = 'shipaudit:lamha-status-updated';
+
+const LAMHA_RECENT_STATUS_KEY = 'shipaudit:lamha-recent-status:v1';
+const LAMHA_FINANCIAL_HOLDS_KEY = 'shipaudit:lamha-financial-holds:v1';
+
+function readSessionJson(key, fallback) {
+  if (typeof sessionStorage === 'undefined') return fallback;
+  try {
+    const parsed = JSON.parse(sessionStorage.getItem(key) || 'null');
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeSessionJson(key, value) {
+  if (typeof sessionStorage === 'undefined') return;
+  try { sessionStorage.setItem(key, JSON.stringify(value)); } catch { /* storage may be unavailable */ }
+}
+
+export function readRecentLamhaStoreStatuses(storeIds = [], now = Date.now()) {
+  const requested = new Set((storeIds || []).map(Number).filter(Number.isSafeInteger));
+  const stored = readSessionJson(LAMHA_RECENT_STATUS_KEY, {});
+  const map = new Map();
+  for (const [rawId, result] of Object.entries(stored || {})) {
+    const storeId = Number(rawId);
+    if (requested.size && !requested.has(storeId)) continue;
+    if (!isLamhaStatusResultFresh(result, now)) continue;
+    map.set(storeId, result);
+  }
+  return map;
+}
+
+export function readRecentLamhaFinancialHolds() {
+  return new Set(readSessionJson(LAMHA_FINANCIAL_HOLDS_KEY, [])
+    .map(Number).filter(Number.isSafeInteger));
+}
+
+function cacheLamhaOperationResults(results, { mode = 'get', context = 'direct' } = {}) {
+  const successful = (results || []).filter(result => result?.ok && Number.isSafeInteger(Number(result.storeId)));
+  if (!successful.length) return;
+  const stored = readSessionJson(LAMHA_RECENT_STATUS_KEY, {});
+  successful.forEach(result => { stored[Number(result.storeId)] = result; });
+  writeSessionJson(LAMHA_RECENT_STATUS_KEY, stored);
+
+  const holds = readRecentLamhaFinancialHolds();
+  successful.forEach(result => {
+    const storeId = Number(result.storeId);
+    if (mode === 'activate' || result.store?.canCreateShipments === true) holds.delete(storeId);
+    else if (mode === 'deactivate' && context === 'financial_policy') holds.add(storeId);
+  });
+  writeSessionJson(LAMHA_FINANCIAL_HOLDS_KEY, [...holds]);
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(LAMHA_STATUS_UPDATED_EVENT, {
+      detail: { storeIds: successful.map(result => Number(result.storeId)), mode, context },
+    }));
+  }
+}
 
 export function isLamhaStatusResultFresh(result, now = Date.now()) {
   const checkedAt = new Date(result?.checkedAt || result?.checked_at || 0).getTime();
@@ -45,6 +111,13 @@ export const needsLamhaStatusRefresh = (result, now = Date.now()) => (
   !isLamhaStatusResultFresh(result, now)
 );
 
+export function lamhaStatusFailureLabel(result) {
+  if (!result || result.ok) return null;
+  const message = LAMHA_ERROR_LABELS[result.error] || 'تعذر التحقق من حساب المتجر في لمحة';
+  const http = Number.isInteger(result.http) ? ` · HTTP ${result.http}` : '';
+  return `${message}${http}`;
+}
+
 export async function loadCachedLamhaStoreStatuses(storeIds) {
   const ids = [...new Set((storeIds || [])
     .map(Number)
@@ -55,6 +128,10 @@ export async function loadCachedLamhaStoreStatuses(storeIds) {
   });
   if (error) throw await lamhaFunctionError(error);
   if (!data?.ok || !Array.isArray(data.results)) throw new Error(data?.error || 'تعذرت استعادة آخر فحص لمتاجر لمحة');
+  cacheLamhaOperationResults(data.results);
+  if (Array.isArray(data.financialHoldStoreIds)) {
+    writeSessionJson(LAMHA_FINANCIAL_HOLDS_KEY, data.financialHoldStoreIds.map(Number).filter(Number.isSafeInteger));
+  }
   return data;
 }
 
@@ -100,6 +177,7 @@ export async function runLamhaStoreOperation({
         ? await loadLamhaStoreStatuses(batch, context)
         : await updateLamhaStoreStatuses(batch, mode === 'activate', context);
       output.push(...result.results);
+      cacheLamhaOperationResults(result.results, { mode, context });
     } catch (error) {
       output.push(...batch.map(storeId => ({
         ok: false,

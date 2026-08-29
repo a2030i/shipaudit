@@ -4,7 +4,7 @@
 // لكل مفهوم» 2026-07-03) — نفس أرقام /zoho-data ومتابعة العملاء.
 // كل بطاقة عميل فيها 📞 اتصال و💬 واتساب مباشرين + فواتيره بنقرة.
 
-import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useMemo, useRef, useDeferredValue } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { buildStore360Url } from '../lib/store360Navigation.js';
 import { Search, Download, Phone, MessageCircle, ChevronDown, ChevronLeft, HandCoins,
@@ -26,9 +26,15 @@ import CustomerCallLog from '../components/CustomerCallLog.jsx';
 import CustomerCommTimeline from '../components/CustomerCommTimeline.jsx';
 import TagButton from '../components/TagButton.jsx';
 import AgingOperationsQueue from '../components/operations/AgingOperationsQueue.jsx';
+import BulkPreflightDialog from '../components/operations/BulkPreflightDialog.jsx';
+import OperationalResultSet, { ResultSetColumnVisibility } from '../components/operations/OperationalResultSet.jsx';
 import {
   AGING_PAGE_SIZE, buildAgingRows, buildCampaignAgingProjection, evaluateBulkEligibility, saveAudienceHandoff,
 } from '../lib/agingOperations.js';
+import {
+  createSubmissionGuard, selectVisibleResults, summarizeBulkPreflight, toggleResultSelection,
+} from '../lib/operationalWorkflows.js';
+import { lamhaAccountState } from '../lib/lamhaAccountState.js';
 import {
   CUSTOMER_CAMPAIGN_BUCKETS,
   INVOICE_CAMPAIGN_BUCKETS,
@@ -43,33 +49,46 @@ import useMobileLayout from '../lib/useMobileLayout.js';
 import { useWindowedRows } from '../hooks/useWindowedRows.js';
 import { ProgressiveListFooter } from '../components/MobileUX.jsx';
 import {
-  RECEIVABLES_READ_MODE, loadAllCustomerReceivablesRows, loadCustomerReceivablesWorkQueue,
+  RECEIVABLES_READ_MODE, loadAllCustomerReceivablesResult, loadAllCustomerReceivablesRows,
+  loadCustomerReceivablesWorkQueue,
 } from '../lib/customerReceivablesRead.js';
+import { moneyToMinorUnits } from '../lib/customerFinancialPosition.js';
+import { loadLatestMerchants } from '../lib/merchantsService.js';
+import {
+  DEFAULT_SUSPENSION_MIN_OVERDUE, decisionAccountOperatingState, decisionFinancialImpact,
+  decisionTitle, matchesWalletInvoiceDecisionFilters,
+} from '../lib/lamhaDecisionActions.js';
+import { loadCachedLamhaStoreStatuses } from '../lib/lamhaStoreStatusService.js';
+import { loadLamhaWalletSources, summarizeLamhaWalletSources } from '../lib/lamhaStoreProfileService.js';
+import { readWorkspaceState, restoreWorkspaceScroll, saveWorkspaceState } from '../lib/workspaceState.js';
+import CustomerContextDrawer from '../components/CustomerContextDrawer.jsx';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtK = (n) => { const a = Math.abs(n); return a >= 1000 ? (n / 1000).toFixed(1) + 'ك' : String(Math.round(n)); };
 const fmtDate = (d) => { if (!d) return ''; try { return new Date(d).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short' }); } catch { return String(d).slice(0, 10); } };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const LamhaFinancialAccountReview = lazy(() => import('../components/LamhaFinancialAccountReview.jsx'));
+const sourceTone = freshness => ({ fresh: 'healthy', delayed: 'partial', stale: 'stale', failed: 'error' }[freshness] || 'healthy');
+const LamhaDecisionActionReview = lazy(() => import('../components/LamhaDecisionActionReview.jsx'));
 
 const BUCKETS = CUSTOMER_CAMPAIGN_BUCKETS;
 
 const platformStatusKey = (customer) => {
-  const raw = String(customer?.platformStatus || '').trim().toLowerCase();
-  if (raw === 'نشط' || raw === 'active') return 'active';
-  if (raw === 'غير نشط' || raw === 'inactive') return 'inactive';
+  const state = lamhaAccountState(customer?.platformStatus);
+  if (state === 'enabled') return 'active';
+  if (state === 'disabled') return 'inactive';
   return 'unknown';
 };
 
 const platformStatusMeta = (customer) => {
   const key = platformStatusKey(customer);
-  if (key === 'active') return { key, label: 'نشط في المنصّة', color: 'var(--green)' };
-  if (key === 'inactive') return { key, label: 'غير نشط في المنصّة', color: 'var(--muted)' };
+  if (key === 'active') return { key, label: 'الحساب يعمل في لمحة', color: 'var(--green)' };
+  if (key === 'inactive') return { key, label: 'الحساب موقوف في لمحة', color: 'var(--muted)' };
   return { key, label: 'حالة المنصّة غير متوفرة', color: 'var(--gold)' };
 };
 
-const decisionKey = value => ['stop', 'deduct'].includes(value) ? value : null;
+const decisionKey = value => ['stop', 'deduct', 'negative'].includes(value) ? value : null;
+const decisionSelectionStorageKey = decision => `shipaudit:customer-decision-selection:${decision}`;
 const normalizedBillingType = value => String(value || '').trim().toLowerCase().replace(/\s+/g, '');
 const customerDecisionMatch = (customer, decision) => {
   const billing = normalizedBillingType(customer?.billingType);
@@ -90,13 +109,45 @@ const customerDecisionMatch = (customer, decision) => {
       && Number(customer?.owed || 0) > 0.5
       && invoiceCount > 0;
   }
+  if (decision === 'negative') return Number(customer?.walletBalance || 0) < -0.5;
   return false;
 };
 
-const customerDecisionAmount = (customer, decision) => decision === 'stop'
-  ? Number(customer?.inv31_60 || 0) + Number(customer?.inv61_90 || 0)
-    + Number(customer?.inv90p || 0) + Number(customer?.opening || 0)
-  : Math.min(Number(customer?.walletBalance || 0), Number(customer?.owed || 0));
+const customerDecisionAmount = (customer, decision) => decisionFinancialImpact({ customer }, decision);
+
+const accountOperatingLabel = customer => ({
+  operating: 'الحساب يعمل وفق آخر مزامنة',
+  stopped: 'الحساب موقوف وفق آخر مزامنة',
+  unknown: 'حالة التشغيل غير متاحة',
+}[decisionAccountOperatingState(customer)]);
+
+const decisionReason = decision => decision === 'negative'
+  ? 'محفظة الرصيد سالبة؛ حالة الحساب الفعلية تُفحص من لمحة قبل إتاحته للإيقاف.'
+  : decision === 'deduct'
+    ? 'نوع الدفع ورصيد محفظة لمحة والمبلغ القابل للتحصيل ووجود الفواتير وحالة الحساب كلها فلاتر ظاهرة؛ الإيقاف مستقل ولا يطبق الرصيد على Zoho.'
+    : 'دفع لاحق، الحساب ظاهر كنشط، ولديه مستحقات متجاوزة 30 يومًا وفق القراءة الحالية.';
+
+const decisionRowReason = (customer, decision) => decision === 'negative'
+  ? { title: 'محفظة سالبة', detail: `رصيد المحفظة ${fmt(customer.walletBalance)} ر.س` }
+  : decision === 'deduct'
+    ? { title: 'محفظة موجبة + فواتير مفتوحة', detail: `محفظة Excel ${fmt(customer.walletBalance)} · قابل للتحصيل من Zoho ${fmt(customer.owed)}` }
+    : { title: 'نشط + تجاوز 30 يومًا', detail: `${Number(customer.oldestDays || 0)} يومًا كأقدم استحقاق` };
+
+const merchantDecisionRow = merchant => ({
+  identityKey: `merchant:${merchant.store_id}`,
+  customer: {
+    storeId: merchant.store_id,
+    storeName: merchant.store_name,
+    name: merchant.store_name,
+    phone: merchant.phone,
+    billingType: merchant.billing_type,
+    platformStatus: merchant.status,
+    walletBalance: Number(merchant.wallet_balance) || 0,
+    owed: 0,
+    invCnt: 0,
+    oldestDays: 0,
+  },
+});
 
 export default function CustomerMoney({ isActive = true }) {
   const { can, user, isAdmin } = useAuth();
@@ -145,7 +196,9 @@ export default function CustomerMoney({ isActive = true }) {
   const [sortBy, setSortBy] = useState(() => searchParams.get('sort') === 'oldest' ? 'oldest' : 'owed');
   const [platformFilter, setPlatformFilter] = useState(() => ['active', 'inactive', 'unknown'].includes(searchParams.get('status')) ? searchParams.get('status') : 'all');
   const [selectedAging, setSelectedAging] = useState(() => new Set());
+  const [contextDrawer, setContextDrawer] = useState(null);
   const [bulkAction, setBulkAction] = useState(null);
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [bulkAssignee, setBulkAssignee] = useState('');
   const [waOpen, setWaOpen] = useState(false);
   const [waSingle, setWaSingle] = useState(null);          // مستلِم واحد عند «واتساب» من البطاقة
@@ -155,16 +208,29 @@ export default function CustomerMoney({ isActive = true }) {
   const [briefOpen, setBriefOpen] = useState(false);
   const [credits, setCredits] = useState(null);   // أرصدة دائنة غير مستخدمة
   const [creditsState, setCreditsState] = useState({ status: 'idle', error: null });
+  const [creditsLoadedAt, setCreditsLoadedAt] = useState(null);
+  const [creditView, setCreditView] = useState('all');
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [settlementsOpen, setSettlementsOpen] = useState(true);
   const [bulkOpen, setBulkOpen] = useState(false);   // مودال «طبّق للكل»
-  const [lamhaPolicyOpen, setLamhaPolicyOpen] = useState(false);
+  const [lamhaDecisionOpen, setLamhaDecisionOpen] = useState(false);
   const [decisionResults, setDecisionResults] = useState({ state: 'idle', rows: [], error: null });
+  const [decisionSelection, setDecisionSelection] = useState(() => new Set());
+  const [decisionSearch, setDecisionSearch] = useState('');
+  const [decisionSort, setDecisionSort] = useState('impact');
+  const [decisionColumns, setDecisionColumns] = useState(() => new Set(['reason', 'impact']));
+  const [decisionScopeRows, setDecisionScopeRows] = useState([]);
+  const [decisionScopeType, setDecisionScopeType] = useState(null);
+  const [decisionReviewReturnUrl, setDecisionReviewReturnUrl] = useState('');
   const dashboardRefreshInFlightRef = useRef(false);
+  const bulkSubmissionGuardRef = useRef(createSubmissionGuard());
   const dashboardRequestIdRef = useRef(0);
   const lastDashboardRefreshAtRef = useRef(0);
+  const workspaceRestoredRef = useRef('');
+  const workspaceKey = `customer-money:${location.pathname}${location.search}`;
   const resetCredits = () => {
     setCredits(null);
+    setCreditsLoadedAt(null);
     setCreditsState({ status: 'idle', error: null });
   };
 
@@ -179,34 +245,147 @@ export default function CustomerMoney({ isActive = true }) {
   }, [searchParams]);
 
   const requestedDecision = decisionKey(searchParams.get('decision'));
+  const rawDecisionMinAmount = Number(searchParams.get('decisionMin'));
+  const decisionMinAmount = Number.isFinite(rawDecisionMinAmount) && rawDecisionMinAmount > 0
+    ? rawDecisionMinAmount
+    : 0;
+  const decisionBilling = ['all', 'prepaid', 'postpaid'].includes(searchParams.get('decisionBilling'))
+    ? searchParams.get('decisionBilling')
+    : 'prepaid';
+  const rawDecisionWalletMin = Number(searchParams.get('decisionWalletMin'));
+  const decisionWalletMin = searchParams.has('decisionWalletMin') && Number.isFinite(rawDecisionWalletMin)
+    ? Math.max(0, rawDecisionWalletMin)
+    : 0.5;
+  const rawDecisionDueMin = Number(searchParams.get('decisionDueMin'));
+  const decisionDueMin = searchParams.has('decisionDueMin') && Number.isFinite(rawDecisionDueMin)
+    ? Math.max(0, rawDecisionDueMin)
+    : 0.5;
+  const decisionInvoiceState = ['all', 'open', 'none'].includes(searchParams.get('decisionInvoices'))
+    ? searchParams.get('decisionInvoices')
+    : 'open';
+  const decisionAccountState = ['all', 'operating', 'stopped', 'unknown'].includes(searchParams.get('decisionAccount'))
+    ? searchParams.get('decisionAccount')
+    : 'all';
   useEffect(() => {
     if (!isActive || !requestedDecision) {
       setDecisionResults({ state: 'idle', rows: [], error: null });
+      setDecisionSelection(new Set());
       return;
     }
     let cancelled = false;
     setDecisionResults({ state: 'loading', rows: [], error: null });
-    loadAllCustomerReceivablesRows({
-      aging: [], search: '', status: 'all', owner: 'all', collection: 'all',
-      promise: 'all', contact: 'all', action: 'all', source: 'all', sort: 'amount',
-    }).then(rows => {
+    const loadRows = requestedDecision === 'negative'
+      ? loadLatestMerchants().then(result => ({
+        rows: result.merchants.map(merchantDecisionRow),
+        updatedAt: result.snapshot?.uploadedAt || new Date().toISOString(),
+      }))
+      : loadAllCustomerReceivablesResult({
+        aging: [], search: '', status: 'all', owner: 'all', collection: 'all',
+        promise: 'all', contact: 'all', action: 'all', source: 'all', sort: 'amount',
+      }).then(async result => {
+        const walletSources = requestedDecision === 'deduct'
+          ? await loadLamhaWalletSources(result.rows.map(row => row.customer?.storeId).filter(Boolean))
+          : null;
+        return {
+          rows: result.rows,
+          sources: result.sources,
+          updatedAt: result.generatedAt,
+          walletSources,
+        };
+      });
+    loadRows.then(async ({ rows, updatedAt, sources = {}, walletSources = null }) => {
+      if (cancelled) return;
+      let matchingRows = requestedDecision === 'deduct'
+        ? rows
+        : rows.filter(row => customerDecisionMatch(row.customer, requestedDecision));
+      if (requestedDecision === 'stop' && matchingRows.length) {
+        try {
+          const cached = await loadCachedLamhaStoreStatuses(matchingRows.map(row => row.customer?.storeId).filter(Boolean));
+          if (cancelled) return;
+          const financialHolds = new Set((cached.financialHoldStoreIds || []).map(Number));
+          matchingRows = matchingRows.filter(row => !financialHolds.has(Number(row.customer?.storeId)));
+        } catch {
+          // يبقى الـPreflight هو حاجز الأمان إذا تعذرت قراءة سجل الإيقاف الحديث.
+        }
+      }
       if (cancelled) return;
       setDecisionResults({
         state: 'available',
-        rows: rows.filter(row => customerDecisionMatch(row.customer, requestedDecision)),
+        rows: matchingRows,
         error: null,
+        updatedAt,
+        sources,
+        walletSources,
       });
+      try {
+        const restored = JSON.parse(sessionStorage.getItem(decisionSelectionStorageKey(requestedDecision)) || '[]');
+        const validKeys = new Set(matchingRows.map(row => row.identityKey));
+        setDecisionSelection(new Set(restored.filter(key => validKeys.has(key))));
+        sessionStorage.removeItem(decisionSelectionStorageKey(requestedDecision));
+      } catch {
+        setDecisionSelection(new Set());
+      }
     }).catch(error => {
       if (cancelled) return;
       setDecisionResults({ state: 'error', rows: [], error: error?.message || 'تعذرت قراءة نتائج القرار' });
     });
     return () => { cancelled = true; };
   }, [isActive, requestedDecision]);
+  useEffect(() => {
+    if (workspaceRestoredRef.current === workspaceKey || !isActive || (!d && !receivablesPage)) return;
+    workspaceRestoredRef.current = workspaceKey;
+    const saved = readWorkspaceState(workspaceKey, { consume: true });
+    if (!saved) return;
+    if (Array.isArray(saved.selectionKeys)) setSelectedAging(new Set(saved.selectionKeys));
+    setAllResultsSelected(saved.allResultsSelected === true);
+    restoreWorkspaceScroll(saved);
+  }, [d, isActive, receivablesPage, workspaceKey]);
+  const deferredDecisionSearch = useDeferredValue(decisionSearch);
+  const visibleDecisionRows = useMemo(() => {
+    const term = deferredDecisionSearch.trim().toLowerCase();
+    const rows = decisionResults.rows.filter(row => {
+      if (decisionMinAmount > 0 && customerDecisionAmount(row.customer, requestedDecision) <= decisionMinAmount) return false;
+      if (requestedDecision === 'deduct' && !matchesWalletInvoiceDecisionFilters(row.customer, {
+        billing: decisionBilling,
+        walletMin: decisionWalletMin,
+        dueMin: decisionDueMin,
+        invoices: decisionInvoiceState,
+        account: decisionAccountState,
+      })) return false;
+      if (!term) return true;
+      const customer = row.customer || {};
+      return [customer.storeName, customer.name, customer.storeId, customer.zohoId, customer.phone]
+        .some(value => String(value || '').toLowerCase().includes(term));
+    });
+    return [...rows].sort((a, b) => {
+      if (decisionSort === 'oldest') return Number(b.customer?.oldestDays || 0) - Number(a.customer?.oldestDays || 0);
+      if (decisionSort === 'name') return String(a.customer?.storeName || a.customer?.name || '').localeCompare(String(b.customer?.storeName || b.customer?.name || ''), 'ar');
+      return customerDecisionAmount(b.customer, requestedDecision) - customerDecisionAmount(a.customer, requestedDecision);
+    });
+  }, [decisionAccountState, decisionBilling, decisionDueMin, decisionInvoiceState, decisionMinAmount,
+    decisionResults.rows, decisionSort, decisionWalletMin, deferredDecisionSearch, requestedDecision]);
+  const visibleWalletSources = useMemo(() => {
+    if (requestedDecision !== 'deduct') return { availableCount: 0, missingCount: 0 };
+    const sourceMap = decisionResults.walletSources?.byStoreId || new Map();
+    return summarizeLamhaWalletSources(visibleDecisionRows
+      .map(row => sourceMap.get(String(row.customer?.storeId)))
+      .filter(Boolean));
+  }, [decisionResults.walletSources, requestedDecision, visibleDecisionRows]);
+
+  useEffect(() => {
+    const visibleKeys = new Set(visibleDecisionRows.map(row => row.identityKey));
+    setDecisionSelection(current => {
+      const next = new Set([...current].filter(key => visibleKeys.has(key)));
+      if (next.size === current.size && [...next].every(key => current.has(key))) return current;
+      return next;
+    });
+  }, [visibleDecisionRows]);
 
   const updateUrlFilters = (patch, { replace = false } = {}) => {
     const next = new URLSearchParams(searchParams);
     for (const [key, value] of Object.entries(patch)) {
-      if (value == null || value === '' || value === false || value === 'all') next.delete(key);
+      const preserveDecisionAll = key.startsWith('decision') && value === 'all';
+      if (value == null || value === '' || value === false || (value === 'all' && !preserveDecisionAll)) next.delete(key);
       else next.set(key, String(value));
     }
     next.delete('customer');
@@ -217,10 +396,17 @@ export default function CustomerMoney({ isActive = true }) {
   const clearDecisionResults = () => {
     const next = new URLSearchParams(searchParams);
     next.delete('decision');
+    next.delete('decisionMin');
+    next.delete('decisionBilling');
+    next.delete('decisionWalletMin');
+    next.delete('decisionDueMin');
+    next.delete('decisionInvoices');
+    next.delete('decisionAccount');
     setSearchParams(next, { replace: true });
   };
 
   const closeDecisionResults = () => {
+    if (requestedDecision) sessionStorage.removeItem(decisionSelectionStorageKey(requestedDecision));
     const returnTo = searchParams.get('returnTo');
     if (returnTo?.startsWith('/')) {
       navigate(returnTo);
@@ -233,6 +419,9 @@ export default function CustomerMoney({ isActive = true }) {
     if (!row.customer?.storeId) {
       toast('لا يمكن فتح Store 360 قبل وجود Store ID مؤكد لهذا الحساب المالي.', 'info');
       return;
+    }
+    if (requestedDecision) {
+      sessionStorage.setItem(decisionSelectionStorageKey(requestedDecision), JSON.stringify([...decisionSelection]));
     }
     const returnTo = `${location.pathname}${location.search}`;
     navigate(buildStore360Url({ storeId: row.customer.storeId, view: 'finance', source: 'overview-decision', returnTo }));
@@ -456,6 +645,7 @@ export default function CustomerMoney({ isActive = true }) {
     loadZohoUnusedCredits()
       .then((result) => {
         setCredits(result);
+        setCreditsLoadedAt(new Date().toISOString());
         setCreditsState({ status: 'fresh', error: null });
       })
       .catch((error) => {
@@ -578,7 +768,7 @@ export default function CustomerMoney({ isActive = true }) {
     : +agingRows.reduce((sum, row) => sum + row.summary.amount, 0).toFixed(2);
   const agingDashboardTotal = useMemo(() => {
     if (!d) return 0;
-    if (!buckets.size) return +Number(d.outstanding || 0).toFixed(2);
+    if (!buckets.size) return +Number(d.operationalCollectible || 0).toFixed(2);
     return +[...buckets].reduce((sum, key) => sum + Number(campaignAging?.[key] || 0), 0).toFixed(2);
   }, [d, buckets, campaignAging]);
   const agingDetailsTotal = centralReadActive
@@ -588,9 +778,12 @@ export default function CustomerMoney({ isActive = true }) {
     detailsTotal: agingDetailsTotal,
     dashboardTotal: agingDashboardTotal,
     pending: receivablesContextPending,
+    // Compare integer halalas. A residual is valid only in the separate
+    // accounting equation; it must never be folded into operational details.
     ok: !receivablesContextPending && !agingLinesError
-      && Math.abs(agingDetailsTotal - agingDashboardTotal) <= 0.01,
-  }), [agingDetailsTotal, agingDashboardTotal, agingLinesError, receivablesContextPending]);
+      && d?.financialPositionReconciled === true
+      && moneyToMinorUnits(agingDetailsTotal) === moneyToMinorUnits(agingDashboardTotal),
+  }), [d?.financialPositionReconciled, agingDetailsTotal, agingDashboardTotal, agingLinesError, receivablesContextPending]);
   const platformCounts = useMemo(() => {
     if (centralReadActive && d?.platformCounts) return d.platformCounts;
     const counts = { all: 0, active: 0, inactive: 0, unknown: 0 };
@@ -637,12 +830,11 @@ export default function CustomerMoney({ isActive = true }) {
     return next;
     });
   };
-  const toggleAgingPage = checked => setSelectedAging(current => {
-    if (!checked) return new Set();
-    const next = new Set(current);
-    agingPageRows.forEach(row => next.add(row.identityKey));
-    return next;
-  });
+  const toggleAgingPage = checked => setSelectedAging(current => selectVisibleResults(
+    current,
+    agingPageRows.map(row => row.identityKey),
+    checked,
+  ));
   const allAgingSelected = centralReadActive
     ? allResultsSelected
     : agingRows.length > 0 && agingRows.every(row => selectedAging.has(row.identityKey));
@@ -650,11 +842,19 @@ export default function CustomerMoney({ isActive = true }) {
     setAllResultsSelected(checked);
     setSelectedAging(checked ? new Set(agingRows.map(row => row.identityKey)) : new Set());
   };
+  const rememberAgingWorkspace = () => saveWorkspaceState(workspaceKey, {
+    selectionKeys: [...selectedAging], allResultsSelected,
+  });
   const openStoreFromAging = (row, invoice = false) => {
     if (!row.customer.storeId) {
       toast('لا يمكن فتح Store 360 قبل وجود Store ID مؤكد لهذا الحساب المالي.', 'info');
       return;
     }
+    setContextDrawer({ row: { ...row, agingBuckets: [...buckets] }, view: invoice ? 'invoices' : 'summary' });
+  };
+  const openFullStoreFromAging = (row, invoice = false) => {
+    if (!row?.customer?.storeId) return;
+    rememberAgingWorkspace();
     const returnTo = `${location.pathname}${location.search}`;
     navigate(buildStore360Url({
       storeId: row.customer.storeId, view: 'finance', source: 'aging', returnTo,
@@ -674,6 +874,10 @@ export default function CustomerMoney({ isActive = true }) {
     () => evaluateBulkEligibility(selectedAgingRows, bulkAction, bulkPermissions),
     [selectedAgingRows, bulkAction, bulkPermissions],
   );
+  const bulkPreflight = useMemo(() => summarizeBulkPreflight(
+    bulkReview,
+    row => ({ status: row.eligible ? 'eligible' : 'ineligible', reason: row.exclusionReason }),
+  ), [bulkReview]);
   const eligibleBulkRows = useMemo(() => bulkReview.filter(row => row.eligible), [bulkReview]);
   const openBulkReview = async action => {
     if (!selectedAging.size && !allResultsSelected) return;
@@ -736,31 +940,40 @@ export default function CustomerMoney({ isActive = true }) {
       returnTo: `${location.pathname}${location.search}`,
     };
   };
-  const confirmBulkAction = async () => {
+  const confirmBulkAction = async () => bulkSubmissionGuardRef.current.run(async () => {
     if (!eligibleBulkRows.length) return;
-    if (bulkAction === 'assign') {
-      if (!bulkAssignee) return toast('اختر المحصل قبل تنفيذ الإسناد', 'info');
-      try {
+    if (bulkAction === 'assign' && !bulkAssignee) {
+      toast('اختر المحصل قبل تنفيذ الإسناد', 'info');
+      return;
+    }
+    setBulkSubmitting(true);
+    try {
+      if (bulkAction === 'assign') {
         const result = await assignCollectionTasks(eligibleBulkRows.map(row => row.task.id), bulkAssignee);
         toast(`أُسندت ${result.updated || 0} مهمة تحصيل`, 'success');
         setBulkAction(null); setBulkRowsOverride(null); setAllResultsSelected(false); setSelectedAging(new Set()); await refresh();
-      } catch (error) { toast(`تعذر الإسناد: ${error.message}`, 'error'); }
-      return;
-    }
-    if (bulkAction === 'export') {
-      await exportXlsx(eligibleBulkRows.map(row => row.customer), 'Aging_المحدد');
+        return;
+      }
+      if (bulkAction === 'export') {
+        await exportXlsx(eligibleBulkRows.map(row => row.customer), 'Aging_المحدد');
+        setBulkAction(null); setBulkRowsOverride(null);
+        return;
+      }
+      const context = handoffContext(bulkAction, eligibleBulkRows, bulkReview);
+      const token = saveAudienceHandoff(context);
+      rememberAgingWorkspace();
       setBulkAction(null); setBulkRowsOverride(null);
-      return;
+      if (bulkAction === 'followup') {
+        navigate(`/collections?view=queue&batchContext=${encodeURIComponent(token)}&returnTo=${encodeURIComponent(context.returnTo)}`);
+        return;
+      }
+      navigate(`/campaigns?audienceContext=${encodeURIComponent(token)}&channel=${bulkAction === 'ivr' ? 'ivr' : 'whatsapp'}&step=5&returnTo=${encodeURIComponent(context.returnTo)}`);
+    } catch (error) {
+      toast(`تعذر تنفيذ الإجراء: ${error.message}`, 'error');
+    } finally {
+      setBulkSubmitting(false);
     }
-    const context = handoffContext(bulkAction, eligibleBulkRows, bulkReview);
-    const token = saveAudienceHandoff(context);
-    setBulkAction(null); setBulkRowsOverride(null);
-    if (bulkAction === 'followup') {
-      navigate(`/collections?view=queue&batchContext=${encodeURIComponent(token)}&returnTo=${encodeURIComponent(context.returnTo)}`);
-      return;
-    }
-    navigate(`/campaigns?audienceContext=${encodeURIComponent(token)}&channel=${bulkAction === 'ivr' ? 'ivr' : 'whatsapp'}&step=5&returnTo=${encodeURIComponent(context.returnTo)}`);
-  };
+  });
 
   // مرّر كل نتائج الفلتر إلى نافذة الحملة، بما فيها الصف بلا هاتف. نافذة
   // الإرسال هي بوابة الأهلية الوحيدة وتشرح سبب كل استبعاد بدل إسقاطه صامتاً.
@@ -893,6 +1106,9 @@ export default function CustomerMoney({ isActive = true }) {
   // أرصدة دائنة: قابل للتطبيق (رصيد + فاتورة مفتوحة) مقابل «رصيد قائم» (بلا فواتير)
   const applicableRows = (credits?.rows || []).filter(r => r.applicable > 0.5);
   const standingCount = (credits?.rows?.length || 0) - applicableRows.length;
+  const creditViewRows = (credits?.rows || []).filter(row => creditView === 'settlement'
+    ? row.applicable > 0.5
+    : creditView === 'standing' ? row.applicable <= 0.5 : true);
   const growth = growthPulse.data || {};
   const growthCurrent = growth.current || {};
   const currentReturnTo = `${location.pathname}${location.search}`;
@@ -998,9 +1214,10 @@ export default function CustomerMoney({ isActive = true }) {
           <div className="customer-finance-command__source"><i className={growthPulse.status === 'available' ? 'is-live' : ''}/>{growthPulse.status === 'loading' ? 'جارٍ تحميل نشاط لمحة' : growthPulse.status === 'available' ? 'المصادر متاحة' : 'نشاط لمحة غير متاح'}</div>
         </div>
         <div className="customer-finance-command__kpis">
-          <button type="button" onClick={scrollToAging}><ListChecks/><span>فواتير زوهو غير المدفوعة</span><strong>{d.zohoUnpaidInvoicesAvailable ? fmt(d.zohoUnpaidInvoices) : '—'} ر.س</strong><small>{d.zohoUnpaidInvoicesAvailable ? 'نفس إجمالي الفواتير في Aging · دون المسودات' : 'المصدر غير متاح'}</small></button>
+          <button type="button" onClick={scrollToAging}><ListChecks/><span>إجمالي الرصيد المحاسبي</span><strong>{fmt(d.accountingOutstanding)} ر.س</strong><small>Zoho outstanding_receivable · رقم خام</small></button>
           <button type="button" onClick={() => setSettlementsOpen(true)}><Scale/><span>أرصدة دائنة</span><strong>− {fmt(d.creditOffset)} ر.س</strong><small>تُخصم قبل مطالبة العميل</small></button>
-          <button type="button" onClick={scrollToAging}><HandCoins/><span>صافي المطلوب تحصيله</span><strong>{fmt(d.outstanding)} ر.س</strong><small>{d.outstandingCnt} عميلًا</small></button>
+          <button type="button" onClick={scrollToAging}><HandCoins/><span>القابل للتحصيل تشغيليًا</span><strong>{fmt(d.operationalCollectible)} ر.س</strong><small>{d.outstandingCnt} عميلًا يدخلون مسار التحصيل</small></button>
+          {moneyToMinorUnits(d.residualBalance) !== 0 ? <button type="button" onClick={scrollToAging}><Scale/><span>الرصيد الهامشي / غير التشغيلي</span><strong>{fmt(d.residualBalance)} ر.س</strong><small>لا يدخل تلقائيًا في التحصيل أو الإيقاف</small></button> : null}
           <button type="button" onClick={() => updateUrlFilters({ aging: 'inv90p', page: null })}><Scale/><span>أكثر من 90 يومًا</span><strong>{fmt(campaignAging?.inv90p || 0)} ر.س</strong><small>فتح الشريحة</small></button>
           <button type="button" onClick={() => openWithContext('/retargeting?view=activation')}><TrendingUp/><span>نشطون خلال 5 أيام</span><strong>{growthPulse.status === 'available' ? growthCurrent.active ?? 0 : '—'}</strong><small>{growthPulse.status === 'available' ? `الهدف ${growthCurrent.target || 500}` : 'المصدر غير متاح'}</small></button>
           <button type="button" onClick={() => openWithContext('/reconciliation?tab=customers')}><ListChecks/><span>فروق المطابقة</span><strong>{d.balanceSyncIssueCount || 0}</strong><small>{d.balanceSyncIssueCount ? `${fmt(d.balanceSyncGapTotal)} ر.س` : 'لا فروق محجوبة'}</small></button>
@@ -1125,9 +1342,9 @@ export default function CustomerMoney({ isActive = true }) {
             </div>
           </div>
           <div>
-            <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>💰 المطلوب تحصيله</div>
-            <div className="customer-money-kpi-value" title={`${fmt(d.outstanding)} ر.س`} style={{ fontSize: 30, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--gold)', lineHeight: 1.2 }}>
-              {fmt(d.outstanding)}
+            <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>💰 القابل للتحصيل تشغيليًا</div>
+            <div className="customer-money-kpi-value" title={`${fmt(d.operationalCollectible)} ر.س`} style={{ fontSize: 30, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--gold)', lineHeight: 1.2 }}>
+              {fmt(d.operationalCollectible)}
             </div>
             <div style={{ fontSize: 11, color: 'var(--muted2)' }}>{d.outstandingCnt} عميلاً يدخلون حملات التحصيل</div>
           </div>
@@ -1151,10 +1368,9 @@ export default function CustomerMoney({ isActive = true }) {
 
         {d.zohoUnpaidInvoicesAvailable ? (
           <div className="customer-money-equation" role="status">
-            <span><b>{fmt(d.zohoUnpaidInvoices)}</b> فواتير غير مدفوعة</span>
-            <span>{Number(d.zohoOpeningAndAdjustments || 0) >= 0 ? '+' : '−'} <b>{fmt(Math.abs(d.zohoOpeningAndAdjustments || 0))}</b> رصيد افتتاحي/تسويات</span>
-            <span>− <b>{fmt(d.creditOffset)}</b> أرصدة دائنة</span>
-            <strong>= {fmt(d.outstanding)} ر.س صافي التحصيل</strong>
+            <span><b>{fmt(d.operationalCollectible)}</b> قابل للتحصيل تشغيليًا</span>
+            {moneyToMinorUnits(d.residualBalance) !== 0 ? <span>+ <b>{fmt(d.residualBalance)}</b> رصيد هامشي/غير تشغيلي</span> : null}
+            <strong>= {fmt(d.accountingOutstanding)} ر.س رصيد محاسبي في Zoho</strong>
           </div>
         ) : null}
 
@@ -1252,7 +1468,26 @@ export default function CustomerMoney({ isActive = true }) {
             )}
           </div>
           {creditsOpen && (
-            <div className="m-flow" style={{ maxHeight: 340, overflowY: 'auto', borderTop: '1px solid var(--border)' }}>
+            <div style={{ padding: 12, borderTop: '1px solid var(--border)' }}>
+            <OperationalResultSet
+              context={{
+                title: 'حالات الرصيد غير المستخدم',
+                description: 'افصل بين رصيد يمكن تطبيقه على فواتير مفتوحة ورصيد قائم لصالح العميل بلا فواتير مفتوحة.',
+                reason: creditView === 'settlement' ? 'لدى العميل رصيد دائن وفواتير مفتوحة؛ يحتاج مراجعة تطبيق الرصيد.' : creditView === 'standing' ? 'لدى العميل رصيد دائن بلا فواتير مفتوحة؛ لا يُعامل كمديونية سالبة.' : 'كل العملاء الذين أعادهم مصدر الأرصدة الدائنة غير المستخدمة.',
+                metrics: [
+                  { key: 'all', label: 'كل الأرصدة', value: credits.rows.length },
+                  { key: 'settlement', label: 'تحتاج تسوية', value: applicableRows.length, detail: `${fmt(credits.totalApplicable)} ر.س قابلة للتطبيق` },
+                  { key: 'standing', label: 'رصيد قائم للعميل', value: standingCount, detail: 'بلا فواتير مفتوحة' },
+                ],
+                source: 'Zoho Books / zoho_applicable_credits',
+                updatedAt: creditsLoadedAt,
+                activeFilters: creditView !== 'all' ? [{ key: 'credit-view', label: creditView === 'settlement' ? 'يحتاج تسوية' : 'رصيد قائم', onRemove: () => setCreditView('all') }] : [],
+              }}
+              toolbar={<div className="credit-operational-views" role="tablist" aria-label="تصنيف الأرصدة الدائنة"><button type="button" className={creditView === 'all' ? 'is-active' : ''} onClick={() => setCreditView('all')}>الكل</button><button type="button" className={creditView === 'settlement' ? 'is-active' : ''} onClick={() => setCreditView('settlement')}>يحتاج تسوية ({applicableRows.length})</button><button type="button" className={creditView === 'standing' ? 'is-active' : ''} onClick={() => setCreditView('standing')}>رصيد قائم ({standingCount})</button></div>}
+              state="available"
+              empty={!creditViewRows.length}
+            >
+              <div className="m-flow credit-operational-table" style={{ maxHeight: 340, overflowY: 'auto' }}>
               <table className="m-cards" style={{ width: '100%', fontSize: 12.5 }}>
                 <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
                   <tr>{['العميل', 'الدين', 'رصيد غير مستخدم', 'يُطبَّق', 'يبقى', ''].map(h => (
@@ -1260,7 +1495,7 @@ export default function CustomerMoney({ isActive = true }) {
                   ))}</tr>
                 </thead>
                 <tbody>
-                  {credits.rows.map(r => (
+                  {creditViewRows.map(r => (
                     <tr key={r.zohoId} style={{ borderTop: '1px solid var(--border)' }}>
                       <td data-label="" style={{ padding: '8px 12px', fontWeight: 700, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</td>
                       <td data-label="الدين" style={{ padding: '8px 12px', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>{fmt(r.outstanding)}</td>
@@ -1299,6 +1534,8 @@ export default function CustomerMoney({ isActive = true }) {
                   </button>
                 )}
               </div>
+              </div>
+            </OperationalResultSet>
             </div>
           )}
         </Card>
@@ -1376,36 +1613,18 @@ export default function CustomerMoney({ isActive = true }) {
       </div>
       </details>
 
-      {bulkAction && (
-        <Modal title={{ assign: 'مراجعة الإسناد الجماعي', followup: 'مراجعة قائمة المتابعة', campaign: 'مراجعة Draft الحملة', ivr: 'مراجعة جمهور IVR', export: 'مراجعة التصدير' }[bulkAction]} onClose={() => { setBulkAction(null); setBulkRowsOverride(null); }} width={680}>
-          <div className="aging-bulk-review">
-            <div className="aging-bulk-review__equation">
-              <div><span>المحدد</span><b>{bulkReview.length}</b></div><i>−</i>
-              <div className="is-excluded"><span>المستبعد</span><b>{bulkReview.length - eligibleBulkRows.length}</b></div><i>=</i>
-              <div className="is-ready"><span>المؤهل</span><b>{eligibleBulkRows.length}</b></div>
-            </div>
-            <div className="aging-bulk-review__amount">إجمالي مبلغ المؤهل <strong>{fmt(eligibleBulkRows.reduce((sum, row) => sum + row.summary.amount, 0))} ر.س</strong></div>
-            {bulkAction === 'assign' && (
-              <label className="aging-bulk-review__assignee">المحصل
-                <select value={bulkAssignee} onChange={e => setBulkAssignee(e.target.value)}>
-                  <option value="">اختر المحصل</option>
-                  {collectionAssignees.map(employee => <option value={employee.id} key={employee.id}>{employee.name}</option>)}
-                </select>
-              </label>
-            )}
-            {bulkAction === 'campaign' && <div className="aging-bulk-review__notice">سيُفتح مركز الحملات كـDraft غير مرسل. سيُعاد احتساب الجمهور والحماية قبل أي تنفيذ.</div>}
-            {bulkAction === 'ivr' && <div className="aging-bulk-review__notice">سيُفتح IVR Review فقط. لن تبدأ أي مكالمة من هذه الشاشة.</div>}
-            {bulkAction === 'followup' && <div className="aging-bulk-review__notice">ستُفتح مهام التحصيل الموجودة فقط؛ لن تُنشأ مهمة صامتة لأي متجر.</div>}
-            <div className="aging-bulk-review__rows">
-              {bulkReview.map(row => <div key={row.identityKey} className={row.eligible ? 'is-ready' : 'is-excluded'}>
-                <span><b>{row.customer.storeName || row.customer.name}</b><small>{fmt(row.summary.amount)} ر.س</small></span>
-                <strong>{row.eligible ? 'مؤهل' : row.exclusionReason}</strong>
-              </div>)}
-            </div>
-            <div className="aging-bulk-review__actions"><Btn variant="ghost" onClick={() => setBulkAction(null)}>إلغاء</Btn><Btn variant="accent" onClick={confirmBulkAction} disabled={!eligibleBulkRows.length || (bulkAction === 'assign' && !bulkAssignee)}>{bulkAction === 'assign' ? 'تنفيذ الإسناد' : bulkAction === 'campaign' ? 'فتح Draft الحملة' : bulkAction === 'ivr' ? 'فتح IVR Review' : bulkAction === 'followup' ? 'فتح قائمة المتابعة' : 'تصدير المؤهل'}</Btn></div>
-          </div>
-        </Modal>
-      )}
+      <BulkPreflightDialog
+        open={Boolean(bulkAction)}
+        title={{ assign: 'مراجعة الإسناد الجماعي', followup: 'مراجعة قائمة المتابعة', campaign: 'مراجعة جمهور WhatsApp', ivr: 'مراجعة جمهور IVR', export: 'مراجعة التصدير' }[bulkAction]}
+        actionLabel={bulkAction === 'assign' ? 'تنفيذ الإسناد' : bulkAction === 'campaign' ? 'فتح إعداد الحملة' : bulkAction === 'ivr' ? 'فتح إعداد IVR' : bulkAction === 'followup' ? 'فتح قائمة المتابعة' : 'تصدير المؤهل'}
+        preflight={bulkPreflight}
+        busy={bulkSubmitting}
+        impact={<div style={{ display: 'grid', gap: 8 }}><span>إجمالي مبلغ المؤهل <strong>{fmt(eligibleBulkRows.reduce((sum, row) => sum + row.summary.amount, 0))} ر.س</strong></span>{bulkAction === 'assign' ? <label className="aging-bulk-review__assignee">المحصل<select value={bulkAssignee} onChange={event => setBulkAssignee(event.target.value)}><option value="">اختر المحصل</option>{collectionAssignees.map(employee => <option value={employee.id} key={employee.id}>{employee.name}</option>)}</select></label> : null}</div>}
+        notice={bulkAction === 'campaign' ? 'سيُفتح مركز الحملات كمسودة غير مرسلة، وسيُعاد فحص الهاتف وقوائم الحماية قبل الإطلاق.' : bulkAction === 'ivr' ? 'سيُفتح إعداد IVR للمراجعة فقط، ولن تبدأ مكالمة من قائمة النتائج.' : bulkAction === 'followup' ? 'ستُفتح مهام التحصيل الموجودة فقط، ولن تُنشأ مهمة صامتة.' : null}
+        renderRow={row => <div key={row.item.identityKey} className={`is-${row.status}`}><span><b>{row.item.customer.storeName || row.item.customer.name}</b><small style={{ display: 'block', color: 'var(--muted)' }}>{fmt(row.item.summary.amount)} ر.س</small></span><b>{row.status === 'eligible' ? 'مؤهل' : row.reason}</b></div>}
+        onClose={() => { setBulkAction(null); setBulkRowsOverride(null); }}
+        onConfirm={confirmBulkAction}
+      />
 
       <WhatsAppSendModal open={waOpen}
         onClose={() => { setWaOpen(false); setWaSingle(null); setWaBulkRecipients(null); }}
@@ -1421,73 +1640,131 @@ export default function CustomerMoney({ isActive = true }) {
       )}
       {requestedDecision && (
         <Modal
-          title={requestedDecision === 'stop' ? 'نتائج: حسابات تحتاج مراجعة الإيقاف' : 'نتائج: أرصدة دفع مسبق قابلة للخصم'}
+          title={`نتائج: ${decisionTitle(requestedDecision)}`}
           onClose={closeDecisionResults}
-          width={760}
+          width={1120}
+          className="customer-decision-dialog"
           bodyClassName="customer-decision-results"
         >
-          {decisionResults.state === 'loading' && <WorkspaceLoadingState label="جارٍ تحميل السجلات المكوّنة للقرار…"/>}
-          {decisionResults.state === 'error' && (
-            <Empty title="تعذرت قراءة النتائج" description={decisionResults.error || 'المصدر غير متاح الآن.'}/>
-          )}
-          {decisionResults.state === 'available' && (
-            <div style={{ display: 'grid', gap: 12 }}>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <b>{decisionResults.rows.length.toLocaleString('en-US')} حساب</b>
-                  <div style={{ color: 'var(--muted)', fontSize: 12 }}>
-                    الإجمالي {fmt(decisionResults.rows.reduce((sum, row) => sum + customerDecisionAmount(row.customer, requestedDecision), 0))} ر.س
-                  </div>
-                </div>
-                {requestedDecision === 'stop' && isAdmin && (
-                  <Btn variant="accent" onClick={() => { clearDecisionResults(); setLamhaPolicyOpen(true); }}>
-                    فحص حالة لمحة ومراجعة الإيقاف
-                  </Btn>
-                )}
-              </div>
-              {!decisionResults.rows.length ? (
-                <Empty title="لا توجد نتائج حالية" description="تغيّرت البيانات أو لم يعد أي حساب يطابق شروط القرار."/>
-              ) : (
-                <div style={{ display: 'grid', gap: 8, maxHeight: '58vh', overflowY: 'auto', paddingInlineEnd: 2 }}>
-                  {decisionResults.rows.map(row => {
-                    const customer = row.customer || {};
-                    const amount = customerDecisionAmount(customer, requestedDecision);
-                    return (
-                      <button
-                        type="button"
-                        key={row.identityKey}
-                        onClick={() => openDecisionStore(row)}
-                        style={{
-                          width: '100%', minHeight: 64, padding: '12px 14px', border: '1px solid var(--line)',
-                          borderRadius: 14, background: 'var(--card)', color: 'inherit', cursor: customer.storeId ? 'pointer' : 'default',
-                          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, textAlign: 'right',
-                        }}
-                        aria-label={`فتح ملف ${customer.storeName || customer.name || 'العميل'}`}
-                      >
-                        <span style={{ minWidth: 0 }}>
-                          <strong style={{ display: 'block' }}>{customer.storeName || customer.name || 'عميل بلا اسم'}</strong>
-                          <small style={{ color: 'var(--muted)' }}>
-                            {requestedDecision === 'stop'
-                              ? `دفع لاحق · نشط · ${Number(customer.oldestDays || 0)} يومًا كأقدم استحقاق`
-                              : `محفظة ${fmt(customer.walletBalance)} ر.س · مستحق ${fmt(customer.owed)} ر.س`}
-                          </small>
-                        </span>
-                        <span style={{ flexShrink: 0, fontWeight: 800 }}>{fmt(amount)} ر.س</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-              <small style={{ color: 'var(--muted)' }}>
-                المصدر: بيانات التحصيل المحلية الحالية. فتح النتائج للقراءة فقط ولا ينفذ خصمًا أو إيقافًا.
-              </small>
+          <OperationalResultSet
+            state={decisionResults.state === 'idle' ? 'loading' : decisionResults.state}
+            error={decisionResults.error}
+            empty={decisionResults.state === 'available' && !visibleDecisionRows.length}
+            context={{
+              title: decisionTitle(requestedDecision),
+              description: 'فتح النتائج للقراءة فقط ولا ينفذ خصمًا أو إيقافًا. افهم سبب ظهور الحساب، حدده، ثم افحص حالته الحية في لمحة قبل مراجعة الإيقاف؛ تسوية Zoho تبقى إجراءً مستقلاً.',
+              reason: decisionReason(requestedDecision),
+              metrics: [
+                { key: 'count', label: 'عدد الحسابات', value: visibleDecisionRows.length },
+                { key: 'amount', label: 'الأثر المالي', value: `${fmt(visibleDecisionRows.reduce((sum, row) => sum + customerDecisionAmount(row.customer, requestedDecision), 0))} ر.س` },
+                { key: 'oldest', label: 'أقدم استحقاق', value: `${visibleDecisionRows.reduce((max, row) => Math.max(max, Number(row.customer?.oldestDays || 0)), 0)} يومًا` },
+              ],
+              source: requestedDecision === 'negative' ? 'أحدث دليل متاجر لمحة' : 'وقت تجهيز مجموعة النتائج',
+              updatedAt: decisionResults.updatedAt,
+              staleAfterMs: requestedDecision === 'negative' ? 24 * 60 * 60 * 1000 : 15 * 60 * 1000,
+              sourceDetails: requestedDecision === 'deduct' ? [
+                {
+                  key: 'invoices', label: 'الفواتير: Zoho Books',
+                  updatedAt: decisionResults.sources?.finance?.dataAsOf,
+                  state: sourceTone(decisionResults.sources?.finance?.freshnessStatus),
+                  detail: 'القابل للتحصيل تشغيليًا',
+                },
+                {
+                  key: 'wallet', label: 'المحفظة: ملف لمحة Excel',
+                  updatedAt: visibleWalletSources.oldestImportedAt,
+                  state: visibleWalletSources.missingCount ? 'partial' : 'healthy',
+                  detail: visibleWalletSources.sourceFile || `${visibleWalletSources.availableCount || 0} رصيد موثّق المصدر`,
+                },
+                {
+                  key: 'account', label: 'حالة الحساب: مزامنة Lamha API',
+                  updatedAt: decisionResults.sources?.stores?.dataAsOf,
+                  state: sourceTone(decisionResults.sources?.stores?.freshnessStatus),
+                  detail: 'يُعاد التحقق حيًا قبل الإيقاف',
+                },
+              ] : [],
+              activeFilters: [
+                ...(decisionSearch ? [{ key: 'search', label: `بحث: ${decisionSearch}`, onRemove: () => setDecisionSearch('') }] : []),
+                ...(decisionMinAmount > 0 ? [{ key: 'decisionMin', label: `المتجاوز أكبر من ${fmt(decisionMinAmount)} ر.س`, onRemove: () => updateUrlFilters({ decisionMin: null }, { replace: true }) }] : []),
+                ...(requestedDecision === 'deduct' ? [
+                  ...(decisionBilling !== 'all' ? [{ key: 'billing', label: decisionBilling === 'prepaid' ? 'نوع الدفع: مسبق' : 'نوع الدفع: لاحق' }] : []),
+                  { key: 'walletMin', label: `المحفظة أكبر من ${fmt(decisionWalletMin)} ر.س` },
+                  { key: 'dueMin', label: `القابل للتحصيل أكبر من ${fmt(decisionDueMin)} ر.س` },
+                  ...(decisionInvoiceState !== 'all' ? [{ key: 'invoices', label: decisionInvoiceState === 'open' ? 'لديه فواتير مفتوحة' : 'بلا فواتير مفتوحة' }] : []),
+                  ...(decisionAccountState !== 'all' ? [{ key: 'account', label: decisionAccountState === 'operating' ? 'الحساب يعمل' : decisionAccountState === 'stopped' ? 'الحساب موقوف' : 'حالة الحساب غير متاحة' }] : []),
+                ] : []),
+              ],
+            }}
+            toolbar={<div className={`customer-decision-toolbar${requestedDecision === 'deduct' ? ' has-operational-filters' : ''}`}>
+              <label className="customer-decision-search"><Search size={14}/><input value={decisionSearch} onChange={event => setDecisionSearch(event.target.value)} placeholder="ابحث بالعميل أو المتجر أو الرقم"/></label>
+              {requestedDecision === 'stop' ? <label className="customer-decision-amount-filter"><span>المتجاوز أكبر من</span><div><input type="number" min="0" step="1" value={decisionMinAmount || ''} onChange={event => updateUrlFilters({ decisionMin: event.target.value || null }, { replace: true })} aria-label="الحد الأدنى للمبلغ المتجاوز" placeholder={String(DEFAULT_SUSPENSION_MIN_OVERDUE)}/><b>ر.س</b></div></label> : null}
+              {requestedDecision === 'deduct' ? <>
+                <label className="customer-decision-filter"><span>نوع الدفع</span><select value={decisionBilling} onChange={event => updateUrlFilters({ decisionBilling: event.target.value }, { replace: true })}><option value="prepaid">مسبق الدفع</option><option value="postpaid">دفع لاحق</option><option value="all">الكل</option></select></label>
+                <label className="customer-decision-filter"><span>رصيد المحفظة أكبر من</span><div><input type="number" min="0" step="0.01" value={decisionWalletMin} onChange={event => updateUrlFilters({ decisionWalletMin: event.target.value }, { replace: true })}/><b>ر.س</b></div></label>
+                <label className="customer-decision-filter"><span>القابل للتحصيل أكبر من</span><div><input type="number" min="0" step="0.01" value={decisionDueMin} onChange={event => updateUrlFilters({ decisionDueMin: event.target.value }, { replace: true })}/><b>ر.س</b></div></label>
+                <label className="customer-decision-filter"><span>الفواتير</span><select value={decisionInvoiceState} onChange={event => updateUrlFilters({ decisionInvoices: event.target.value }, { replace: true })}><option value="open">لديه فواتير مفتوحة</option><option value="none">بلا فواتير مفتوحة</option><option value="all">الكل</option></select></label>
+                <label className="customer-decision-filter"><span>تشغيل حساب لمحة</span><select value={decisionAccountState} onChange={event => updateUrlFilters({ decisionAccount: event.target.value }, { replace: true })}><option value="all">كل الحالات</option><option value="operating">يعمل حسب آخر مزامنة</option><option value="stopped">موقوف حسب آخر مزامنة</option><option value="unknown">غير متاح</option></select></label>
+              </> : null}
+              <label className="customer-decision-filter"><span>الترتيب</span><select value={decisionSort} onChange={event => setDecisionSort(event.target.value)} aria-label="ترتيب نتائج القرار"><option value="impact">الأعلى أثرًا</option><option value="oldest">الأقدم</option><option value="name">اسم العميل</option></select></label>
+              <ResultSetColumnVisibility columns={[{ key: 'reason', label: 'سبب الظهور' }, { key: 'impact', label: 'الأثر المالي' }]} visible={decisionColumns} onChange={(key, checked) => setDecisionColumns(current => { const next = new Set(current); checked ? next.add(key) : next.delete(key); return next; })}/>
+            </div>}
+            selection={{
+              visibleCount: visibleDecisionRows.length,
+              totalCount: visibleDecisionRows.length,
+              selectedCount: decisionSelection.size,
+              allVisibleSelected: visibleDecisionRows.length > 0 && visibleDecisionRows.every(row => decisionSelection.has(row.identityKey)),
+              onToggleVisible: checked => setDecisionSelection(current => selectVisibleResults(current, visibleDecisionRows.map(row => row.identityKey), checked)),
+              onClear: () => setDecisionSelection(new Set()),
+              actions: isAdmin ? [{
+                key: 'suspend', label: 'فحص حالة لمحة ومراجعة الإيقاف', variant: 'primary',
+                onClick: () => {
+                  const selectedRows = decisionResults.rows.filter(row => decisionSelection.has(row.identityKey));
+                  sessionStorage.setItem(decisionSelectionStorageKey(requestedDecision), JSON.stringify([...decisionSelection]));
+                  setDecisionReviewReturnUrl(`${location.pathname}${location.search}`);
+                  setDecisionScopeRows(selectedRows);
+                  setDecisionScopeType(requestedDecision);
+                  clearDecisionResults();
+                  setLamhaDecisionOpen(true);
+                },
+                disabled: !decisionResults.rows.some(row => decisionSelection.has(row.identityKey) && row.customer?.storeId),
+              }] : [],
+            }}
+          >
+            <div className={`customer-decision-table${decisionColumns.has('reason') ? '' : ' hide-reason'}${decisionColumns.has('impact') ? '' : ' hide-impact'}`} role="table" aria-label="نتائج القرار">
+              <div className="customer-decision-table__head" role="row"><span/><span>العميل / المتجر</span>{decisionColumns.has('reason') ? <span>سبب الظهور</span> : null}{decisionColumns.has('impact') ? <span>الأثر</span> : null}<span>الإجراء</span></div>
+              {visibleDecisionRows.map(row => {
+                const customer = row.customer || {};
+                const amount = customerDecisionAmount(customer, requestedDecision);
+                const reason = decisionRowReason(customer, requestedDecision);
+                return <div className={`customer-decision-table__row${decisionSelection.has(row.identityKey) ? ' is-selected' : ''}`} role="row" key={row.identityKey}>
+                  <input type="checkbox" checked={decisionSelection.has(row.identityKey)} onChange={() => setDecisionSelection(current => toggleResultSelection(current, row.identityKey))} aria-label={`تحديد ${customer.storeName || customer.name || 'العميل'}`}/>
+                  <span><b>{customer.storeName || customer.name || 'عميل بلا اسم'}</b><small>{customer.storeId ? `متجر #${customer.storeId} · ${accountOperatingLabel(customer)}` : `Zoho #${customer.zohoId || '—'}`}</small></span>
+                  {decisionColumns.has('reason') ? <span><b>{reason.title}</b><small>{reason.detail}</small></span> : null}
+                  {decisionColumns.has('impact') ? <strong>{fmt(amount)} ر.س</strong> : null}
+                  <button type="button" onClick={() => setContextDrawer({ row, view: 'summary', decision: true })} disabled={!customer.storeId}>معاينة العميل</button>
+                </div>;
+              })}
             </div>
-          )}
+          </OperationalResultSet>
         </Modal>
       )}
-      {lamhaPolicyOpen ? <Suspense fallback={<WorkspaceLoadingState label="جارٍ فتح مراجعة حسابات لمحة…"/>}>
-        <LamhaFinancialAccountReview initialView="overdue" onClose={() => setLamhaPolicyOpen(false)}/>
+      {lamhaDecisionOpen ? <Suspense fallback={<WorkspaceLoadingState label="جارٍ فحص حسابات لمحة…"/>}>
+        <LamhaDecisionActionReview rows={decisionScopeRows} decision={decisionScopeType} enforceFinancialPolicy={decisionScopeType === 'stop'} onClose={() => {
+          setLamhaDecisionOpen(false); setDecisionScopeRows([]); setDecisionScopeType(null);
+          if (decisionReviewReturnUrl) navigate(decisionReviewReturnUrl);
+          setDecisionReviewReturnUrl('');
+        }}/>
       </Suspense> : null}
+      {contextDrawer ? <CustomerContextDrawer
+        row={contextDrawer.row}
+        initialView={contextDrawer.view}
+        onClose={() => setContextDrawer(null)}
+        onOpenFull={view => {
+          const selected = contextDrawer;
+          setContextDrawer(null);
+          if (selected.decision) openDecisionStore(selected.row);
+          else openFullStoreFromAging(selected.row, view === 'invoices');
+        }}
+      /> : null}
       {applyTarget && (
         <ApplyCreditsModal target={applyTarget} onGrant={grantWriteAccess}
           onClose={() => setApplyTarget(null)}
@@ -1500,6 +1777,7 @@ export default function CustomerMoney({ isActive = true }) {
 // مودال «طبّق للكل» — تطبيق أرصدة كل العملاء تسلسلياً مع تقدّم حيّ
 function BulkApplyModal({ rows, onClose, onDone, onGrant }) {
   const operationGroup = useRef(crypto.randomUUID());
+  const submissionGuard = useRef(createSubmissionGuard());
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(false);
   const [idx, setIdx] = useState(0);
@@ -1509,27 +1787,34 @@ function BulkApplyModal({ rows, onClose, onDone, onGrant }) {
   const appliedSum = log.filter(l => l.ok).reduce((s, l) => s + (l.applied || 0), 0);
   const authFailed = log.some(l => !l.ok && /authoriz|صلاح/i.test(l.error || ''));
 
-  const run = async () => {
+  const run = async () => submissionGuard.current.run(async () => {
     setRunning(true);
-    for (let i = 0; i < rows.length; i++) {
-      setIdx(i + 1);
-      const r = rows[i];
-      const res = await applyZohoCredits(r.zohoId, `${operationGroup.current}:${r.zohoId}`);
-      // تجاوز حصة زوهو → أوقف واعرض بانر (يُكمل المستخدم لاحقاً بأمان)
-      if (res?.rate_limited) { setRateHit(true); break; }
-      const entry = res?.ok
-        ? { name: r.name, ok: !(res.results || []).some(x => !x.ok), applied: res.applied,
-            error: (res.results || []).find(x => !x.ok)?.error || null }
-        : { name: r.name, ok: false, applied: 0, error: res?.error || 'فشل' };
-      setLog(prev => [...prev, entry]);
-      // أوقف فوراً لو المشكلة صلاحية (لا فائدة من إكمال البقية)
-      if (!entry.ok && /authoriz|صلاح/i.test(entry.error || '')) break;
-      // مباعدة بسيطة لتفادي ضرب حصة زوهو (~100 طلب/دقيقة)
-      await sleep(1200);
+    let currentRowName = 'توقف التنفيذ';
+    try {
+      for (let i = 0; i < rows.length; i++) {
+        setIdx(i + 1);
+        const r = rows[i];
+        currentRowName = r.name;
+        const res = await applyZohoCredits(r.zohoId, `${operationGroup.current}:${r.zohoId}`);
+        // تجاوز حصة زوهو → أوقف واعرض بانر (يُكمل المستخدم لاحقاً بأمان)
+        if (res?.rate_limited) { setRateHit(true); break; }
+        const entry = res?.ok
+          ? { name: r.name, ok: !(res.results || []).some(x => !x.ok), applied: res.applied,
+              error: (res.results || []).find(x => !x.ok)?.error || null }
+          : { name: r.name, ok: false, applied: 0, error: res?.error || 'فشل' };
+        setLog(prev => [...prev, entry]);
+        // أوقف فوراً لو المشكلة صلاحية (لا فائدة من إكمال البقية)
+        if (!entry.ok && /authoriz|صلاح/i.test(entry.error || '')) break;
+        // مباعدة بسيطة لتفادي ضرب حصة زوهو (~100 طلب/دقيقة)
+        await sleep(1200);
+      }
+    } catch (error) {
+      setLog(prev => [...prev, { name: currentRowName, ok: false, applied: 0, error: error?.message || 'فشل غير متوقع' }]);
+    } finally {
+      setRunning(false);
+      setDone(true);
     }
-    setRunning(false);
-    setDone(true);
-  };
+  });
 
   const okCount = log.filter(l => l.ok).length;
   const failCount = log.filter(l => !l.ok).length;

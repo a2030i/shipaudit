@@ -12,6 +12,9 @@ import { lineMatchesAging, normalizeCollectibleLine } from './agingOperations.js
 import {
   calculateZohoDocumentBackedBalance, calculateZohoDocumentBackedCreditOffset,
 } from './customerMoneyTotals.js';
+import {
+  aggregateFinancialPositions, buildFinancialPosition, loadCustomerFinancialPositions,
+} from './customerFinancialPosition.js';
 
 async function functionErrorMessage(error, fallback) {
   let payload = null;
@@ -412,6 +415,7 @@ export async function loadCustomerMoneyDashboard() {
     { data: integrityRows, error: integrityError },
     { data: zohoMatchedRows, error: zohoMatchedError },
     invoiceBalanceBreakdown,
+    financialPositions,
   ] = await Promise.all([
     supabase.rpc('customer_money_dashboard'),
     supabase.rpc('customer_collection_campaign_buckets'),
@@ -423,11 +427,14 @@ export async function loadCustomerMoneyDashboard() {
     loadZohoInvoiceBalanceBreakdown().catch(error => ({
       available: false, unpaid: null, draft: null, draftCount: null, error: error?.message || 'تعذرت قراءة فواتير زوهو',
     })),
+    loadCustomerFinancialPositions(),
   ]);
   if (error) throw error;
   if (campaignError) throw campaignError;
   if (integrityError) throw integrityError;
   const d = data || {};
+  const financialTotals = aggregateFinancialPositions(financialPositions);
+  const positionByZohoId = new Map(financialPositions.map(row => [String(row.zohoId), row]));
   const campaign = campaignData || {};
   const campaignRows = Array.isArray(campaign.customers) ? campaign.customers : [];
   const campaignByZohoId = new Map(campaignRows.filter(row => row.zoho_id).map(row => [String(row.zoho_id), row]));
@@ -460,11 +467,15 @@ export async function loadCustomerMoneyDashboard() {
   const zohoMatchedCreditOffset = zohoMatchedError
     ? null
     : calculateZohoDocumentBackedCreditOffset(zohoMatchedRows || []);
-  const collectibleOutstanding = Number(d.outstanding) || 0;
-  const grossOutstanding = Number(d.gross_outstanding) || 0;
+  const collectibleOutstanding = financialTotals.operationalCollectible;
+  const grossOutstanding = financialTotals.accountingOutstanding;
   const zohoUnpaidInvoices = invoiceBalanceBreakdown?.available ? Number(invoiceBalanceBreakdown.unpaid) || 0 : null;
   return {
     grossOutstanding,
+    accountingOutstanding: financialTotals.accountingOutstanding,
+    operationalCollectible: financialTotals.operationalCollectible,
+    residualBalance: financialTotals.residualBalance,
+    financialPositionReconciled: financialTotals.reconciledExactly,
     zohoUnpaidInvoices,
     zohoUnpaidInvoicesAvailable: !!invoiceBalanceBreakdown?.available,
     zohoUnpaidInvoicesError: invoiceBalanceBreakdown?.error || null,
@@ -485,8 +496,10 @@ export async function loadCustomerMoneyDashboard() {
     creditOffset:     Number(d.credit_offset) || 0,
     unusedCredits:    Number(d.unused_credits) || 0,
     creditSurplus:    Number(d.credit_surplus) || 0,
-    outstanding:    collectibleOutstanding,
-    outstandingCnt: Number(d.outstanding_cnt) || 0,
+    // Compatibility alias. In V2 `outstanding` always means the operational
+    // amount; accountingOutstanding is the untouched Zoho balance.
+    outstanding: collectibleOutstanding,
+    outstandingCnt: financialPositions.filter(row => row.operationalCollectible > 0.5).length,
     settlementCount: Number(d.settlement_count) || 0,
     settlementTotal: Number(d.settlement_total) || 0,
     balanceSyncIssueCount: issues.length,
@@ -521,16 +534,22 @@ export async function loadCustomerMoneyDashboard() {
     monthlyCollected: Array.isArray(d.monthly_collected) ? d.monthly_collected : [],
     customers: (Array.isArray(d.customers) ? d.customers : []).map(c => {
       const campaignRow = campaignFor(c);
+      const sourcePosition = positionByZohoId.get(String(c.zoho_id || c.zohoId || ''));
+      const position = sourcePosition || buildFinancialPosition(c.gross_due, c.owed);
       return {
       // `storeId` = رقم المتجر في نظام لمحة — المفتاح الذي يُبحَث به في
       // المنصّة الداخلية (الاسم قد يتكرّر بين متجرين §1.53، والرقم لا يتكرّر).
       name: c.name, zohoId: c.zoho_id || '', storeName: c.store_name, storeId: c.store_id || '', phone: c.phone,
-      grossDue: Number(c.gross_due) || 0,
+      grossDue: position.accountingOutstanding,
+      accountingOutstanding: position.accountingOutstanding,
+      operationalCollectible: position.operationalCollectible,
+      residualBalance: position.residualBalance,
+      financialPositionReconciled: sourcePosition?.sourceReconciledExactly !== false && position.reconciledExactly,
       unusedCredit: Number(c.unused_credit) || 0,
       creditOffset: Number(c.credit_offset) || 0,
       creditSurplus: Number(c.credit_surplus) || 0,
       needsZohoSettlement: !!c.needs_zoho_settlement,
-      owed: Number(c.owed) || 0, overdue: Number(c.overdue) || 0,
+      owed: position.operationalCollectible, overdue: Number(c.overdue) || 0,
       invCnt: Number(c.inv_cnt) || 0, oldestDays: Number(c.oldest_days) || 0,
       b0_15: Number(c.b0_15) || 0,
       b16_30: Number(c.b16_30) || 0,

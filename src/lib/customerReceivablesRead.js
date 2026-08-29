@@ -1,4 +1,7 @@
 import { supabase } from './supabase.js';
+import {
+  aggregateFinancialPositions, buildFinancialPosition, loadCustomerFinancialPositions,
+} from './customerFinancialPosition.js';
 
 const runtimeEnv = import.meta.env || {};
 export const RECEIVABLES_READ_MODE = runtimeEnv.VITE_RECEIVABLES_READ_MODE || 'core';
@@ -13,13 +16,24 @@ const mapSettlement = row => ({
   openingCollectible: number(row.opening_collectible), coveredFully: !!row.covered_fully,
 });
 
-function adaptSummary(source = {}, pageRows = []) {
+function adaptSummary(source = {}, pageRows = [], financialPositions = []) {
   const aging = source.aging || {};
   const campaign = source.campaignAging || {};
-  const outstanding = number(source.outstanding);
+  const financialTotals = aggregateFinancialPositions(financialPositions);
+  const outstanding = financialPositions.length
+    ? financialTotals.operationalCollectible
+    : number(source.outstanding);
   const unpaid = source.zohoUnpaidInvoices == null ? null : number(source.zohoUnpaidInvoices);
   return {
-    grossOutstanding: number(source.gross_outstanding),
+    grossOutstanding: financialPositions.length
+      ? financialTotals.accountingOutstanding
+      : number(source.gross_outstanding),
+    accountingOutstanding: financialTotals.accountingOutstanding,
+    operationalCollectible: outstanding,
+    residualBalance: financialTotals.residualBalance,
+    financialPositionReconciled: financialPositions.length
+      ? financialTotals.reconciledExactly
+      : false,
     creditOffset: number(source.credit_offset),
     unusedCredits: number(source.unused_credits),
     creditSurplus: number(source.credit_surplus),
@@ -77,11 +91,27 @@ export function receivablesRpcArgs(filters = {}) {
   };
 }
 
-export function adaptReceivablesWorkQueue(payload) {
+export function adaptReceivablesWorkQueue(payload, financialPositions = []) {
   if (!payload?.page || !payload?.summary) throw new Error('استجابة مسار التحصيل المركزي غير مكتملة');
-  const rows = Array.isArray(payload.page.rows) ? payload.page.rows : [];
+  const positionByZohoId = new Map(financialPositions.map(row => [String(row.zohoId), row]));
+  const rows = (Array.isArray(payload.page.rows) ? payload.page.rows : []).map(row => {
+    const sourcePosition = positionByZohoId.get(String(row.customer?.zohoId || ''));
+    const position = sourcePosition || buildFinancialPosition(row.customer?.grossDue, row.customer?.owed);
+    return {
+      ...row,
+      customer: {
+        ...row.customer,
+        grossDue: position.accountingOutstanding,
+        accountingOutstanding: position.accountingOutstanding,
+        operationalCollectible: position.operationalCollectible,
+        residualBalance: position.residualBalance,
+        financialPositionReconciled: sourcePosition?.sourceReconciledExactly !== false && position.reconciledExactly,
+        owed: position.operationalCollectible,
+      },
+    };
+  });
   return {
-    dashboard: adaptSummary(payload.summary, rows),
+    dashboard: adaptSummary(payload.summary, rows, financialPositions),
     page: { ...payload.page, rows },
     permissions: payload.permissions || {},
     assignees: Array.isArray(payload.assignees) ? payload.assignees : [],
@@ -93,19 +123,31 @@ export function adaptReceivablesWorkQueue(payload) {
 }
 
 export async function loadCustomerReceivablesWorkQueue(filters, client = supabase) {
-  const { data, error } = await client.rpc('customer_receivables_work_queue', receivablesRpcArgs(filters));
+  const [{ data, error }, financialPositions] = await Promise.all([
+    client.rpc('customer_receivables_work_queue', receivablesRpcArgs(filters)),
+    loadCustomerFinancialPositions(client),
+  ]);
   if (error) throw error;
-  return adaptReceivablesWorkQueue(data);
+  return adaptReceivablesWorkQueue(data, financialPositions);
 }
 
 export async function loadAllCustomerReceivablesRows(filters, client = supabase) {
+  const result = await loadAllCustomerReceivablesResult(filters, client);
+  return result.rows;
+}
+
+export async function loadAllCustomerReceivablesResult(filters, client = supabase) {
   const first = await loadCustomerReceivablesWorkQueue({ ...filters, page: 1, pageSize: 100 }, client);
   const rows = [...first.page.rows];
   for (let page = 2; page <= first.page.totalPages; page += 1) {
     const next = await loadCustomerReceivablesWorkQueue({ ...filters, page, pageSize: 100 }, client);
     rows.push(...next.page.rows);
   }
-  return rows;
+  return {
+    rows,
+    sources: first.sources || {},
+    generatedAt: first.generatedAt || null,
+  };
 }
 
 export function compareReceivablesFinancials(legacy, next) {
@@ -120,6 +162,6 @@ export function compareReceivablesFinancials(legacy, next) {
     ['aging.opening', legacy?.campaignAging?.opening, next?.dashboard?.campaignAging?.opening],
   ];
   return checks.flatMap(([field, before, after]) => (
-    Math.abs(number(before) - number(after)) < 0.005 ? [] : [{ field, before: number(before), after: number(after) }]
+    number(before) === number(after) ? [] : [{ field, before: number(before), after: number(after) }]
   ));
 }

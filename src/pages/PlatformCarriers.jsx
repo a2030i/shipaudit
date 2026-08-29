@@ -6,6 +6,7 @@ import { Truck, RefreshCw, Download, Save } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, PageHeader, toast } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadPlatformCarriers, savePlatformCarrier, savePlatformCompetitor, loadPlatformMarkup, savePlatformMarkup } from '../lib/platformCarriersService.js';
+import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 
 const fmt2 = (n) => n == null ? '—' : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const cell = { padding: '10px 12px', fontSize: 12.5, whiteSpace: 'nowrap' };
@@ -129,7 +130,6 @@ export default function PlatformCarriers({ isActive = true }) {
     try {
       const XLSX = await import('xlsx');
       const { rtl } = await import('../lib/xlsxRtl.js');
-      const { persistAndDownloadExport } = await import('../lib/internalExportsService.js');
       const data = sorted.filter(r => r.isActive).map(r => {
         const profit = (r.sellPrice != null && r.costPrice != null) ? Number((r.sellPrice - r.costPrice).toFixed(2)) : '';
         const prices = [['لمحة', r.sellPrice], ['أوتو', r.sellAuto], ['طرود', r.sellTorod]].filter(([, v]) => v != null);

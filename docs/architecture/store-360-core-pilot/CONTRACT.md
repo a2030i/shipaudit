@@ -97,13 +97,13 @@ The most recently updated open `collection_tasks` row for the explicitly linked 
 
 Current sales follow-up data is keyed by contact phone in `retargeting_followups`. The section is therefore labelled as a contact-point association and is never used to resolve store identity, financial identity, or ownership. It must not be presented as verified store identity. Store lookup still uses `store_id` only.
 
-The Core does not return invoice details, shipment rows, support records, communication history, or timeline events. Those remain lazy detail queries opened by the relevant view.
+The Core does not return invoice details, shipment rows, communication history, or timeline events. Those remain lazy detail queries opened by the relevant view.
 
 ## 3. Section permissions
 
 | Section | Minimum permission | Additional scope |
 |---|---|---|
-| Identity | any of `merchants.view`, `receivables.view`, `sales.view`, `crm.view`, `support.view` | none |
+| Identity | any of `merchants.view`, `receivables.view`, `sales.view`, `crm.view` | none |
 | Financial link | `receivables.view` | none |
 | Finance | `receivables.view` | none |
 | Last payment | `receivables.view` | none |

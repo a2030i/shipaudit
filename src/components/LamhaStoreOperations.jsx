@@ -175,15 +175,15 @@ export default function LamhaStoreOperations({ merchants, onClose }) {
     <PageHeader
       icon={<ShieldCheck size={22}/>}
       title="حالة متاجر لمحة الحية"
-      subtitle="تشغيل وإيقاف إنشاء الشحنات من حالة لمحة: نشط أو غير نشط"
-      meta="خامل ومتوقف حالات متابعة فقط ولا تنفذ أي إجراء"
+      subtitle="حالة تشغيل الحساب من لمحة مباشرة؛ غير نشط فقط يعني أن الحساب موقوف"
+      meta="خامل ومتوقف حسابات تعمل؛ الوصف يعكس النشاط وليس التشغيل"
       actions={<Btn variant="ghost" onClick={onClose} disabled={busy}>العودة إلى دليل المتاجر</Btn>}
     />
 
     <div className="lamha-operations-summary">
       <Card><span>المتاجر المتاحة</span><strong>{fmtCount(normalizedRows.length)}</strong><small>من أحدث دليل متاجر</small></Card>
       <Card><span>فُحصت حيًا</span><strong>{fmtCount(checked)}</strong><small>المصدر: لمحة مباشرة</small></Card>
-      <Card className="is-active"><span>يسمح بإنشاء الشحنات</span><strong>{fmtCount(active)}</strong><small>حالة لمحة: نشط</small></Card>
+      <Card className="is-active"><span>يسمح بإنشاء الشحنات</span><strong>{fmtCount(active)}</strong><small>نشط أو خامل أو متوقف</small></Card>
       <Card className="is-inactive"><span>إنشاء الشحنات متوقف</span><strong>{fmtCount(inactive)}</strong><small>حالة لمحة: غير نشط</small></Card>
       <Card className={failed ? 'is-error' : ''}><span>تحتاج مراجعة</span><strong>{fmtCount(failed)}</strong><small>تعذر الفحص أو الإثبات</small></Card>
     </div>

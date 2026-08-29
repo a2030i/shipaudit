@@ -10,7 +10,16 @@ import { useAuth } from '../lib/auth.jsx';
 const BATCH = 40;   // دفعة الاستدعاء الواحد (كل مكالمة ~0.4ث تسجيل + إطلاق)
 
 // recipients: [{ phone, name, fields? }]
-export default function IvrCampaignModal({ open, onClose, recipients = [], bucketLabel, lockedCampaignName = null, onDone }) {
+export default function IvrCampaignModal({
+  open,
+  onClose,
+  recipients = [],
+  bucketLabel,
+  lockedCampaignName = null,
+  preflightSummary = null,
+  onBeforeExecute = null,
+  onDone,
+}) {
   const { can, user } = useAuth();
   const allowed = can('campaigns.ivr');
   const [cfg, setCfg] = useState(null);
@@ -61,11 +70,18 @@ export default function IvrCampaignModal({ open, onClose, recipients = [], bucke
       if (!schedAt) { toast('اختر وقت الجدولة', 'error'); return; }
       setLaunching(true);
       try {
+        const executionContext = await onBeforeExecute?.({
+          channel: 'ivr',
+          mode: 'scheduled',
+          campaignName: campName.trim(),
+          recipientCount: dedup.length,
+          scheduledAt: new Date(schedAt).toISOString(),
+        });
         const recs = dedup.map(r => ({ phone: String(r.phone), name: r.name || null, fields: r.fields || null }));
         const { queued } = await scheduleIvrQueue({ recipients: recs, scriptKey, campaignName: campName.trim(), runAt: new Date(schedAt).toISOString(), userId: user?.id || null });
         setResults({ scheduled: true, queued });
         toast(`جُدولت ${queued} مكالمة`, 'success');
-        onDone && onDone({ scheduled: true, queued, scheduledAt: new Date(schedAt).toISOString() });
+        onDone && onDone({ scheduled: true, queued, scheduledAt: new Date(schedAt).toISOString() }, executionContext);
       } catch (e) { toast(e.message || 'فشل الجدولة', 'error'); }
       finally { setLaunching(false); }
       return;
@@ -73,6 +89,12 @@ export default function IvrCampaignModal({ open, onClose, recipients = [], bucke
     setLaunching(true); setResults(null);
     const agg = { total: dedup.length, placed: 0, failed: 0, skipped: 0, results: [] };
     try {
+      const executionContext = await onBeforeExecute?.({
+        channel: 'ivr',
+        mode: 'immediate',
+        campaignName: campName.trim(),
+        recipientCount: dedup.length,
+      });
       for (let i = 0; i < dedup.length; i += BATCH) {
         const batch = dedup.slice(i, i + BATCH).map(r => ({ phone: String(r.phone), name: r.name || null, fields: r.fields || null }));
         setProgress({ done: i, total: dedup.length, placed: agg.placed, failed: agg.failed });
@@ -83,7 +105,7 @@ export default function IvrCampaignModal({ open, onClose, recipients = [], bucke
       setProgress({ done: dedup.length, total: dedup.length, placed: agg.placed, failed: agg.failed });
       setResults(agg);
       toast(`تم إطلاق ${agg.placed} مكالمة`, agg.placed ? 'success' : 'error');
-      onDone && onDone(agg);
+      onDone && onDone(agg, executionContext);
     } catch (e) {
       toast(e.message || 'فشل إطلاق المكالمات', 'error');
       if (agg.placed || agg.failed) setResults(agg);
@@ -146,10 +168,21 @@ export default function IvrCampaignModal({ open, onClose, recipients = [], bucke
               </div>
             )}
 
-            <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-              المستلمون: <b style={{ color: 'var(--text)' }}>{dedup.length}</b> رقم فريد
-              {chosen.length !== dedup.length && <span> (من {chosen.length} صف)</span>}
-            </div>
+            {preflightSummary ? (
+              <div className="ivr-preflight-summary" role="status" aria-label="ملخص أهلية جمهور IVR">
+                <div><span>نتيجة الفلتر</span><b>{preflightSummary.source ?? valid.length}</b></div>
+                <div className="is-excluded"><span>مستبعد بالحماية</span><b>{preflightSummary.excluded ?? 0}</b></div>
+                <div className="is-ready"><span>سيتلقى الاتصال</span><b>{dedup.length}</b></div>
+                {!!preflightSummary.reasons?.length && (
+                  <p>{preflightSummary.reasons.map(reason => `${reason.label} ${reason.count}`).join(' · ')}</p>
+                )}
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+                المستلمون: <b style={{ color: 'var(--text)' }}>{dedup.length}</b> رقم فريد
+                {chosen.length !== dedup.length && <span> (من {chosen.length} صف)</span>}
+              </div>
+            )}
 
             <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
               {valid.slice(0, 400).map((r, i) => {

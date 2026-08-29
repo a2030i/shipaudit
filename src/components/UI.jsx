@@ -1085,12 +1085,25 @@ export function Select({ label, children, style: outerStyle = {}, ...props }) {
 }
 
 // ─── Modal ─────────────────────────────────────────────────────────────────────
-export function Modal({ title, children, onClose, width = 520, className = '', bodyClassName = '' }) {
+let activeModalCount = 0;
+let modalRootState = null;
+
+export function Modal({ title, children, onClose, width = 520, className = '', bodyClassName = '', variant = 'dialog' }) {
   const titleId = useId();
   const panelRef = useRef(null);
   const closeButtonRef = useRef(null);
   useEffect(() => {
     const previousFocus = document.activeElement;
+    const appRoot = document.getElementById('root');
+    if (activeModalCount === 0 && appRoot) {
+      modalRootState = {
+        inert: appRoot.hasAttribute('inert'),
+        ariaHidden: appRoot.getAttribute('aria-hidden'),
+      };
+      appRoot.setAttribute('inert', '');
+      appRoot.setAttribute('aria-hidden', 'true');
+    }
+    activeModalCount += 1;
     const focusTimer = window.requestAnimationFrame(() => closeButtonRef.current?.focus());
     const fn = (e) => {
       if (e.key === 'Escape') {
@@ -1111,41 +1124,52 @@ export function Modal({ title, children, onClose, width = 520, className = '', b
     return () => {
       window.cancelAnimationFrame(focusTimer);
       window.removeEventListener('keydown', fn);
+      activeModalCount = Math.max(0, activeModalCount - 1);
+      if (activeModalCount === 0 && appRoot) {
+        if (!modalRootState?.inert) appRoot.removeAttribute('inert');
+        if (modalRootState?.ariaHidden == null) appRoot.removeAttribute('aria-hidden');
+        else appRoot.setAttribute('aria-hidden', modalRootState.ariaHidden);
+        modalRootState = null;
+      }
       if (previousFocus instanceof HTMLElement && document.contains(previousFocus)) previousFocus.focus();
     };
   }, [onClose]);
 
   return createPortal((
     <div
-      className="modal-overlay"
+      className={`modal-overlay${variant === 'drawer' ? ' is-context-drawer' : ''}`}
       style={{
         position: 'fixed', inset: 0,
         background: 'rgba(15,18,53,.45)',
         backdropFilter: 'blur(4px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        display: 'flex',
+        alignItems: variant === 'drawer' ? 'stretch' : 'center',
+        justifyContent: variant === 'drawer' ? 'flex-start' : 'center',
         zIndex: 1000,
       }}
       onClick={e => e.target === e.currentTarget && onClose?.()}
     >
       <div
         ref={panelRef}
-        className={`scale-in modal-panel ${className}`.trim()}
+        className={`${variant === 'drawer' ? 'context-drawer-in modal-panel context-drawer-panel' : 'scale-in modal-panel'} ${className}`.trim()}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         style={{
           background: 'var(--card)',
           border: '1px solid var(--border)',
-          borderRadius: 'var(--r-xl)',
-          padding: 28, width,
-          maxWidth: '95vw', maxHeight: '90vh',
+          borderRadius: variant === 'drawer' ? 0 : 'var(--r-xl)',
+          padding: variant === 'drawer' ? 0 : 28, width,
+          maxWidth: variant === 'drawer' ? 'min(94vw, 620px)' : '95vw',
+          maxHeight: variant === 'drawer' ? '100dvh' : '90vh',
+          height: variant === 'drawer' ? '100dvh' : undefined,
           overflow: 'hidden',
           display: 'flex', flexDirection: 'column',
           boxSizing: 'border-box',
           boxShadow: 'var(--shadow-lg)',
         }}
       >
-        <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22, flexShrink: 0 }}>
+        <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: variant === 'drawer' ? 0 : 22, padding: variant === 'drawer' ? '16px 20px' : 0, borderBottom: variant === 'drawer' ? '1px solid var(--border)' : 0, flexShrink: 0 }}>
           <h3 id={titleId} style={{ color: 'var(--text)', fontFamily: 'var(--font-sans)', fontSize: 16, fontWeight: 800, letterSpacing: 0 }}>
             {title}
           </h3>

@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js';
+import { moneyToMinorUnits } from './customerFinancialPosition.js';
 
 const runtimeEnv = import.meta.env || {};
 export const STORE_360_CORE_READ_MODE = runtimeEnv.VITE_STORE_360_CORE_READ_MODE || 'core';
@@ -6,7 +7,7 @@ const enabled = runtimeEnv.VITE_STORE_360_CORE_SHADOW_READ === '1'
   || STORE_360_CORE_READ_MODE === 'shadow';
 
 const money = value => Number(Number(value ?? 0).toFixed(2));
-const sameMoney = (left, right) => Math.abs(money(left) - money(right)) < 0.01;
+const sameMoney = (left, right) => moneyToMinorUnits(left) === moneyToMinorUnits(right);
 
 function compare(oldCore, nextCore) {
   const finance = nextCore?.sections?.finance;

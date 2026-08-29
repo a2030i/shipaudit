@@ -204,19 +204,34 @@
 @keyframes navigation-hub-fade { from { opacity: 0; } }
 @keyframes navigation-hub-rise { from { opacity: .7; transform: translateY(24px); } }
 
-/* The approved shell has no persistent sidebar or center landing navigation. */
+/* V2 shell: one compact business-domain rail on desktop. The navigation hub is
+   the single mobile drawer and remains the route catalog for small screens. */
 .app-layout,
 [data-theme] .app-layout {
-  display: block !important;
+  direction: ltr !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) var(--sa-primary-rail, 124px) !important;
+  grid-template-areas: "main primary" !important;
   width: 100% !important;
   height: 100dvh !important;
 }
 
 .app-layout > .app-main,
-[data-theme] .app-layout > .app-main { width: 100% !important; }
-.hamburger-btn { display: grid !important; }
+[data-theme] .app-layout > .app-main {
+  grid-area: main !important;
+  width: auto !important;
+  min-width: 0 !important;
+}
+.app-layout > .sidebar,
+[data-theme] .app-layout > .sidebar { grid-area: primary !important; }
+.hamburger-btn { display: none !important; }
 
 @media (max-width: 768px) {
+  .app-layout,
+  [data-theme] .app-layout { display: block !important; width: 100% !important; }
+  .app-layout > .sidebar,
+  [data-theme] .app-layout > .sidebar { display: none !important; }
+  .hamburger-btn { display: grid !important; }
   .navigation-hub { padding: 0; }
   .navigation-hub__sheet {
     width: 100%;
