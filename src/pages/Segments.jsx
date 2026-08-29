@@ -709,7 +709,7 @@ export default function Segments({ isActive = true }) {
         <Empty
           icon="🧩"
           title="لا يوجد كشف متاجر بعد"
-          sub="ارفع stores.xlsx من /merchants ثم ارجع لبناء المجموعات."
+          sub="زامن دليل المتاجر من لمحة ثم ارجع لبناء المجموعات."
         />
       </div>
     );

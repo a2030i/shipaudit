@@ -10,7 +10,8 @@
 //
 // Manual / fallback snapshot sources covered:
 //   internal_settlement   — استحقاق المتاجر (الداخلي)
-//   merchants             — متاجر المنصّة (stores.xlsx)
+// Lamha's store directory is no longer manual: it is synchronized from the
+// authenticated /stores/export endpoint at midnight Riyadh.
 //
 // Each source declares its "expected cadence" (in days) so the
 // hub can flag stale data without hard-coding thresholds in the UI.
@@ -20,7 +21,6 @@ import * as XLSX                          from 'xlsx';
 import {
   parseInternalSettlement, uploadBalanceSnapshot,
 } from './reconciliationService.js';
-import { parseStoresFile,      uploadLamhaExcelEnrichment } from './merchantsService.js';
 
 const DAY_MS = 86_400_000;
 
@@ -39,15 +39,6 @@ export const UPLOAD_SOURCES = [
     accent:       '#3B82F6',
     cadenceDays:  7,
     link:         '/reconciliation',
-  },
-  {
-    id:           'merchants',
-    label:        'إثراء بيانات المتاجر (stores.xlsx)',
-    origin:       'lamha',
-    subtitle:     'Excel إضافي فقط — محفظة، آخر شحن رصيد، ملف، ضريبة وZATCA',
-    accent:       'var(--accent)',
-    cadenceDays:  30,
-    link:         '/merchants',
   },
 ];
 
@@ -75,28 +66,8 @@ async function lastInternal() {
     total:        Number(r.total_balance) || 0,
   };
 }
-async function lastMerchants() {
-  const { data: meta } = await supabase
-    .from('merchants').select('snapshot_id, uploaded_at')
-    .order('uploaded_at', { ascending: false }).limit(1);
-  if (!meta?.length) return null;
-  const top = meta[0];
-  const { count } = await supabase
-    .from('merchants')
-    .select('id', { count: 'exact', head: true })
-    .eq('snapshot_id', top.snapshot_id);
-  return {
-    lastAt:       top.uploaded_at,
-    fileName:     null,                // merchants doesn't store file_name today
-    rowCount:     count || 0,
-    matchedCount: null,
-    total:        null,
-  };
-}
-
 const LOADERS = {
   internal_settlement: lastInternal,
-  merchants:           lastMerchants,
 };
 
 // ── Overview API for the hub page ──
@@ -169,7 +140,8 @@ export function detectFileSource(rows) {
     };
   }
 
-  // -- Merchants (stores.xlsx) — needs id + name + an ops column --
+  // Lamha's stores.xlsx is now pulled automatically from the authenticated
+  // export endpoint. Block manual uploads so two snapshots cannot compete.
   for (const r of top) {
     if (!r) continue;
     const h = r.map(c => String(c || '').toLowerCase());
@@ -178,7 +150,13 @@ export function detectFileSource(rows) {
     const hasOps  = h.some(c => c.includes('عدد الشحنات') || c.includes('نوع الربط') || c.includes('shipment count'));
     if (hasId && hasName && hasOps) {
       reasons.push('أعمدة كشف المتاجر (رقم/اسم/شحنات)');
-      return { sourceId: 'merchants', confidence: 0.9, reasons };
+      return {
+        blocked: true,
+        confidence: 0.99,
+        label: 'دليل متاجر لمحة',
+        message: 'دليل المتاجر يُسحب تلقائيًا من لمحة كل يوم. استخدم «مزامنة من لمحة» عند الحاجة ولا ترفع الملف يدويًا.',
+        reasons,
+      };
     }
   }
 
@@ -210,6 +188,9 @@ export async function uploadFile({ sourceId, file, userId }) {
   if (['zoho_customers', 'zoho_vendors', 'receivables'].includes(sourceId)) {
     throw new Error('تم إيقاف رفع Excel زوهو. المصدر المعتمد الآن هو زوهو API.');
   }
+  if (sourceId === 'merchants') {
+    throw new Error('تم إيقاف رفع دليل المتاجر يدويًا. المصدر المعتمد هو تصدير لمحة الآلي.');
+  }
 
   const buffer = await file.arrayBuffer();
   const wb     = XLSX.read(buffer, { type: 'array', cellDates: true });
@@ -222,13 +203,6 @@ export async function uploadFile({ sourceId, file, userId }) {
       if (parsed.errors.length) throw new Error(parsed.errors.join(' · '));
       const r = await uploadBalanceSnapshot({ source: 'internal', parsed: parsed.rows, fileName: file.name, userId });
       return { rowCount: r.rowCount, matched: r.matched, total: r.totalBalance, message: `${r.rowCount} متجر · ${r.matched} مطابق` };
-    }
-    case 'merchants': {
-      const parsed = parseStoresFile(rows);
-      if (parsed.errors?.length) throw new Error(parsed.errors.join(' · '));
-      const r = await uploadLamhaExcelEnrichment({ parsed, sourceFile: file.name });
-      const duplicateNote = r.duplicateRowCount ? ` · جُمعت ${r.duplicateRowCount} صفوف مكررة` : '';
-      return { rowCount: r.count, matched: null, total: null, message: `${r.count} متجر أُثريت بياناته دون تغيير Lamha API${duplicateNote}` };
     }
     default:
       throw new Error(`نوع مصدر غير معروف: ${sourceId}`);

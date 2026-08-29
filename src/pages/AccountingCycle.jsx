@@ -16,6 +16,7 @@ import {
   uploadLamhaShipmentSnapshot,
 } from '../lib/accountingCycleService.js';
 import { uploadFile } from '../lib/uploadsHubService.js';
+import { syncLamhaDirectory } from '../lib/lamhaStoreStatusService.js';
 import {
   downloadApprovedShipmentNumbers,
   exportPendingExcessWeights,
@@ -225,7 +226,7 @@ function SourceUpload({ sourceId, title, done, busy, onFile }) {
 }
 
 export default function AccountingCycle({ carriers = [], isActive = false }) {
-  const { user, can } = useAuth();
+  const { user, profile, can } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [period, setPeriod] = useState(() => {
@@ -541,6 +542,20 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
     }
   };
 
+  const syncLamhaStores = async () => {
+    setBusy('merchants_sync');
+    try {
+      const result = await syncLamhaDirectory();
+      toast(`تمت مزامنة ${Number(result.rows || 0).toLocaleString('en-US')} متجر من تصدير لمحة`, 'success');
+      await refresh({ advance: true });
+    } catch (error) {
+      toast(`تعذرت مزامنة دليل المتاجر: ${error.message}`, 'error');
+      await refresh();
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const closePeriod = async () => {
     setBusy('period_close');
     try {
@@ -735,12 +750,15 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
             busy={busy === 'internal_settlement'}
             onFile={uploadSource}
           />
-          <SourceUpload
-            sourceId="merchants"
-            title="دليل متاجر لمحة"
-            done={!!stage.detail?.merchantSnapshot}
-            busy={busy === 'merchants'}
-            onFile={uploadSource}
+          <StageAction
+            title="دليل متاجر لمحة — مصدر آلي"
+            text={stage.detail?.merchantSnapshot
+              ? `آخر لقطة سليمة: ${fmtDate(stage.detail.merchantSnapshot.uploaded_at || stage.detail.merchantSnapshot.created_at)}. تشمل المحفظة وآخر شحن رصيد والملف والضريبة وZATCA.`
+              : 'لم تصل لقطة متاجر بعد. تُسحب تلقائيًا كل يوم الساعة 12 ص من تصدير لمحة الموثق.'}
+            button={profile?.role === 'admin' ? 'مزامنة من لمحة الآن' : 'تتم المزامنة تلقائيًا'}
+            disabled={profile?.role !== 'admin' || busy === 'merchants_sync'}
+            busy={busy === 'merchants_sync'}
+            onClick={syncLamhaStores}
           />
         </div>
       );

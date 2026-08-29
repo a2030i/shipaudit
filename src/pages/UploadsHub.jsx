@@ -3,6 +3,7 @@
 // Zoho Books now has its own API-backed page. This page remains for
 // sources that are still file-based, with a clear "last updated was X
 // days ago" per source. Zoho Excel exports are intentionally blocked.
+// Lamha's store directory is API-export backed and is intentionally absent.
 //
 // Backed by uploadsHubService.loadUploadsOverview() and uploadFile().
 
@@ -155,7 +156,7 @@ export default function UploadsHub({ isActive = true }) {
         icon={<Layers size={22}/>}
         iconColor="#0EA5E9"
         title="صحة مصادر البيانات"
-        subtitle="زوهو يعمل عبر API مباشر؛ هنا تتابع الملفات اليدوية غير المرتبطة بزوهـو"
+        subtitle="زوهو ودليل متاجر لمحة يعملان آليًا؛ هنا تتابع الملفات التي ما زالت يدوية"
         actions={
           <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh}>
             تحديث حالة المصادر
@@ -182,9 +183,9 @@ export default function UploadsHub({ isActive = true }) {
           <Sparkles size={19}/>
         </span>
         <div style={{ flex: 1, minWidth: 260 }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>زوهو يحدّث هذه الأرقام مباشرة</div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>زوهو ودليل متاجر لمحة يتحدثان تلقائيًا</div>
           <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3, lineHeight: 1.6 }}>
-            الفواتير والدفعات والمصاريف والمديونيات تُقرأ من زوهو مباشرة. لا ترفع Excel زوهو هنا؛ استخدم المزامنة من صفحة زوهو API.
+            بيانات زوهو تُقرأ من API، ودليل المتاجر والمحافظ يُسحب من تصدير لمحة كل يوم الساعة 12 ص. لا ترفع ملف المتاجر يدويًا.
           </div>
         </div>
         <Btn size="sm" variant="primary" icon={<ExternalLink size={13}/>} onClick={() => navigate('/zoho-data')}>
@@ -248,7 +249,7 @@ export default function UploadsHub({ isActive = true }) {
               افحص أي ملف يدوي — غير زوهو
             </div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3, lineHeight: 1.6 }}>
-              متاجر المنصّة · استحقاق المتاجر · المتوقّع تحصيله المجمّع. أي ملف Excel من زوهو سيتم رفضه وتوجيهك إلى زوهو API.
+              استحقاق المتاجر · المتوقّع تحصيله المجمّع. ملفات زوهو ودليل متاجر لمحة ستُرفض لأنها أصبحت مصادر آلية.
             </div>
           </div>
         </div>

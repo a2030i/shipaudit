@@ -160,10 +160,13 @@ test('automation stays disabled unless explicitly provisioned and verifies both 
   assert.match(source, /lamha_directory_incomplete/);
   assert.match(source, /`\/stores\/\$\{id\}`/);
   assert.match(source, /x-ratelimit-remaining/);
-  assert.match(source, /PROFILE_DETAIL_BUDGET = 18/);
+  assert.match(source, /PROFILE_DETAIL_BUDGET = 16/);
   assert.match(source, /merge_lamha_store_profiles_from_api/);
   assert.match(source, /profile_detail_rows/);
-  assert.match(source, /excelFallbackStores/);
+  assert.match(source, /\/stores\/export\?sort_by=shipmentsCount/);
+  assert.match(source, /lamha_export_directory_mismatch/);
+  assert.match(source, /exportByStore/);
+  assert.doesNotMatch(source, /excelFallbackStores/);
 });
 
 test('daily Lamha migration schedules read-only sync and removes the policy worker', async () => {

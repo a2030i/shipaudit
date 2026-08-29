@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import * as XLSX from 'npm:xlsx@0.18.5';
 import { waitForLamhaApiSlot } from '../_shared/lamhaRateLimit.ts';
 import {
   lamhaProfileMergeRow,
@@ -12,6 +13,7 @@ import {
   normalizeLamhaStoreRow,
   parseLamhaAccountActive,
 } from '../_shared/lamhaFinancialGuard.ts';
+import { parseLamhaStoreExportRows } from '../_shared/lamhaStoreExport.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
@@ -22,9 +24,10 @@ const DIRECTORY_PAGE_SIZE = 200;
 const MAX_DIRECTORY_PAGES = 100;
 const DATABASE_PAGE_SIZE = 1000;
 const DIRECTORY_STABLE_SORT = 'sort_by=id&sort_direction=asc';
-// Nine list requests leave room for 18 detail reads inside Lamha's observed
-// 30-request window, with three requests kept as a safety margin.
-const PROFILE_DETAIL_BUDGET = 18;
+// The complete export consumes one request. Together with up to ten directory
+// pages, 16 detail reads keep at least three requests free inside Lamha's
+// observed 30-request window.
+const PROFILE_DETAIL_BUDGET = 16;
 // Detail hydration is a separate read-only lane. It can run frequently while
 // profiles are incomplete, then naturally becomes quiet until a seven-day
 // refresh is due. Six requests remain unused inside the observed limit.
@@ -123,6 +126,53 @@ async function lamhaFetch(token: string, path: string, init: RequestInit = {}) {
   };
 }
 
+async function lamhaExportFetch(token: string) {
+  const path = '/stores/export?sort_by=shipmentsCount&sort_dir=desc&page=1&per_page=50';
+  await waitForLamhaApiSlot(db, token, 'lamha-financial-guard:GET:/stores/export', 75_000);
+  const startedAt = performance.now();
+  const result = await fetch(`${LAMHA_BASE}${path}`, {
+    headers: {
+      Accept: 'application/json',
+      'Accept-Language': 'ar',
+      'X-Requested-With': 'XMLHttpRequest',
+      Authorization: `Bearer ${token}`,
+    },
+    signal: AbortSignal.timeout(45_000),
+  });
+  const bytes = new Uint8Array(await result.arrayBuffer());
+  const rateLimitLimit = Number(result.headers.get('x-ratelimit-limit')) || null;
+  const rateLimitRemaining = Number(result.headers.get('x-ratelimit-remaining'));
+  return {
+    ok: result.ok,
+    status: result.status,
+    bytes,
+    contentType: result.headers.get('content-type') || '',
+    contentDisposition: result.headers.get('content-disposition') || '',
+    rateLimit: {
+      limit: rateLimitLimit,
+      remaining: Number.isFinite(rateLimitRemaining) ? rateLimitRemaining : null,
+    },
+    latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
+  };
+}
+
+function parseLamhaExport(bytes: Uint8Array) {
+  let workbook;
+  try {
+    workbook = XLSX.read(bytes, { type: 'array', cellDates: true });
+  } catch (error) {
+    throw new Error(`lamha_export_workbook_invalid:${String((error as Error).message || error)}`);
+  }
+  const firstSheet = workbook.SheetNames[0];
+  if (!firstSheet) throw new Error('lamha_export_workbook_empty');
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], {
+    header: 1,
+    raw: true,
+    defval: null,
+  }) as unknown[][];
+  return { sheetName: firstSheet, ...parseLamhaStoreExportRows(rows) };
+}
+
 function nestedStoreRecords(payload: unknown): Json[] {
   const queue: unknown[] = [payload];
   const seen = new Set<object>();
@@ -140,22 +190,6 @@ function nestedStoreRecords(payload: unknown): Json[] {
     queue.push(...Object.values(record));
   }
   return records;
-}
-
-function excelOperationalEnrichment(value: unknown): Json {
-  const row = value && typeof value === 'object' && !Array.isArray(value) ? value as Json : {};
-  const out: Json = {};
-  const put = (sourceKey: string, targetKey: string) => {
-    if (Object.hasOwn(row, sourceKey)) out[targetKey] = row[sourceKey];
-  };
-  // Only fields not currently offered by Lamha API may flow from Excel into
-  // the operational snapshot. Shared identity/account fields are excluded.
-  put('profileStatus', 'profile_status');
-  put('vatRegistered', 'vat_registered');
-  put('zatcaCompleted', 'zatca_completed');
-  put('lastTopupAt', 'last_topup_at');
-  put('walletBalance', 'wallet_balance');
-  return out;
 }
 
 function liveStoreSummary(payload: unknown, storeId: number) {
@@ -242,10 +276,45 @@ async function syncDirectory(token: string, actorId: string | null) {
   }
 
   const listCheckedAt = new Date().toISOString();
+  const exportResult = await lamhaExportFetch(token);
+  rateLimitLimit = exportResult.rateLimit.limit ?? rateLimitLimit;
+  if (exportResult.rateLimit.remaining != null) {
+    lowestRateLimitRemaining = lowestRateLimitRemaining == null
+      ? exportResult.rateLimit.remaining
+      : Math.min(lowestRateLimitRemaining, exportResult.rateLimit.remaining);
+  }
+  if (!exportResult.ok) {
+    throw new Error(`lamha_export_failed:${exportResult.status}`);
+  }
+  if (!exportResult.contentType.includes('spreadsheetml')) {
+    throw new Error(`lamha_export_content_type_invalid:${exportResult.contentType || 'missing'}`);
+  }
+  const parsedExport = parseLamhaExport(exportResult.bytes);
+  const exportByStore = new Map(parsedExport.rows.map(row => [String(row.id), row as Json]));
+  const rawByStore = new Map(rawRows.map(row => [
+    String(Number(row.id ?? row.store_id ?? row.storeId ?? row.business_id ?? row.businessId) || ''),
+    row,
+  ]).filter(([id]) => id));
+  const missingFromExport = [...rawByStore.keys()].filter(id => !exportByStore.has(id));
+  const missingFromDirectory = [...exportByStore.keys()].filter(id => !rawByStore.has(id));
+  if (
+    parsedExport.rows.length !== rawRows.length
+    || missingFromExport.length
+    || missingFromDirectory.length
+  ) {
+    throw new Error([
+      'lamha_export_directory_mismatch',
+      `directory=${rawRows.length}`,
+      `export=${parsedExport.rows.length}`,
+      `missing_export=${missingFromExport.length}`,
+      `missing_directory=${missingFromDirectory.length}`,
+    ].join(':'));
+  }
+
   const profileState: Json[] = [];
   for (let from = 0; ; from += DATABASE_PAGE_SIZE) {
     const { data, error } = await db.from('lamha_store_profiles')
-      .select('store_id,api_detail_checked_at,excel_imported_at,excel_data')
+      .select('store_id,api_detail_checked_at')
       .order('store_id', { ascending: true })
       .range(from, from + DATABASE_PAGE_SIZE - 1);
     if (error) throw new Error(`lamha_profile_registry_read_failed:${error.message}`);
@@ -256,44 +325,31 @@ async function syncDirectory(token: string, actorId: string | null) {
     String(row.store_id),
     Date.parse(String(row.api_detail_checked_at || '')) || 0,
   ]));
-  const excelEnrichmentByStore = new Map(profileState.map(row => [
-    String(row.store_id), excelOperationalEnrichment(row.excel_data),
-  ]));
   const operationalPrevious = (id: string) => {
     const previous = previousByStore.get(id) || {};
-    const excel = excelEnrichmentByStore.get(id) || {};
     // Shared API fields may use the preceding API snapshot as a continuity
-    // fallback. Excel-only fields must reflect the current enrichment registry
-    // exactly: when the latest file has no value, keep it unknown instead of
-    // carrying an old value or an invented zero into the new snapshot.
+    // fallback. Export-owned fields must come from this complete export run;
+    // never carry a stale manual Excel value into a new API snapshot.
     return {
       ...previous,
-      profile_status: Object.hasOwn(excel, 'profile_status') ? excel.profile_status : null,
-      vat_registered: Object.hasOwn(excel, 'vat_registered') ? excel.vat_registered : null,
-      zatca_completed: Object.hasOwn(excel, 'zatca_completed') ? excel.zatca_completed : null,
-      last_topup_at: Object.hasOwn(excel, 'last_topup_at') ? excel.last_topup_at : null,
-      wallet_balance: Object.hasOwn(excel, 'wallet_balance') ? excel.wallet_balance : null,
+      profile_status: null,
+      vat_registered: null,
+      zatca_completed: null,
+      last_topup_at: null,
+      wallet_balance: null,
     };
   };
-  const excelFallbackStores = new Set(profileState
-    .filter(row => row.excel_imported_at)
-    .map(row => String(row.store_id)));
-  const rawByStore = new Map(rawRows.map(row => [
-    String(Number(row.id ?? row.store_id ?? row.storeId ?? row.business_id ?? row.businessId) || ''),
-    row,
-  ]).filter(([id]) => id));
-  const needsRequiredDetail = (row: Json) => {
-    const normalized = normalizeLamhaStoreRow(row, operationalPrevious(String(
-      Number(row.id ?? row.store_id ?? row.storeId ?? row.business_id ?? row.businessId) || '',
-    )));
+  const needsRequiredDetail = (id: string, row: Json) => {
+    const normalized = normalizeLamhaStoreRow(
+      { ...row, ...(exportByStore.get(id) || {}) },
+      operationalPrevious(id),
+    );
     return !normalized.store_name || !normalized.phone;
   };
   const detailCandidates = [...rawByStore.entries()]
     .sort(([aId, a], [bId, b]) => {
-      const requiredDelta = Number(needsRequiredDetail(b)) - Number(needsRequiredDetail(a));
+      const requiredDelta = Number(needsRequiredDetail(bId, b)) - Number(needsRequiredDetail(aId, a));
       if (requiredDelta) return requiredDelta;
-      const missingExcelDelta = Number(!excelFallbackStores.has(bId)) - Number(!excelFallbackStores.has(aId));
-      if (missingExcelDelta) return missingExcelDelta;
       const checkedDelta = (detailCheckedByStore.get(aId) || 0) - (detailCheckedByStore.get(bId) || 0);
       return checkedDelta || Number(aId) - Number(bId);
     })
@@ -329,7 +385,11 @@ async function syncDirectory(token: string, actorId: string | null) {
   for (const row of rawRows) {
     const id = String(Number(row.id ?? row.store_id ?? row.storeId ?? row.business_id ?? row.businessId) || '');
     const previousRow = operationalPrevious(id);
-    const normalizedRow = normalizeLamhaStoreRow({ ...row, ...(detailByStore.get(id) || {}) }, previousRow);
+    const normalizedRow = normalizeLamhaStoreRow({
+      ...row,
+      ...(exportByStore.get(id) || {}),
+      ...(detailByStore.get(id) || {}),
+    }, previousRow);
     normalized.push(normalizedRow);
   }
   const unique = new Map(normalized.filter(row => row.store_id).map(row => [row.store_id, row]));
@@ -358,7 +418,7 @@ async function syncDirectory(token: string, actorId: string | null) {
     const meta = detailMeta.get(id);
     return lamhaProfileMergeRow({
       storeId: id,
-      record: { ...listRecord, ...(detailRecord || {}) },
+      record: { ...listRecord, ...(exportByStore.get(id) || {}), ...(detailRecord || {}) },
       listCheckedAt,
       detailCheckedAt: meta?.checkedAt || null,
       httpStatus: meta?.http || 200,
@@ -375,13 +435,13 @@ async function syncDirectory(token: string, actorId: string | null) {
 
   const payloadHash = await sha256(rows);
   const snapshotAt = new Date().toISOString();
-  const eventId = `employee-api-directory:${riyadhDateKey()}:${payloadHash.slice(0, 12)}`;
+  const eventId = `employee-api-export-directory:${riyadhDateKey()}:${payloadHash.slice(0, 12)}`;
   const { data, error } = await db.rpc('ingest_platform_merchant_snapshot', {
     p_event_id: eventId,
     p_snapshot_at: snapshotAt,
     p_payload_hash: payloadHash,
     p_rows: rows,
-    p_source: 'lamha_employee_api_daily',
+    p_source: 'lamha_employee_api_export_daily',
   });
   if (error) throw new Error(`lamha_directory_ingest_failed:${error.message}`);
 
@@ -396,6 +456,11 @@ async function syncDirectory(token: string, actorId: string | null) {
       pages: page - 1,
       reported_total: reportedTotal,
       reported_per_page: reportedPerPage,
+      export_rows: parsedExport.rows.length,
+      export_sheet: parsedExport.sheetName,
+      export_bytes: exportResult.bytes.byteLength,
+      export_latency_ms: exportResult.latencyMs,
+      export_content_disposition: exportResult.contentDisposition,
       rate_limit: rateLimitLimit,
       lowest_rate_limit_remaining: lowestRateLimitRemaining,
       profile_list_rows: profileRows.length,
@@ -410,6 +475,9 @@ async function syncDirectory(token: string, actorId: string | null) {
     pages: page - 1,
     reportedTotal,
     reportedPerPage,
+    exportRows: parsedExport.rows.length,
+    exportBytes: exportResult.bytes.byteLength,
+    exportLatencyMs: exportResult.latencyMs,
     rateLimit: rateLimitLimit,
     lowestRateLimitRemaining,
     profileListRows: profileRows.length,

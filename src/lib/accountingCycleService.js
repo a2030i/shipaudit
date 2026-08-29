@@ -896,10 +896,10 @@ export function deriveAccountingCycleStages({
   const latestSourceFailure = [balanceEvents[0], merchantEvents[0]]
     .filter(event => event && event.status !== 'success')[0] || null;
   let sourceState = sourceCount === 2
-    ? statusMeta('complete', 'كشف الحساب ودليل المتاجر محدثان')
+    ? statusMeta('complete', 'كشف الحساب مرفوع ودليل المتاجر متزامن آليًا')
     : sourceCount === 1
-      ? statusMeta('attention', balanceSource ? 'بقي رفع دليل المتاجر' : 'بقي رفع كشف حساب لمحة')
-      : statusMeta('pending', 'لم تُرفع ملفات لمحة المساندة');
+      ? statusMeta('attention', balanceSource ? 'بقيت مزامنة دليل المتاجر من لمحة' : 'بقي رفع كشف حساب لمحة')
+      : statusMeta('pending', 'ينتظر كشف الحساب ومزامنة دليل متاجر لمحة');
   if (latestSourceFailure) sourceState = statusMeta('attention', 'آخر محاولة لرفع أحد ملفات لمحة لم تكتمل بنجاح');
   stages.push({
     ...ACCOUNTING_CYCLE_STAGES[3], ...sourceState,

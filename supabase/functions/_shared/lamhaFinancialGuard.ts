@@ -114,9 +114,9 @@ export function normalizeLamhaStoreRow(raw: unknown, previous: AnyRecord = {}) {
       row.created_at, row.createdAt, profile.created_at, previous.created_at_platform,
     ),
     last_topup_at: dateText(row.last_topup_at, row.lastTopupAt, metrics.last_topup_at, metrics.lastTopupAt, previous.last_topup_at),
-    // Unknown is not zero. Lamha currently exposes wallet-transaction presence
-    // but not the balance itself, so a missing Excel enrichment must remain
-    // null instead of manufacturing a financial value.
+    // Unknown is not zero. The balance comes from Lamha's authenticated store
+    // export; a missing export value remains null instead of manufacturing a
+    // financial value or carrying a stale manual file.
     wallet_balance: number(row.wallet_balance, row.walletBalance, metrics.wallet_balance, metrics.walletBalance, previous.wallet_balance) ?? null,
     profile_status: text(row.profile_status, row.profileStatus, profile.profile_status, previous.profile_status) || null,
     vat_registered: bool(row.vat_registered, row.vatRegistered, profile.vat_registered, previous.vat_registered) ?? null,

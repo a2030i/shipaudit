@@ -14,6 +14,11 @@ const LAMHA_ERROR_LABELS = {
   lamha_status_write_failed: 'رفضت لمحة تحديث حالة حساب المتجر',
   lamha_status_verification_failed: 'أُرسل الطلب لكن لم تؤكد لمحة حالة الحساب الجديدة',
   lamha_rate_limit_wait_timeout: 'تعذر تنفيذ الطلب ضمن حد لمحة الآمن؛ أعد المحاولة بعد قليل',
+  lamha_export_failed: 'تعذر تنزيل تصدير متاجر لمحة',
+  lamha_export_content_type_invalid: 'أعادت لمحة استجابة غير متوقعة بدل ملف المتاجر',
+  lamha_export_workbook_invalid: 'ملف تصدير متاجر لمحة غير صالح للتحليل',
+  lamha_export_missing_columns: 'تغيّرت أعمدة تصدير متاجر لمحة المطلوبة',
+  lamha_export_directory_mismatch: 'تصدير لمحة لا يطابق دليل المتاجر الكامل؛ بقيت آخر لقطة سليمة',
 };
 
 async function lamhaFunctionError(error) {
@@ -22,7 +27,8 @@ async function lamhaFunctionError(error) {
     try { payload = await error.context.json(); } catch { /* response may not contain JSON */ }
   }
   const code = payload?.error;
-  const message = LAMHA_ERROR_LABELS[code] || payload?.message || error?.message || 'تعذر الوصول إلى لمحة';
+  const baseCode = String(code || '').split(':')[0];
+  const message = LAMHA_ERROR_LABELS[code] || LAMHA_ERROR_LABELS[baseCode] || payload?.message || error?.message || 'تعذر الوصول إلى لمحة';
   const observed = payload?.observedStatus ? ` (الحالة المرصودة: ${payload.observedStatus})` : '';
   return new Error(`${message}${observed}`);
 }
@@ -38,6 +44,15 @@ async function callLamhaStoreStatus(action, storeId) {
 
 export const loadLamhaStoreStatus = storeId => callLamhaStoreStatus('get', storeId);
 export const updateLamhaStoreStatus = (storeId, active) => callLamhaStoreStatus(active ? 'activate' : 'deactivate', storeId);
+
+export async function syncLamhaDirectory() {
+  const { data, error } = await supabase.functions.invoke('lamha-financial-guard', {
+    body: { action: 'sync-directory' },
+  });
+  if (error) throw await lamhaFunctionError(error);
+  if (!data?.ok || !data?.data) throw new Error(data?.error || 'تعذرت مزامنة دليل متاجر لمحة');
+  return data.data;
+}
 
 export const LAMHA_BATCH_SIZE = 10;
 export const LAMHA_STATUS_FRESH_MS = 15 * 60 * 1000;

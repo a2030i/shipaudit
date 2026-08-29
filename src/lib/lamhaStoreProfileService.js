@@ -25,9 +25,10 @@ export async function loadLamhaWalletSources(storeIds, client = supabase) {
 }
 
 export function summarizeLamhaWalletSources(rows = []) {
-  const available = rows.filter(row => row.walletSource === 'excel' && row.walletImportedAt);
+  const available = rows.filter(row => ['lamha_export', 'excel_legacy'].includes(row.walletSource) && row.walletImportedAt);
   const timestamps = available.map(row => new Date(row.walletImportedAt).getTime()).filter(Number.isFinite);
   const files = [...new Set(available.map(row => row.walletSourceFile).filter(Boolean))];
+  const sourceKinds = [...new Set(available.map(row => row.walletSource).filter(Boolean))];
   return {
     availableCount: available.length,
     missingCount: Math.max(0, rows.length - available.length),
@@ -35,5 +36,7 @@ export function summarizeLamhaWalletSources(rows = []) {
     newestImportedAt: timestamps.length ? new Date(Math.max(...timestamps)).toISOString() : null,
     sourceFile: files.length === 1 ? files[0] : null,
     sourceFiles: files,
+    sourceKind: sourceKinds.length === 1 ? sourceKinds[0] : null,
+    sourceKinds,
   };
 }

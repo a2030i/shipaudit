@@ -134,7 +134,7 @@ const decisionReason = decision => decision === 'negative'
 const decisionRowReason = (customer, decision) => decision === 'negative'
   ? { title: 'محفظة سالبة', detail: `رصيد المحفظة ${fmt(customer.walletBalance)} ر.س` }
   : decision === 'deduct'
-    ? { title: 'محفظة موجبة + فواتير مفتوحة', detail: `محفظة Excel ${fmt(customer.walletBalance)} · قابل للتحصيل من Zoho ${fmt(customer.owed)}` }
+    ? { title: 'محفظة موجبة + فواتير مفتوحة', detail: `محفظة لمحة ${fmt(customer.walletBalance)} · قابل للتحصيل من Zoho ${fmt(customer.owed)}` }
     : { title: 'نشط + تجاوز 30 يومًا', detail: `${Number(customer.oldestDays || 0)} يومًا كأقدم استحقاق` };
 
 const merchantDecisionRow = merchant => ({
@@ -1766,7 +1766,7 @@ export default function CustomerMoney({ isActive = true }) {
                   detail: 'القابل للتحصيل تشغيليًا',
                 },
                 {
-                  key: 'wallet', label: 'المحفظة: ملف لمحة Excel',
+                  key: 'wallet', label: 'المحفظة: تصدير لمحة الآلي',
                   updatedAt: visibleWalletSources.oldestImportedAt,
                   state: visibleWalletSources.missingCount ? 'partial' : 'healthy',
                   detail: visibleWalletSources.sourceFile || `${visibleWalletSources.availableCount || 0} رصيد موثّق المصدر`,

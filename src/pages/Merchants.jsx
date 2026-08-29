@@ -1,8 +1,7 @@
 // Merchants directory page.
 //
-// Single home for the merchant data uploaded from the operational
-// platform. Hosts:
-//   • the snapshot upload modal (stores.xlsx → merchants table)
+// Single home for the merchant data synchronized from Lamha's authenticated
+// export. Hosts:
 //   • headline KPIs (total, prepaid vs postpaid, active, new signups,
 //     dormant, churned, wallets piling up)
 //   • a searchable/filterable merchant table
@@ -16,18 +15,18 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import {
-  Upload, RefreshCw, Download, Search, Users, ShoppingBag,
+  RefreshCw, Download, Search, Users, ShoppingBag,
   CheckCircle2, AlertTriangle, Wallet, TrendingUp, ZapOff,
   Link as LinkIcon, X, Phone, ShieldCheck,
 } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, Modal, toast, PageHeader, DropZone } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, Modal, toast, PageHeader } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
-  parseStoresFile, uploadLamhaExcelEnrichment, loadLatestMerchants,
-  computeMerchantInsights, autoLinkFromZoho,
+  loadLatestMerchants, computeMerchantInsights, autoLinkFromZoho,
   loadUnmatchedCustomers, setCustomerMerchantLink,
   filterMerchantsByShipmentMonth, merchantLastShipmentMonth,
 } from '../lib/merchantsService.js';
+import { syncLamhaDirectory } from '../lib/lamhaStoreStatusService.js';
 import { SalesMobileBadge, SalesMobileCard, SalesMobileList } from '../components/SalesMobileCard.jsx';
 import useMobileLayout from '../lib/useMobileLayout.js';
 import LamhaStoreOperations from '../components/LamhaStoreOperations.jsx';
@@ -173,133 +172,6 @@ function MiniMerchantTable({ icon: Icon, accent, title, sub, rows, valueLabel, v
   );
 }
 
-// ── Upload modal ───────────────────────────────────────────────
-function UploadModal({ onClose, onDone, userId }) {
-  const [file, setFile] = useState(null);
-  const [parsed, setParsed] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
-
-  const handleFile = async (f) => {
-    if (!f) return;
-    setFile(f); setError(null); setParsed(null); setBusy(true);
-    try {
-      const buf = await f.arrayBuffer();
-      const wb = XLSX.read(buf, { type:'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      // Stale-ref defence
-      let mr=0,mc=0;
-      for (const k of Object.keys(ws)) { if (k.startsWith('!')) continue; const a = XLSX.utils.decode_cell(k); if (a.r>mr) mr=a.r; if (a.c>mc) mc=a.c; }
-      if (mr>0||mc>0) ws['!ref'] = XLSX.utils.encode_range({s:{r:0,c:0},e:{r:mr,c:mc}});
-      const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null, raw:true });
-      const out = parseStoresFile(rows);
-      setParsed(out);
-    } catch (e) { setError(e.message); }
-    setBusy(false);
-  };
-
-  const handleSave = async () => {
-    if (!parsed) return;
-    setBusy(true);
-    try {
-      const res = await uploadLamhaExcelEnrichment({
-        parsed, sourceFile: file?.name || null,
-      });
-      const duplicateNote = res.duplicateRowCount
-        ? ` · جُمعت ${fmtCount(res.duplicateRowCount)} صفوف مكررة بأرقام متاجرها`
-        : '';
-      toast(`تم إثراء ${fmtCount(res.count)} متجر من Excel دون تغيير بيانات Lamha API${duplicateNote}`, 'success');
-      // ربط تلقائي فوري: كشف جديد = متاجر جديدة تنتظر ربطها بعملاء زوهو.
-      // كانت خطوة يدوية بزر منفصل تُنسى غالباً، فيبقى العميل الجديد بلا
-      // متجر (بلا هاتف ولا سياق) في كل شاشات التحصيل والحملات.
-      // فشلها لا يُفشل الرفع — الكشف محفوظ والزر اليدوي يبقى متاحاً.
-      try {
-        const link = await autoLinkFromZoho({ userId });
-        if (link.total) toast(`ربط تلقائي: ${link.matched}/${link.total} عميل`, 'info');
-      } catch { /* الزر اليدوي في الصفحة يعيد المحاولة */ }
-      onDone();
-    } catch (e) { toast(`فشل: ${e.message}`, 'error'); }
-    setBusy(false);
-  };
-
-  const counts = useMemo(() => {
-    if (!parsed?.rows) return null;
-    return {
-      total:    parsed.rows.length,
-      profileDone: parsed.rows.filter(r => r.profileStatus === 'مكتمل').length,
-      vatRegistered: parsed.rows.filter(r => r.vatRegistered).length,
-      zatcaDone: parsed.rows.filter(r => r.zatcaCompleted).length,
-      walletRows: parsed.rows.filter(r => r.walletBalance != null).length,
-      topupRows: parsed.rows.filter(r => r.lastTopupAt).length,
-    };
-  }, [parsed]);
-
-  return (
-    <Modal title="إثراء بيانات لمحة من Excel" onClose={onClose} width={520}>
-      {!file && (
-        <DropZone
-          onFile={handleFile}
-          accept=".xlsx,.xls"
-          title="اسحب كشف المتاجر هنا"
-          hint={<>يُستخدم فقط للرصيد وآخر شحن رصيد والملف والضريبة وZATCA. حالة الحساب وبقية الحقول تبقى من Lamha API.<br/>اسحب الملف أو <span style={{ color: 'var(--accent)', fontWeight: 600 }}>اضغط للاختيار</span></>}
-        />
-      )}
-
-      {busy && <div style={{ display:'flex', justifyContent:'center', padding:18 }}><Spinner size={22}/></div>}
-
-      {error && (
-        <div style={{
-          marginTop:12, padding:'10px 14px',
-          background:'rgba(239,68,68,.10)',
-          border:'1px solid rgba(239,68,68,.35)',
-          borderRadius:9, fontSize:12, color:'var(--red)',
-        }}>⚠ {error}</div>
-      )}
-
-      {parsed && !busy && !error && counts && (
-        <>
-          <div style={{
-            marginTop:12, padding:'12px 14px',
-            background:'color-mix(in srgb, var(--accent) 8%, transparent)',
-            border:'1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
-            borderRadius:9, fontSize:12, lineHeight:1.8,
-          }}>
-            <div style={{ fontWeight:700, color:'var(--accent)', marginBottom:4 }}>✓ تم تحليل الملف</div>
-            <Row label="الملف" value={file?.name}/>
-            <Row label="إجمالي المتاجر" value={fmtCount(counts.total)} accent/>
-            {!!parsed.duplicateRowCount && (
-              <Row
-                label="صفوف مكررة جُمعت بأرقام المتاجر"
-                value={fmtCount(parsed.duplicateRowCount)}
-              />
-            )}
-            <Row label="ملف مكتمل" value={fmtCount(counts.profileDone)}/>
-            <Row label="مسجل في الضريبة" value={fmtCount(counts.vatRegistered)}/>
-            <Row label="زاتكا مكتملة" value={fmtCount(counts.zatcaDone)}/>
-            <Row label="أرصدة محفظة متاحة" value={fmtCount(counts.walletRows)}/>
-            <Row label="تواريخ شحن رصيد متاحة" value={fmtCount(counts.topupRows)}/>
-          </div>
-          <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:14 }}>
-            <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
-            <Btn variant="accent" icon={<CheckCircle2 size={14}/>} onClick={handleSave} disabled={busy}>
-              حفظ الإثراء
-            </Btn>
-          </div>
-        </>
-      )}
-    </Modal>
-  );
-}
-
-function Row({ label, value, accent }) {
-  return (
-    <div style={{ display:'flex', justifyContent:'space-between', fontSize:12 }}>
-      <span style={{ color:'var(--muted)' }}>{label}</span>
-      <span style={{ fontWeight: accent ? 800 : 600, color: accent ? 'var(--accent)' : 'var(--text)', fontFamily: 'var(--font-mono)' }}>{value}</span>
-    </div>
-  );
-}
-
 // ── Main ───────────────────────────────────────────────────────
 export default function Merchants({ isActive = true }) {
   const { user, profile, can } = useAuth();
@@ -315,7 +187,7 @@ export default function Merchants({ isActive = true }) {
   const [lastShipmentMonth, setLastShipmentMonth] = useState(
     () => new URLSearchParams(window.location.search).get('lastShipmentMonth') || '',
   );
-  const [showUpload, setShowUpload] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [autoLinking, setAutoLinking] = useState(false);
   const [showUnmatched, setShowUnmatched] = useState(false);
   const [unmatchedCount, setUnmatchedCount] = useState(null);
@@ -349,11 +221,24 @@ export default function Merchants({ isActive = true }) {
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
 
+  const handleLamhaSync = async () => {
+    setSyncing(true);
+    try {
+      const result = await syncLamhaDirectory();
+      toast(`تمت مزامنة ${fmtCount(result.rows)} متجر من تصدير لمحة`, 'success');
+      await refresh();
+    } catch (error) {
+      toast(`تعذرت مزامنة لمحة: ${error.message}`, 'error');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   // Click "ربط تلقائي" → أسماء عملاء زوهو **الحية** (المرآة: عقود + فواتير)
   // ثم autoLinkCustomers ضد كشف المتاجر الحالي. كان المصدر customer_receivables
   // الميت (مجمّد منذ 2026-07-10 — §1.23) فأي عميل زوهو جديد لا يُربط أبداً.
   const handleAutoLink = async () => {
-    if (!data.merchants.length) { toast('ارفع المتاجر أولاً', 'warn'); return; }
+    if (!data.merchants.length) { toast('زامن دليل المتاجر من لمحة أولًا', 'warn'); return; }
     setAutoLinking(true);
     try {
       const { total, matched, unmatched } = await autoLinkFromZoho({ userId: user?.id });
@@ -467,7 +352,7 @@ export default function Merchants({ isActive = true }) {
         title="متاجر المنصّة"
         subtitle={loading ? 'جارٍ التحميل…' : `${fmtCount(data.merchants.length)} متجر مُسجَّل`}
         meta={[
-          data.snapshot ? `كشف ${data.snapshot.id} · رُفع ${fmtDate(data.snapshot.uploadedAt)}` : null,
+          data.snapshot ? `لقطة ${data.snapshot.id} · تزامنت ${fmtDate(data.snapshot.uploadedAt)}` : null,
           data.merchants.length > 0 ? `نشط ${fmtCount(insights.active)} · دفع مسبق ${fmtCount(insights.prepaid)} · دفع لاحق ${fmtCount(insights.postpaid)}` : null,
         ].filter(Boolean).join('  —  ') || null}
         actions={
@@ -490,9 +375,11 @@ export default function Merchants({ isActive = true }) {
             <Btn size="sm" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>
               تحديث
             </Btn>
-            <Btn size="md" variant="primary" icon={<Upload size={14}/>} onClick={() => setShowUpload(true)}>
-              رفع كشف
-            </Btn>
+            {profile?.role === 'admin' && (
+              <Btn size="md" variant="primary" icon={<RefreshCw size={14} className={syncing ? 'spin' : ''}/>} onClick={handleLamhaSync} disabled={syncing}>
+                {syncing ? 'جارٍ السحب من لمحة…' : 'مزامنة من لمحة'}
+              </Btn>
+            )}
           </>
         }
       />
@@ -503,13 +390,15 @@ export default function Merchants({ isActive = true }) {
         <Card>
           <Empty
             icon="🏪"
-            title="لم يُرفع أي كشف بعد"
-            sub="ارفع stores.xlsx من النظام الداخلي لتشاهد المتاجر + الإحصاءات"
+            title="لم تُسجّل مزامنة متاجر بعد"
+            sub="دليل المتاجر يُسحب تلقائيًا من تصدير لمحة كل يوم الساعة 12 ص"
           />
           <div style={{ display:'flex', justifyContent:'center', marginTop:12 }}>
-            <Btn size="md" variant="accent" icon={<Upload size={14}/>} onClick={() => setShowUpload(true)}>
-              ارفع أول كشف
-            </Btn>
+            {profile?.role === 'admin' && (
+              <Btn size="md" variant="accent" icon={<RefreshCw size={14} className={syncing ? 'spin' : ''}/>} onClick={handleLamhaSync} disabled={syncing}>
+                {syncing ? 'جارٍ السحب…' : 'مزامنة الآن'}
+              </Btn>
+            )}
           </div>
         </Card>
       ) : (
@@ -708,14 +597,6 @@ export default function Merchants({ isActive = true }) {
           </Card>
           )}
         </>
-      )}
-
-      {showUpload && (
-        <UploadModal
-          userId={user?.id}
-          onClose={() => setShowUpload(false)}
-          onDone={() => { setShowUpload(false); refresh(); }}
-        />
       )}
 
       {showUnmatched && (
