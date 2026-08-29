@@ -50,7 +50,8 @@ import { useWindowedRows } from '../hooks/useWindowedRows.js';
 import { ProgressiveListFooter } from '../components/MobileUX.jsx';
 import {
   RECEIVABLES_READ_MODE, loadAllCustomerReceivablesResult, loadAllCustomerReceivablesRows,
-  loadCustomerReceivablesWorkQueue,
+  enrichOperationalRows, loadCustomerReceivablesWorkQueue, loadOperationalAgeAmounts,
+  loadSharedContactContexts,
 } from '../lib/customerReceivablesRead.js';
 import { moneyToMinorUnits } from '../lib/customerFinancialPosition.js';
 import { loadLatestMerchants } from '../lib/merchantsService.js';
@@ -64,7 +65,7 @@ import { readWorkspaceState, restoreWorkspaceScroll, saveWorkspaceState } from '
 import CustomerContextDrawer from '../components/CustomerContextDrawer.jsx';
 import {
   filterCustomerOperationalRows, hasExtendedOperationalFilters, matchesCustomerOperationalQuery,
-  operationalSuspensionReview,
+  operationalSuspensionReview, scopeRowsToOperationalAge,
 } from '../lib/customerOperationalQuery.js';
 import { loadCustomerBalanceRecon, summarizeCustomerBalanceRecon } from '../lib/reconciliationService.js';
 
@@ -498,8 +499,14 @@ export default function CustomerMoney({ isActive = true }) {
             pageSize: AGING_PAGE_SIZE,
           };
           const operationalFilters = {
+            minAmount: searchParams.get('minAmount') || '',
+            maxAmount: searchParams.get('maxAmount') || '',
             minDays: searchParams.get('minDays') || '',
             maxDays: searchParams.get('maxDays') || '',
+            lastShipmentMinDays: searchParams.get('lastShipmentMinDays') || '',
+            lastShipmentMaxDays: searchParams.get('lastShipmentMaxDays') || '',
+            shipmentState: searchParams.get('shipmentState') || 'all',
+            sharedContact: searchParams.get('sharedContact') || 'all',
             billing: searchParams.get('billing') || 'all',
             wallet: searchParams.get('wallet') || 'all',
             invoices: searchParams.get('invoices') || 'all',
@@ -511,8 +518,19 @@ export default function CustomerMoney({ isActive = true }) {
           if (extendedQuery) {
             // حالة الحساب تُفسر في العميل بقاعدة Lamha الموحدة: inactive فقط
             // موقوف. لذلك نجلب كل الحالات ثم نطبق الشرط محليًا بدل مفسّر RPC القديم.
-            const allResult = await loadAllCustomerReceivablesResult({ ...queueFilters, status: 'all', page: 1 });
-            allQueryRows = filterCustomerOperationalRows(allResult.rows, operationalFilters);
+            // حد المبلغ يطبق بعد بناء مبلغ نطاق العمر نفسه، لا على إجمالي العميل.
+            const ageScoped = operationalFilters.minDays !== '' || operationalFilters.maxDays !== '';
+            const [allResult, ageAmounts, sharedContexts] = await Promise.all([
+              loadAllCustomerReceivablesResult({
+                ...queueFilters, status: 'all', minAmount: '', maxAmount: '', page: 1,
+              }),
+              ageScoped
+                ? loadOperationalAgeAmounts({ ...queueFilters, ...operationalFilters })
+                : Promise.resolve(null),
+              loadSharedContactContexts().catch(() => new Map()),
+            ]);
+            const contextualRows = enrichOperationalRows(allResult.rows, { ageAmounts, sharedContexts });
+            allQueryRows = filterCustomerOperationalRows(contextualRows, operationalFilters);
             const pageNumber = Math.max(1, Number(queueFilters.page) || 1);
             const offset = (pageNumber - 1) * AGING_PAGE_SIZE;
             const pageRows = allQueryRows.slice(offset, offset + AGING_PAGE_SIZE);
@@ -531,7 +549,17 @@ export default function CustomerMoney({ isActive = true }) {
               },
             };
           } else {
-            central = await loadCustomerReceivablesWorkQueue(queueFilters);
+            const [baseCentral, sharedContexts] = await Promise.all([
+              loadCustomerReceivablesWorkQueue(queueFilters),
+              loadSharedContactContexts().catch(() => new Map()),
+            ]);
+            central = {
+              ...baseCentral,
+              page: {
+                ...baseCentral.page,
+                rows: enrichOperationalRows(baseCentral.page.rows, { sharedContexts }),
+              },
+            };
           }
           if (requestId !== dashboardRequestIdRef.current) return;
           setD(central.dashboard);
@@ -789,6 +817,10 @@ export default function CustomerMoney({ isActive = true }) {
     maxAmount: searchParams.get('maxAmount') || '',
     minDays: searchParams.get('minDays') || '',
     maxDays: searchParams.get('maxDays') || '',
+    lastShipmentMinDays: searchParams.get('lastShipmentMinDays') || '',
+    lastShipmentMaxDays: searchParams.get('lastShipmentMaxDays') || '',
+    shipmentState: searchParams.get('shipmentState') || 'all',
+    sharedContact: searchParams.get('sharedContact') || 'all',
     billing: searchParams.get('billing') || 'all',
     wallet: searchParams.get('wallet') || 'all',
     invoices: searchParams.get('invoices') || 'all',
@@ -812,7 +844,8 @@ export default function CustomerMoney({ isActive = true }) {
     const min = agingFilterState.minAmount === '' ? null : Number(agingFilterState.minAmount);
     const max = agingFilterState.maxAmount === '' ? null : Number(agingFilterState.maxAmount);
     const needle = agingFilterState.search.trim().toLowerCase();
-    const list = legacyAllAgingRows.filter(row => {
+    const scopedRows = scopeRowsToOperationalAge(legacyAllAgingRows, agingLines, agingFilterState);
+    const list = scopedRows.filter(row => {
       const { customer, task, summary } = row;
       if (needle && ![customer.storeName, customer.storeId, customer.zohoId, customer.name]
         .some(value => String(value || '').toLowerCase().includes(needle))) return false;
@@ -845,7 +878,7 @@ export default function CustomerMoney({ isActive = true }) {
       if (agingFilterState.sort === 'last_contact') return String(b.lastCommunicationAt || '').localeCompare(String(a.lastCommunicationAt || ''));
       return b.summary.amount - a.summary.amount;
     });
-  }, [legacyAllAgingRows, agingFilterState]);
+  }, [legacyAllAgingRows, agingFilterState, agingLines]);
   const allAgingRows = centralReadActive ? (currentReceivablesPage?.rows || []) : legacyAllAgingRows;
   const agingRows = centralReadActive ? (currentReceivablesPage?.rows || []) : legacyAgingRows;
   const agingPage = Math.max(1, Number(searchParams.get('page')) || 1);
@@ -913,6 +946,7 @@ export default function CustomerMoney({ isActive = true }) {
       updateUrlFilters({
         aging: null, search: null, minAmount: null, maxAmount: null, owner: null, collection: null,
         minDays: null, maxDays: null, billing: null, wallet: null, invoices: null,
+        lastShipmentMinDays: null, lastShipmentMaxDays: null, shipmentState: null, sharedContact: null,
         status: null, promise: null, contact: null, sort: null, action: null, page: null,
       });
       setBuckets(new Set());

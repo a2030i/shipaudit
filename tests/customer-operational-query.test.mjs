@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  daysSinceLastShipment,
   filterCustomerOperationalRows, hasExtendedOperationalFilters,
-  matchesCustomerOperationalQuery, operationalSuspensionReview,
+  matchesCustomerOperationalQuery, operationalSuspensionReview, scopeRowsToOperationalAge,
 } from '../src/lib/customerOperationalQuery.js';
 import { readFile } from 'node:fs/promises';
 
@@ -10,7 +11,8 @@ const row = (overrides = {}) => ({
   identityKey: `store:${overrides.storeId || 1}`,
   customer: {
     storeId: 1, billingType: 'دفع لاحق', walletBalance: 0,
-    platformStatus: 'active', invCnt: 2, ...overrides,
+    platformStatus: 'active', invCnt: 2, lastShipmentAt: '2026-08-20',
+    sharedContactStoreCount: 0, ...overrides,
   },
   summary: { amount: 250, oldestDays: 45 },
 });
@@ -47,6 +49,43 @@ test('الترشيح يعيد جمهورًا واحدًا من شروط متغي
   }).map(item => item.customer.storeId), [1]);
 });
 
+test('حد المبلغ يطبق على مبلغ نطاق العمر نفسه لا على إجمالي العميل', () => {
+  const rows = scopeRowsToOperationalAge([row({ zohoId: 'z1' })], [
+    { contact_id: 'z1', line_kind: 'invoice', invoice_number: 'INV-1', age_days: 10, collectible_amount: 500, due_date: '2026-08-19' },
+    { contact_id: 'z1', line_kind: 'invoice', invoice_number: 'INV-2', age_days: 45, collectible_amount: 80, due_date: '2026-07-15' },
+    { contact_id: 'z1', line_kind: 'opening_balance', age_days: 200, collectible_amount: 900, due_date: '2026-01-01' },
+  ], { minDays: 30, aging: new Set() });
+  assert.equal(rows[0].summary.amount, 80);
+  assert.equal(rows[0].summary.invoiceCount, 1);
+  assert.equal(matchesCustomerOperationalQuery(rows[0], { minDays: 30, minAmount: 100 }), false);
+  assert.equal(matchesCustomerOperationalQuery(rows[0], { minDays: 30, minAmount: 80 }), true);
+});
+
+test('غياب فاتورة داخل نطاق العمر يستبعد الرصيد الافتتاحي حتى في نطاق الحد الأعلى فقط', () => {
+  assert.equal(matchesCustomerOperationalQuery({
+    operationalAgeScopeMatched: false,
+    customer: { invCnt: 0 },
+    summary: { amount: 0, oldestDays: 0 },
+  }, { maxDays: '30' }), false);
+});
+
+test('آخر شحنة والمتاجر المشتركة في الجوال شروط مستقلة', () => {
+  const now = new Date('2026-08-29T12:00:00+03:00');
+  assert.equal(daysSinceLastShipment('2026-08-20T23:00:00Z', now), 9);
+  assert.equal(matchesCustomerOperationalQuery(row({
+    lastShipmentAt: '2026-08-20', sharedContactStoreCount: 2,
+  }), { lastShipmentMinDays: 5, sharedContact: 'with', now }), true);
+  assert.equal(matchesCustomerOperationalQuery(row({
+    lastShipmentAt: '2026-08-28', sharedContactStoreCount: 2,
+  }), { lastShipmentMinDays: 5, now }), false);
+  assert.equal(matchesCustomerOperationalQuery(row({
+    lastShipmentAt: null,
+  }), { shipmentState: 'none', now }), true);
+  assert.equal(matchesCustomerOperationalQuery(row({
+    sharedContactStoreCount: 0,
+  }), { sharedContact: 'with', now }), false);
+});
+
 test('مسار مراجعة الإيقاف لا يوسع الصلاحية خارج السيناريوهات المعتمدة', () => {
   assert.deepEqual(operationalSuspensionReview({ wallet: 'negative' }), {
     decision: 'negative', enforceFinancialPolicy: false,
@@ -58,6 +97,8 @@ test('مسار مراجعة الإيقاف لا يوسع الصلاحية خار
     decision: 'stop', enforceFinancialPolicy: true,
   });
   assert.equal(hasExtendedOperationalFilters({ minDays: '30' }), true);
+  assert.equal(hasExtendedOperationalFilters({ lastShipmentMinDays: '5' }), true);
+  assert.equal(hasExtendedOperationalFilters({ sharedContact: 'with' }), true);
 });
 
 test('واجهة التنفيذ تبدأ بشروط حرة وتكشف الإجراءات بعد التحديد', async () => {
@@ -70,6 +111,8 @@ test('واجهة التنفيذ تبدأ بشروط حرة وتكشف الإجر
   assert.match(queue, /showActionsWhenEmpty: false/);
   assert.match(queue, /إيقاف الحسابات/);
   assert.match(queue, /حملة WhatsApp/);
+  assert.match(queue, /متاجر بنفس رقم التواصل/);
+  assert.match(queue, /الحد الأدنى لأيام آخر شحنة/);
   assert.match(resultSet, /حدد عميلًا أو أكثر لتفعيل الإجراء/);
   assert.match(launcher, /\/customer-money\?worklist=1/);
 });

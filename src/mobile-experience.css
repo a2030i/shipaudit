@@ -173,7 +173,7 @@
   .s360-back { min-height: 44px; margin-bottom: -4px; }
   .s360-header-status { display: flex !important; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }
   .s360-header-status small { text-align: end; }
-  .s360-meta-chips { flex-wrap: nowrap !important; overflow-x: auto; padding-bottom: 2px; }
+  .s360-meta-chips { flex-wrap: wrap !important; overflow: visible; padding-bottom: 2px; }
   .s360-meta-chips span { flex: 0 0 auto; }
   .s360-kpi-row > :nth-child(n+5) { display: none !important; }
   .s360-kpi { min-height: 102px !important; }

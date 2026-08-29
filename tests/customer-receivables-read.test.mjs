@@ -5,6 +5,8 @@ import fs from 'node:fs';
 const service = fs.readFileSync('src/lib/customerReceivablesRead.js', 'utf8');
 const page = fs.readFileSync('src/pages/CustomerMoney.jsx', 'utf8');
 const migration = fs.readFileSync('supabase/migrations/20260821193000_customer_receivables_work_queue.sql', 'utf8');
+const operationalMigration = fs.readFileSync('supabase/migrations/20260829180121_unify_operational_filters.sql', 'utf8');
+const sharedPhoneMigration = fs.readFileSync('supabase/migrations/20260829181956_align_shared_contact_phone_normalization.sql', 'utf8');
 
 test('central receivables read is one paginated RPC with a legacy feature flag', () => {
   assert.match(service, /VITE_RECEIVABLES_READ_MODE/);
@@ -53,4 +55,28 @@ test('changing URL filters never mixes the new Aging context with the previous p
   assert.match(page, /pending: receivablesContextPending/);
   assert.match(page, /جاري تحديث الشريحة؛ انتظر اكتمال النتائج/);
   assert.match(page, /loading=\{receivablesContextPending\}/);
+});
+
+test('operational age amount is exact and opening balance stays outside invoice age filters', () => {
+  assert.match(operationalMigration, /customer_operational_age_amounts/);
+  assert.match(operationalMigration, /n\.effective_kind = 'invoice'/);
+  assert.match(operationalMigration, /n\.age_days > p_min_days/);
+  assert.match(operationalMigration, /round\(sum\(s\.collectible_amount\)::numeric, 2\)/);
+  assert.match(operationalMigration, /crm_has_permission\('receivables\.view'\)/);
+});
+
+test('same-phone context is explicitly non-financial and permission protected', () => {
+  assert.match(operationalMigration, /lamha_shared_contact_context/);
+  assert.match(operationalMigration, /having count\(\*\) > 1/);
+  assert.match(operationalMigration, /peer\.store_id <> current_store\.store_id/);
+  assert.match(operationalMigration, /does not assert ownership, link Zoho identities, aggregate debt/);
+  assert.match(operationalMigration, /revoke all on function public\.lamha_shared_contact_context\(\) from public, anon/);
+});
+
+test('same-phone context normalizes quoted and country-prefixed Lamha phones consistently', () => {
+  assert.match(sharedPhoneMigration, /regexp_replace\(coalesce\(m\.phone,''\), '\[\^0-9\]'/);
+  assert.match(sharedPhoneMigration, /like '00966%' then substring\(r\.phone_digits from 6\)/);
+  assert.match(sharedPhoneMigration, /like '966%' then substring\(r\.phone_digits from 4\)/);
+  assert.match(sharedPhoneMigration, /length\(l\.phone_normalized\) >= 8/);
+  assert.match(sharedPhoneMigration, /does not assert ownership, link Zoho identities, aggregate debt/);
 });

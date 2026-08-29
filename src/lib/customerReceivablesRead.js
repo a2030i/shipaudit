@@ -7,6 +7,7 @@ const runtimeEnv = import.meta.env || {};
 export const RECEIVABLES_READ_MODE = runtimeEnv.VITE_RECEIVABLES_READ_MODE || 'core';
 
 const number = value => Number(value) || 0;
+const sharedContextCache = { expiresAt: 0, promise: null };
 const mapSettlement = row => ({
   name: row.name, zohoId: row.zoho_id || '', storeName: row.store_name,
   storeId: row.store_id || '', phone: row.phone,
@@ -129,6 +130,72 @@ export async function loadCustomerReceivablesWorkQueue(filters, client = supabas
   ]);
   if (error) throw error;
   return adaptReceivablesWorkQueue(data, financialPositions);
+}
+
+export async function loadOperationalAgeAmounts(filters = {}, client = supabase) {
+  const { data, error } = await client.rpc('customer_operational_age_amounts', {
+    p_aging: [...(filters.aging || [])],
+    p_min_days: filters.minDays === '' || filters.minDays == null ? null : Number(filters.minDays),
+    p_max_days: filters.maxDays === '' || filters.maxDays == null ? null : Number(filters.maxDays),
+  });
+  if (error) throw error;
+  return new Map((data || []).map(row => [String(row.zoho_id), {
+    amount: number(row.amount),
+    invoiceCount: number(row.invoice_count),
+    openingCount: number(row.opening_count),
+    oldestDays: number(row.oldest_days),
+    oldestDueDate: row.oldest_due_date || null,
+  }]));
+}
+
+export async function loadSharedContactContexts(client = supabase, { cacheMs = 5 * 60_000 } = {}) {
+  const now = Date.now();
+  if (sharedContextCache.promise && sharedContextCache.expiresAt > now) return sharedContextCache.promise;
+  sharedContextCache.expiresAt = now + cacheMs;
+  sharedContextCache.promise = client.rpc('lamha_shared_contact_context').then(({ data, error }) => {
+    if (error) throw error;
+    return new Map((data || []).map(row => [String(row.store_id), {
+      sharedStoreCount: number(row.shared_store_count),
+      sharedStores: Array.isArray(row.shared_stores) ? row.shared_stores : [],
+    }]));
+  }).catch(error => {
+    sharedContextCache.expiresAt = 0;
+    sharedContextCache.promise = null;
+    throw error;
+  });
+  return sharedContextCache.promise;
+}
+
+export function enrichOperationalRows(rows = [], { ageAmounts = null, sharedContexts = null } = {}) {
+  return rows.map(row => {
+    const zohoId = String(row.customer?.zohoId || '');
+    const storeId = String(row.customer?.storeId || '');
+    const age = ageAmounts?.get(zohoId);
+    const shared = sharedContexts?.get(storeId);
+    const ageScopeRequested = ageAmounts instanceof Map;
+    const emptyAgeScope = {
+      amount: 0,
+      invoiceCount: 0,
+      openingCount: 0,
+      oldestDays: 0,
+      oldestDueDate: null,
+    };
+    const scopedAge = age || (ageScopeRequested ? emptyAgeScope : null);
+    return {
+      ...row,
+      operationalAgeScopeMatched: ageScopeRequested ? Boolean(age) : undefined,
+      customer: {
+        ...row.customer,
+        ...(scopedAge ? { invCnt: scopedAge.invoiceCount, oldestDays: scopedAge.oldestDays } : null),
+        sharedContactStoreCount: shared?.sharedStoreCount || 0,
+        sharedContactStores: shared?.sharedStores || [],
+      },
+      summary: scopedAge ? { ...row.summary, ...scopedAge } : row.summary,
+      reason: scopedAge
+        ? `لديه ${scopedAge.invoiceCount} فاتورة داخل نطاق العمر المحدد`
+        : row.reason,
+    };
+  });
 }
 
 export async function loadAllCustomerReceivablesRows(filters, client = supabase) {

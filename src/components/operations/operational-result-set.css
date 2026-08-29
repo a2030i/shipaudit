@@ -38,6 +38,18 @@
   .page-content table.collections-work-queue-table.m-cards td[data-label="إجراء"]::before{content:none!important}
   .page-content table.collections-work-queue-table.m-cards td[data-label="إجراء"]>div{display:flex!important;flex-wrap:nowrap!important;gap:5px!important;min-width:max-content}
 }
+
+/* Mobile command surfaces must remain scannable without a page-level
+   horizontal scroll. Metrics become a compact grid instead of a carousel. */
+@media(max-width:700px){
+  .operational-result-set{min-inline-size:0;max-inline-size:100%;overflow:clip}
+  .ors-context__metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));overflow:visible}
+  .ors-context__metrics>div{min-inline-size:0;border-block-end:1px solid var(--border)}
+  .ors-context__metrics>div:nth-child(2n){border-inline-end:0}
+  .ors-context__metrics dd{overflow:hidden;text-overflow:ellipsis}
+  .ors-context__meta{min-inline-size:0}
+  .ors-source,.ors-freshness,.ors-source-detail{max-inline-size:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
 .collections-work-queue__filters{display:flex;gap:6px;flex:1;flex-wrap:wrap}.collections-work-queue__filters button{padding:6px 12px;border:1px solid var(--border);border-radius:999px;background:transparent;color:var(--text2);font:650 10px var(--font-sans);cursor:pointer}.collections-work-queue__filters button.is-active{border-color:var(--red);background:color-mix(in srgb,var(--red) 10%,transparent);color:var(--red)}.collections-work-queue .ors-toolbar{display:flex;align-items:center;gap:10px}.collections-work-queue__assignee{min-inline-size:210px;min-block-size:38px;border:1px solid var(--border);border-radius:9px;padding:6px 9px;color:var(--text);background:var(--surface);font:inherit}
 .collections-analysis-disclosure{margin-block-end:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.collections-analysis-disclosure>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-block-size:42px;padding:7px 12px;cursor:pointer;list-style:none}.collections-analysis-disclosure>summary::-webkit-details-marker{display:none}.collections-analysis-disclosure>summary span{font-size:11px;font-weight:800;color:var(--text)}.collections-analysis-disclosure>summary small{font-size:9.5px;color:var(--muted)}.collections-analysis-disclosure[open]>summary{margin-block-end:12px;border-block-end:1px solid var(--border)}.collections-analysis-disclosure[open]{padding:0 12px 2px}
 @media(max-width:700px){

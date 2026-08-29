@@ -766,6 +766,11 @@ export default function Store360Page({ identity }) {
   };
   const openReconciliation = () => navigate(`/reconciliation?tab=zoho_live&store=${encodeURIComponent(store.storeId)}&search=${encodeURIComponent(store.storeName)}&returnTo=${encodeURIComponent(currentUrl)}`);
   const openCarrierCenter = () => navigate(`/hub?source=store360&returnTo=${encodeURIComponent(currentUrl)}`);
+  const openSharedStore = target => {
+    const targetUrl = buildStore360Url({ storeId: target.storeId, view: 'overview', returnTo: currentUrl, source: 'shared-contact' });
+    if (targetUrl) navigate(targetUrl);
+    else toast('تعذر فتح الملف لأن رقم المتجر غير موثّق', 'warning');
+  };
   const financeMissingLabel = core.sources.finance?.status === 'unavailable' ? 'المصدر غير متاح' : 'لا توجد بيانات مالية';
   const financeDetails = viewData.finance;
   const financeInvoiceCount = financeDetails?.invoiceCount ?? finance?.invoiceCount;
@@ -798,6 +803,11 @@ export default function Store360Page({ identity }) {
       <div className="s360-meta-chips"><span className={`s360-account-chip ${lamhaStatus.canCreateShipments === true ? 'is-active' : lamhaStatus.canCreateShipments === false ? 'is-inactive' : 'is-unknown'}`}>{lamhaAccountLabel(lamhaStatus)}</span><span>{store.billingType || 'نوع الفوترة غير متاح'}</span><span>{store.integrationType || 'التكامل غير متاح'}</span><span>{workLoading ? 'المسؤول…' : work?.owner || 'بلا مسؤول'}</span></div>
     </header>
 
+    {core.sharedContactStores.length ? <details className="s360-shared-contact-context">
+      <summary><ShoppingBag size={16}/><span><b>يوجد {core.sharedContactStores.length} متجر آخر بنفس رقم التواصل</b><small>سياق من دليل لمحة؛ لا تُجمع المديونيات ولا يُفترض أنها ملكية واحدة</small></span><ChevronLeft size={14}/></summary>
+      <div>{core.sharedContactStores.map(related => <button type="button" key={related.storeId} onClick={() => openSharedStore(related)}><span><b>{related.storeName}</b><small>#{related.storeId} · {related.status || 'الحالة غير متاحة'} · {related.billingType || 'نوع الدفع غير متاح'}</small></span><ChevronLeft size={14}/></button>)}</div>
+    </details> : null}
+
     <ActionCenter core={core} work={work} can={can} isAdmin={isAdmin} changeView={changeView} currentUrl={currentUrl} onReloadWork={loadWork} onOpenCampaign={openCampaignReview} lamhaStatus={lamhaStatus} setLamhaStatus={setLamhaStatus} refreshLamhaStatus={refreshLamhaStatus}/>
 
     {latestCommunication ? <button type="button" className="s360-communication-summary" onClick={() => changeView('communications')}>
@@ -818,11 +828,7 @@ export default function Store360Page({ identity }) {
 
     <main className="s360-main">
       {viewLoading[view] || (view === 'work' && workLoading) ? <LoadingBlock/> : null}
-      {!viewLoading[view] && view === 'overview' ? <OverviewView core={core} work={work} lamhaStatus={lamhaStatus} changeView={changeView} onOpenCampaign={openCampaignReview} onOpenReconciliation={openReconciliation} onOpenCarrierCenter={openCarrierCenter} onOpenStore={target => {
-        const targetUrl = buildStore360Url({ storeId: target.storeId, view: 'overview', returnTo: currentUrl, source: 'shared-contact' });
-        if (targetUrl) navigate(targetUrl);
-        else toast('تعذر فتح الملف لأن رقم المتجر غير موثّق', 'warning');
-      }}/> : null}
+      {!viewLoading[view] && view === 'overview' ? <OverviewView core={core} work={work} lamhaStatus={lamhaStatus} changeView={changeView} onOpenCampaign={openCampaignReview} onOpenReconciliation={openReconciliation} onOpenCarrierCenter={openCarrierCenter} onOpenStore={openSharedStore}/> : null}
       {!viewLoading[view] && view === 'finance' ? <FinanceView
         core={core}
         data={viewData.finance}
