@@ -66,6 +66,7 @@ import {
   filterCustomerOperationalRows, hasExtendedOperationalFilters, matchesCustomerOperationalQuery,
   operationalSuspensionReview,
 } from '../lib/customerOperationalQuery.js';
+import { loadCustomerBalanceRecon, summarizeCustomerBalanceRecon } from '../lib/reconciliationService.js';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -177,6 +178,7 @@ export default function CustomerMoney({ isActive = true }) {
   const [bulkRowsOverride, setBulkRowsOverride] = useState(null);
   const [waBulkRecipients, setWaBulkRecipients] = useState(null);
   const [growthPulse, setGrowthPulse] = useState({ status: 'idle', data: null, error: null });
+  const [lamhaZohoRecon, setLamhaZohoRecon] = useState({ status: 'idle', rows: [], summary: null, error: null });
   const [q, setQ] = useState(() => searchParams.get('search') || searchParams.get('customer') || searchParams.get('q') || '');
   const [buckets, setBuckets] = useState(() => {
     const allowed = new Set(BUCKETS.map(bucket => bucket.key));
@@ -251,6 +253,26 @@ export default function CustomerMoney({ isActive = true }) {
     setPlatformFilter(['active', 'inactive', 'unknown'].includes(searchParams.get('status')) ? searchParams.get('status') : 'all');
     setUnclaimedOnly(searchParams.get('source') === 'unclaimed');
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!isActive || (!isAdmin && !can('reconciliation.view'))) return undefined;
+    let cancelled = false;
+    setLamhaZohoRecon(current => current.status === 'available'
+      ? current
+      : { status: 'loading', rows: [], summary: null, error: null });
+    loadCustomerBalanceRecon().then(rows => {
+      if (!cancelled) setLamhaZohoRecon({ status: 'available', rows, summary: summarizeCustomerBalanceRecon(rows), error: null });
+    }).catch(error => {
+      if (!cancelled) setLamhaZohoRecon({ status: 'error', rows: [], summary: null, error: error?.message || 'تعذرت قراءة المطابقة' });
+    });
+    return () => { cancelled = true; };
+  }, [can, isActive, isAdmin]);
+
+  const lamhaZohoMismatchStoreIds = useMemo(() => new Set(
+    lamhaZohoRecon.rows.filter(row => row.diff !== 0 && row.storeId).map(row => String(row.storeId)),
+  ), [lamhaZohoRecon.rows]);
+  const hasFinancialReconciliationHold = customer => !!customer?.balanceSyncIssue
+    || lamhaZohoMismatchStoreIds.has(String(customer?.storeId || ''));
 
   useEffect(() => {
     if (!isActive || !d || searchParams.get('worklist') !== '1') return undefined;
@@ -680,8 +702,8 @@ export default function CustomerMoney({ isActive = true }) {
     last_shipment: c.lastShipmentAt, last_payment: c.lastPaymentDate,
   });
   const openSingleWa = (c) => {
-    if (c.balanceSyncIssue) {
-      toast('هذا العميل محجوب مؤقتاً: رصيد Zoho لا يطابق الفواتير المستوردة. أعد مزامنة Zoho أولاً.', 'error');
+    if (hasFinancialReconciliationHold(c)) {
+      toast('هذا العميل محجوب مؤقتًا: توجد مشكلة اتساق داخل Zoho أو فرق بين كشف لمحة ورصيد Zoho. افتح المطابقة أولًا.', 'error');
       return;
     }
     const name = (c.storeName || c.name || '').trim();
@@ -938,12 +960,17 @@ export default function CustomerMoney({ isActive = true }) {
       aging: buckets.size ? [...buckets] : null, invoice: invoice ? 'bucket' : null,
     }));
   };
+  const applyReconciliationHolds = rows => rows.map(row => (
+    lamhaZohoMismatchStoreIds.has(String(row.customer?.storeId || ''))
+      ? { ...row, customer: { ...row.customer, balanceSyncIssue: true, balanceSyncIssueKind: 'lamha_zoho' } }
+      : row
+  ));
   const selectedAgingRows = useMemo(() => {
-    const sourceRows = bulkRowsOverride || agingRows;
+    const sourceRows = applyReconciliationHolds(bulkRowsOverride || agingRows);
     return allResultsSelected && bulkRowsOverride
       ? sourceRows
       : sourceRows.filter(row => selectedAging.has(row.identityKey));
-  }, [agingRows, selectedAging, bulkRowsOverride, allResultsSelected]);
+  }, [agingRows, selectedAging, bulkRowsOverride, allResultsSelected, lamhaZohoMismatchStoreIds]); // eslint-disable-line react-hooks/exhaustive-deps
   const bulkPermissions = useMemo(() => ({
     canAssign: can('collections.assign'), canCampaign: can('campaigns.send'), canIvr: can('campaigns.ivr'),
   }), [can]);
@@ -970,7 +997,7 @@ export default function CustomerMoney({ isActive = true }) {
     let preparedRows = selectedAgingRows;
     if (centralReadActive && allResultsSelected) {
       if (extendedOperationalQuery && operationalQueryRows) {
-        preparedRows = operationalQueryRows;
+        preparedRows = applyReconciliationHolds(operationalQueryRows);
         setBulkRowsOverride(operationalQueryRows);
       } else {
         try {
@@ -981,7 +1008,7 @@ export default function CustomerMoney({ isActive = true }) {
             source: unclaimedOnly ? 'unclaimed' : 'all',
             page: 1,
           });
-          preparedRows = rows;
+          preparedRows = applyReconciliationHolds(rows);
           setBulkRowsOverride(rows);
         } catch (error) {
           toast(`تعذر تجهيز كل النتائج: ${error.message}`, 'error');
@@ -1077,7 +1104,7 @@ export default function CustomerMoney({ isActive = true }) {
       const amt = bandAmt(c);
       return {
         to: normalizeSaudiPhone(c.phone), name, storeId: c.storeId || null, amount: amt, count: c.invCnt,
-        financialHold: !!c.balanceSyncIssue,
+        financialHold: hasFinancialReconciliationHold(c),
         vars: [name, Number(amt).toLocaleString('en-US', { maximumFractionDigits: 2 }), String(c.invCnt)],
         fields: collectionFields(c, amt),
       };
@@ -1106,7 +1133,7 @@ export default function CustomerMoney({ isActive = true }) {
           return {
             to: normalizeSaudiPhone(c.phone), name, storeId: c.storeId || null,
             amount, count: row.summary?.invoiceCount || 0,
-            financialHold: !!c.balanceSyncIssue,
+            financialHold: hasFinancialReconciliationHold(c),
             vars: [name, amount.toLocaleString('en-US', { maximumFractionDigits: 2 }), String(row.summary?.invoiceCount || 0)],
             fields: collectionFields(c, amount),
           };
@@ -1340,7 +1367,12 @@ export default function CustomerMoney({ isActive = true }) {
           {moneyToMinorUnits(d.residualBalance) !== 0 ? <button type="button" onClick={scrollToAging}><Scale/><span>الرصيد الهامشي / غير التشغيلي</span><strong>{fmt(d.residualBalance)} ر.س</strong><small>لا يدخل تلقائيًا في التحصيل أو الإيقاف</small></button> : null}
           <button type="button" onClick={() => updateUrlFilters({ aging: 'inv90p', page: null })}><Scale/><span>أكثر من 90 يومًا</span><strong>{fmt(campaignAging?.inv90p || 0)} ر.س</strong><small>فتح الشريحة</small></button>
           <button type="button" onClick={() => openWithContext('/retargeting?view=activation')}><TrendingUp/><span>نشطون خلال 5 أيام</span><strong>{growthPulse.status === 'available' ? growthCurrent.active ?? 0 : '—'}</strong><small>{growthPulse.status === 'available' ? `الهدف ${growthCurrent.target || 500}` : 'المصدر غير متاح'}</small></button>
-          <button type="button" onClick={() => openWithContext('/reconciliation?tab=customers')}><ListChecks/><span>فروق المطابقة</span><strong>{d.balanceSyncIssueCount || 0}</strong><small>{d.balanceSyncIssueCount ? `${fmt(d.balanceSyncGapTotal)} ر.س` : 'لا فروق محجوبة'}</small></button>
+          {(isAdmin || can('reconciliation.view')) ? <button type="button" onClick={() => openWithContext('/reconciliation?tab=customers&differences=1&source=customer-finance')}>
+            <ListChecks/><span>كشف لمحة × Zoho</span>
+            <strong>{lamhaZohoRecon.status === 'available' ? lamhaZohoRecon.summary?.differenceCount || 0 : '—'}</strong>
+            <small>{lamhaZohoRecon.status === 'available' ? `${fmt(lamhaZohoRecon.summary?.absoluteGap || 0)} ر.س فرق مطلق` : lamhaZohoRecon.status === 'loading' ? 'جارٍ حساب الفروقات' : 'تعذرت قراءة المطابقة'}</small>
+          </button> : null}
+          <button type="button" onClick={() => openWithContext('/zoho-data?type=invoices&integrity=1')}><Scale/><span>اتساق مرآة Zoho</span><strong>{d.balanceSyncIssueCount || 0}</strong><small>{d.balanceSyncIssueCount ? `${fmt(d.balanceSyncGapTotal)} ر.س بين الرصيد والفواتير` : 'المرآة متسقة'}</small></button>
         </div>
         <div className="customer-finance-command__actions" role="toolbar" aria-label="إجراءات سريعة">
           <Btn variant="accent" onClick={scrollToAging} icon={<HandCoins size={15}/>}>ابدأ التحصيل</Btn>
@@ -1352,7 +1384,7 @@ export default function CustomerMoney({ isActive = true }) {
               <Btn variant="ghost" onClick={() => openWithContext('/campaigns?source=customer-finance')} icon={<MessageCircle size={15}/>}>مركز الحملات</Btn>
               {can('campaigns.ivr') ? <Btn variant="ghost" onClick={() => openWithContext('/whatsapp-settings?tab=ivr&source=customer-finance')} icon={<PhoneCall size={15}/>}>مراجعة IVR</Btn> : null}
               <Btn variant="ghost" onClick={() => openWithContext('/retargeting?view=today&source=customer-finance')} icon={<TrendingUp size={15}/>}>عملاء لمحة اليوم</Btn>
-              <Btn variant="ghost" onClick={() => openWithContext('/reconciliation?tab=customers&source=customer-finance')} icon={<Scale size={15}/>}>مطابقة الأرصدة</Btn>
+              <Btn variant="ghost" onClick={() => openWithContext('/reconciliation?tab=customers&differences=1&source=customer-finance')} icon={<Scale size={15}/>}>مطابقة كشف لمحة مع Zoho</Btn>
             </div>
           </details>
         </div>
@@ -2399,9 +2431,12 @@ function CustomerCard({
         )}
         {c.balanceSyncIssue && (
           <Chip color="var(--red)">
-            فرق مزامنة {fmt(Math.max(c.balanceSyncGap || 0, c.balanceSyncOverage || 0))} — محجوب من الحملات
+            اتساق مرآة Zoho: فرق {fmt(Math.max(c.balanceSyncGap || 0, c.balanceSyncOverage || 0))} — محجوب من الحملات
           </Chip>
         )}
+        {!c.balanceSyncIssue && lamhaZohoMismatchStoreIds.has(String(c.storeId || '')) ? (
+          <Chip color="var(--red)">فرق كشف لمحة مع Zoho — محجوب من الإجراءات المالية</Chip>
+        ) : null}
         {c.invCnt > 0 ? (
           <>
             <Chip color={ageColor}>أقدم استحقاق {c.oldestDays} يوم</Chip>

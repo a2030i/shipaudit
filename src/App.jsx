@@ -19,6 +19,24 @@ import {
   applyNavigationIA,
 } from './lib/navigation.js';
 import { loadCarriers, loadAuditByIdFromDB } from './lib/coreService.js';
+const lazyWithRouteRecovery = (routeKey, importer) => lazy(async () => {
+  const retryKey = `shipaudit:lazy-route-retry:${routeKey}`;
+  try {
+    const module = await importer();
+    try { sessionStorage.removeItem(retryKey); } catch { /* storage may be unavailable */ }
+    return module;
+  } catch (error) {
+    const isChunkFailure = /dynamically imported module|chunkloaderror|loading chunk/i.test(String(error?.message || error));
+    let retried = false;
+    try { retried = sessionStorage.getItem(retryKey) === '1'; } catch { /* storage may be unavailable */ }
+    if (isChunkFailure && !retried) {
+      try { sessionStorage.setItem(retryKey, '1'); } catch { /* storage may be unavailable */ }
+      window.location.reload();
+      return new Promise(() => {});
+    }
+    throw error;
+  }
+});
 const CarrierProfile = lazy(() => import('./pages/CarrierProfile.jsx'));
 const InternalExports = lazy(() => import('./pages/InternalExports.jsx'));
 const CarrierManager = lazy(() => import('./pages/CarrierManager.jsx'));
@@ -61,7 +79,7 @@ const IntegrityCheck = lazy(() => import('./pages/IntegrityCheck.jsx'));
 const DecisionsBoard = lazy(() => import('./pages/DecisionsBoard.jsx'));
 import CommandPalette    from './components/CommandPalette.jsx';
 const Overview = lazy(() => import('./pages/Overview.jsx'));
-const Reconciliation = lazy(() => import('./pages/Reconciliation.jsx'));
+const Reconciliation = lazyWithRouteRecovery('reconciliation', () => import('./pages/Reconciliation.jsx'));
 const UploadsHub = lazy(() => import('./pages/UploadsHub.jsx'));
 const WorkAgents = lazy(() => import('./pages/WorkAgents.jsx'));
 const OperationsCenter = lazy(() => import('./pages/OperationsCenter.jsx'));
@@ -1297,16 +1315,19 @@ function AuditResultsPage({ auditFromState, carriers, onNewAudit, isActive }) {
 class SlotBoundary extends Component {
   constructor(p) { super(p); this.state = { err: null }; }
   static getDerivedStateFromError(err) { return { err }; }
+  componentDidCatch(error, info) {
+    console.error('[page-slot] failed to render', error, info);
+  }
   render() {
     if (this.state.err) {
       return (
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>تعطّلت هذه الصفحة</div>
-          <div style={{ fontSize: 12, marginBottom: 16 }}>{String(this.state.err?.message || this.state.err).slice(0, 160)}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>تعذر تحميل مساحة العمل</div>
+          <div style={{ fontSize: 12, marginBottom: 16 }}>لم تتغير بياناتك. أعد تحميل الصفحة لاستعادة المسار بأمان.</div>
           <button onClick={() => window.location.reload()}
             style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', cursor: 'pointer' }}>
-            تحديث الصفحة
+            إعادة التحميل الآمنة
           </button>
         </div>
       );

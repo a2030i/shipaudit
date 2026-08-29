@@ -918,39 +918,85 @@ export async function loadTreasuryBalances() {
 // الحيّة zoho_invoices، balance>0.5) مقابل آخر snapshot مديونيات داخلي
 // (صفوف is_summary) — المرساة store_id عبر customer_merchant_links ثم
 // الاسم المطبَّع. المحفظة محور مستقل (لا تُطرح من الدين — قاعدة CRM).
-// recon_status: matched (±1) · internal_only (رصيد قديم بلا فاتورة زوهو
-// حيّة — غالباً أرصدة افتتاحية) · zoho_only · needs_investigation.
+// recon_status is exact to the stored cent. No tolerance is allowed here:
+// 0.01 SAR is a visible exception, not a match.
+const toMoney = value => Math.round((Number(value) || 0) * 100) / 100;
+const exactReconStatus = ({ zoho, internal, diff }) => {
+  if (diff === 0) return 'matched';
+  if (zoho <= 0.5 && Math.abs(internal) > 0.5) return 'internal_only';
+  if (zoho > 0.5 && Math.abs(internal) <= 0.5) return 'zoho_only';
+  return 'needs_investigation';
+};
+
 export async function loadCustomerBalanceRecon() {
-  const { data, error } = await supabase.rpc('customer_balance_recon_zoho');
+  const [reconRes, lamhaMetaRes, zohoMetaRes] = await Promise.all([
+    supabase.rpc('customer_balance_recon_zoho'),
+    supabase.from('store_balance_snapshots')
+      .select('uploaded_at, file_name').eq('source', 'internal')
+      .order('uploaded_at', { ascending: false }).limit(1),
+    supabase.from('zoho_invoices')
+      .select('synced_at').not('synced_at', 'is', null)
+      .order('synced_at', { ascending: false }).limit(1),
+  ]);
+  const { data, error } = reconRes;
   if (error) throw error;
   // الجانب الداخلي = استحقاق لمحة (2026-07-17): تبيّن أن invoice_details كان
   // تقرير زوهو المجدول بالإيميل وتوقف عمداً بعد الـAPI — فكان التبويب يقارن
   // زوهو الحي بزوهو قديم. عمر الاستحقاق يظهر على البطاقة.
-  const { data: snap } = await supabase.from('store_balance_snapshots')
-    .select('uploaded_at, file_name').eq('source', 'internal')
-    .order('uploaded_at', { ascending: false }).limit(1);
+  const snap = lamhaMetaRes.error ? [] : lamhaMetaRes.data;
   const internalMeta = snap?.[0]
     ? { uploadedAt: snap[0].uploaded_at, sourceFile: snap[0].file_name }
     : null;
-  const rows = (data || []).map(r => ({
-    anchor:         r.anchor,
-    storeId:        r.store_id,
-    storeName:      r.store_name || (r.zoho_names || [])[0] || (r.internal_names || [])[0] || r.anchor,
-    phone:          r.phone,
-    billingType:    r.billing_type,
-    platformStatus: r.platform_status,
-    wallet:         Number(r.wallet_balance) || 0,
-    zoho:           Number(r.zoho_balance) || 0,
-    zohoOpenCnt:    Number(r.zoho_open_cnt) || 0,
-    zohoOldest:     r.zoho_oldest,
-    zohoNames:      r.zoho_names || [],
-    internal:       Number(r.internal_balance) || 0,
-    internalNames:  r.internal_names || [],
-    diff:           Number(r.diff) || 0,
-    status:         r.recon_status,
-  }));
+  const zohoMeta = zohoMetaRes.error || !zohoMetaRes.data?.[0]
+    ? null
+    : { syncedAt: zohoMetaRes.data[0].synced_at };
+  const rows = (data || []).map(r => {
+    const zoho = toMoney(r.zoho_balance);
+    const internal = toMoney(r.internal_balance);
+    const diff = toMoney(internal - zoho);
+    return {
+      anchor:         r.anchor,
+      storeId:        r.store_id,
+      storeName:      r.store_name || (r.zoho_names || [])[0] || (r.internal_names || [])[0] || r.anchor,
+      phone:          r.phone,
+      billingType:    r.billing_type,
+      platformStatus: r.platform_status,
+      wallet:         toMoney(r.wallet_balance),
+      zoho,
+      zohoOpenCnt:    Number(r.zoho_open_cnt) || 0,
+      zohoOldest:     r.zoho_oldest,
+      zohoNames:      r.zoho_names || [],
+      internal,
+      internalNames:  r.internal_names || [],
+      diff,
+      status:         exactReconStatus({ zoho, internal, diff }),
+    };
+  });
+  const lamhaTime = internalMeta?.uploadedAt ? new Date(internalMeta.uploadedAt).getTime() : 0;
+  const zohoTime = zohoMeta?.syncedAt ? new Date(zohoMeta.syncedAt).getTime() : 0;
+  const now = Date.now();
+  rows.sourceMeta = {
+    lamha: internalMeta,
+    zoho: zohoMeta,
+    lamhaStale: !lamhaTime || now - lamhaTime > 3 * 86_400_000,
+    zohoStale: !zohoTime || now - zohoTime > 2 * 3_600_000,
+    sameWindow: !!lamhaTime && !!zohoTime && Math.abs(zohoTime - lamhaTime) <= 86_400_000,
+  };
   rows.internalMeta = internalMeta;   // ملحق على المصفوفة — لا يكسر مستهلكي array
   return rows;
+}
+
+export function summarizeCustomerBalanceRecon(rows = []) {
+  const differences = rows.filter(row => toMoney(row.diff) !== 0);
+  return {
+    total: rows.length,
+    differenceCount: differences.length,
+    absoluteGap: toMoney(differences.reduce((sum, row) => sum + Math.abs(row.diff), 0)),
+    zohoOnly: differences.filter(row => row.status === 'zoho_only').length,
+    lamhaOnly: differences.filter(row => row.status === 'internal_only').length,
+    needsInvestigation: differences.filter(row => row.status === 'needs_investigation').length,
+    sourceMeta: rows.sourceMeta || null,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────

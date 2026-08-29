@@ -9,7 +9,7 @@
 // operator's attention is needed.
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import {
@@ -20,6 +20,7 @@ import {
   Card, Btn, Spinner, Empty, Modal, toast, PageHeader, DropZone,
 } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
+import { buildStore360Url } from '../lib/store360Navigation.js';
 import {
   parseInternalSettlement,
   uploadBalanceSnapshot, listBalanceSnapshots, deleteBalanceSnapshot,
@@ -52,6 +53,7 @@ const fmtDateTime = (iso) => {
 
 export default function Reconciliation({ isActive = true }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { profile } = useAuth();
   const [loading, setLoading]       = useState(true);
   const [reconcile, setReconcile]   = useState([]);
@@ -59,7 +61,6 @@ export default function Reconciliation({ isActive = true }) {
   const [unmatched, setUnmatched]   = useState([]);
   // Hide zero-balance rows — no urgency to link until they carry debt.
   const unmatchedWithBalance = unmatched.filter(u => Math.abs(u.balance) > 0.005);
-  const [tolerance, setTolerance]   = useState(0.5);
   const [onlyGaps,  setOnlyGaps]    = useState(false);
   const [linkTarget, setLinkTarget] = useState(null);    // { rawName, source, balance }
   // Tab between customer side (المتاجر/العملاء) and vendor side
@@ -75,7 +76,7 @@ export default function Reconciliation({ isActive = true }) {
     new URLSearchParams(location.search).get('tab') === 'vendors' ? 'vendors' : 'customers');
   // 'customer' = مِرساة عميل زوهو (الافتراضي، لا يُخفي أحداً) · 'store' = مِرساة المتجر
   const [view, setView]             = useState(() =>
-    new URLSearchParams(location.search).get('tab') === 'customers' ? 'store' : 'customer');
+    new URLSearchParams(location.search).get('view') === 'legacy-store' ? 'store' : 'customer');
   const [custRows, setCustRows]     = useState(null);   // صفوف مِرساة العميل (مشتركة بين العرضين)
   const [syncing, setSyncing]       = useState(false);  // مزامنة زوهو الفورية
   const [daftraLoading, setDaftraLoading] = useState(false);
@@ -83,15 +84,15 @@ export default function Reconciliation({ isActive = true }) {
   const [daftraData, setDaftraData] = useState(null);
   const [daftraOpen, setDaftraOpen] = useState(false);
 
-  // المسارات القديمة تهبط على عرضها: ?tab=zoho_live → عرض العميل ·
-  // ?tab=customers → عرض المتجر · ?tab=vendors → تبويب الناقلين.
+  // المسار المالي الأساسي يفتح مطابقة كشف لمحة مع Zoho مباشرة. العرض
+  // التاريخي ثلاثي المصادر باقٍ للتوافق فقط عبر ?view=legacy-store.
   useEffect(() => {
     const wanted = new URLSearchParams(location.search).get('tab');
     if (!wanted) return;
     if (wanted === 'vendors') { setTab('vendors'); return; }
     if (wanted === 'customers' || wanted === 'zoho_live') {
       setTab('customers');
-      setView(wanted === 'customers' ? 'store' : 'customer');
+      setView(new URLSearchParams(location.search).get('view') === 'legacy-store' ? 'store' : 'customer');
     }
   }, [location.search]);
 
@@ -287,7 +288,7 @@ export default function Reconciliation({ isActive = true }) {
                       : hasReceivables ? 'receivables'
                       : 'none';
     const zohoGap = r.zoho - anchor;   // Zoho minus internal
-    const matched = Math.abs(zohoGap) <= tolerance;
+    const matched = Math.round(zohoGap * 100) === 0;
     let action;
     if (matched) {
       action = { kind: 'matched', label: 'مطابق', color: 'var(--green)' };
@@ -301,7 +302,7 @@ export default function Reconciliation({ isActive = true }) {
       action = { kind: 'zoho_extra', label: `راجع زيادة ${fmtCompact(Math.abs(zohoGap))} في Zoho`, color: '#F97316' };
     }
     return { ...r, anchor, anchorSource, zohoGap, matched, action };
-  }), [reconcile, tolerance]);
+  }), [reconcile]);
 
   // Headline stats from the enriched rows
   const stats = useMemo(() => {
@@ -491,17 +492,17 @@ export default function Reconciliation({ isActive = true }) {
       {tab === 'customers' && <>
 
       {/* توضيح المصدرين: الداخلي كشف مرفوع يتجمد بين الرفعات · زوهو حي من API */}
-      <div style={{
+      {view === 'store' && <div style={{
         display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
         background: 'color-mix(in srgb, var(--accent) 7%, transparent)',
         border: '1px solid color-mix(in srgb, var(--accent) 25%, transparent)',
         borderRadius: 10, padding: '9px 14px', marginBottom: 14, fontSize: 12.5,
       }}>
         <span>⚡ عمود <b>زوهو حي من الـAPI</b> (لا رفع له) · عمود <b>الداخلي</b> = آخر ملف «استحقاق المتاجر» مرفوع — يتجمد حتى الرفعة التالية.</span>
-      </div>
+      </div>}
 
       {/* Upload row */}
-      <div style={{
+      {view === 'store' && <div style={{
         display: 'grid', gap: 14, marginBottom: 20,
         gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
       }}>
@@ -535,7 +536,7 @@ export default function Reconciliation({ isActive = true }) {
             </div>
           </div>
         </Card>
-      </div>
+      </div>}
 
       {/* "Internal is the source of truth" banner */}
       {view === 'store' && reconcile.length > 0 && (
@@ -569,19 +570,7 @@ export default function Reconciliation({ isActive = true }) {
                 <input type="checkbox" checked={onlyGaps} onChange={e => setOnlyGaps(e.target.checked)} style={{ accentColor: 'var(--red)' }}/>
                 الفروقات فقط
               </label>
-              <span style={{ fontSize: 11, color: 'var(--muted)', marginInlineStart: 10 }}>قبول فرق حتى:</span>
-              <input
-                type="number" step="0.01" min="0"
-                value={tolerance}
-                onChange={(e) => setTolerance(Math.max(0, Number(e.target.value) || 0))}
-                style={{
-                  width: 70, padding: '4px 8px', fontSize: 12,
-                  border: '1px solid var(--border)', borderRadius: 6,
-                  background: 'var(--surface)', color: 'var(--text)',
-                  textAlign: 'center', fontFamily: 'var(--font-mono)',
-                }}
-              />
-              <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
+              <span style={{ fontSize: 11, color: 'var(--muted)', marginInlineStart: 10 }}>المطابقة دقيقة حتى 0.01 ر.س</span>
             </div>
             <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportMismatches} disabled={stats.matched === stats.total}>
               تصدير تصحيحات Zoho
@@ -593,7 +582,7 @@ export default function Reconciliation({ isActive = true }) {
       {/* Unmatched section — surfaces rows hidden from the main
           comparison because their store_id couldn't be resolved.
           Operator can link manually via the merchant picker. */}
-      {unmatchedWithBalance.length > 0 && (
+      {view === 'store' && unmatchedWithBalance.length > 0 && (
         <Card style={{
           padding: 0, overflow: 'hidden', marginBottom: 16,
           border: '1.5px solid color-mix(in srgb, var(--gold) 35%, transparent)',
@@ -672,15 +661,28 @@ export default function Reconciliation({ isActive = true }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
         <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>العرض:</span>
         {[
-          { id: 'customer', label: '👤 حسب العميل', hint: 'مِرساة عميل زوهو — يشمل من لا متجر له' },
-          { id: 'store',    label: '🏪 حسب المتجر', hint: 'مِرساة رقم المتجر — يشمل المتاجر بلا رصيد' },
+          { id: 'customer', label: 'مطابقة كشف لمحة مع Zoho', hint: 'القائمة التشغيلية الأساسية لكل فروق الرصيد' },
+          { id: 'store',    label: 'أدوات الربط التاريخية', hint: 'عرض ثلاثي المصادر لأعمال الربط والتشخيص فقط' },
         ].map(v => (
           <Btn key={v.id} size="sm" variant={view === v.id ? 'primary' : 'outline'}
                title={v.hint} onClick={() => setView(v.id)}>{v.label}</Btn>
         ))}
       </div>
 
-      {view === 'customer' && <ZohoLiveTab rows={custRows} initialSearch={new URLSearchParams(location.search).get('search') || new URLSearchParams(location.search).get('store') || ''}/>}
+      {view === 'customer' && <ZohoLiveTab
+        rows={custRows}
+        initialSearch={new URLSearchParams(location.search).get('search') || new URLSearchParams(location.search).get('store') || ''}
+        initialDifferences={new URLSearchParams(location.search).get('differences') === '1'}
+        onOpenStore={(storeId) => {
+          const target = buildStore360Url({
+            storeId,
+            view: 'finance',
+            source: 'lamha-zoho-reconciliation',
+            returnTo: `${location.pathname}${location.search}`,
+          });
+          if (target) navigate(target);
+        }}
+      />}
 
       {/* Reconciliation table — anchored on internal (المرجع) */}
       {view === 'store' && (noStoreAnchor.count > 0) && (
@@ -927,23 +929,25 @@ function DaftraBalancesModal({ data, loading, onClose, onRefresh, onSyncOpening,
 // مطابقة بلا رفع: فواتير زوهو المفتوحة (المرآة الحيّة) مقابل آخر كشف
 // مديونيات داخلي، بمرساة store_id/الاسم المطبَّع. المحفظة محور مستقل.
 const RECON_STATUS_META = {
-  matched:             { label: 'مطابق للهللة',      color: 'var(--green)', icon: '✓' },
-  needs_investigation: { label: 'يحتاج تحقيقاً',      color: 'var(--red)',   icon: '⚠' },
-  internal_only:       { label: 'رصيد قديم بلا فاتورة في زوهو', color: 'var(--gold)', icon: '◐' },
-  zoho_only:           { label: 'زوهو فقط',           color: 'var(--accent)',      icon: '◑' },
+  matched:             { label: 'مطابق بدقة',             color: 'var(--green)',  icon: '✓' },
+  needs_investigation: { label: 'الرصيدان مختلفان',       color: 'var(--red)',    icon: '⚠' },
+  internal_only:       { label: 'كشف لمحة فقط',           color: 'var(--gold)',   icon: '◐' },
+  zoho_only:           { label: 'Zoho فقط',                color: 'var(--accent)', icon: '◑' },
 };
 
 // عرض «حسب العميل» — الصفوف تأتي من الأب (جلبة واحدة يتقاسمها العرضان،
 // ويحسب منها الأب كم يُخفي عرض المتجر).
-function ZohoLiveTab({ rows, initialSearch = '' }) {
+function ZohoLiveTab({ rows, initialSearch = '', initialDifferences = false, onOpenStore }) {
   const [q, setQ]           = useState(initialSearch);
-  const [st, setSt]         = useState('');
+  const [st, setSt]         = useState(initialDifferences ? 'differences' : '');
   useEffect(() => { setQ(initialSearch); }, [initialSearch]);
+  useEffect(() => { if (initialDifferences) setSt('differences'); }, [initialDifferences]);
 
   const filtered = useMemo(() => {
     if (!rows) return [];
     let list = rows;
-    if (st) list = list.filter(r => r.status === st);
+    if (st === 'differences') list = list.filter(r => r.diff !== 0);
+    else if (st) list = list.filter(r => r.status === st);
     const s = q.trim().toLowerCase();
     if (s) list = list.filter(r =>
       [r.storeId, r.storeName, r.phone, ...(r.zohoNames || []), ...(r.internalNames || [])]
@@ -960,15 +964,17 @@ function ZohoLiveTab({ rows, initialSearch = '' }) {
       zoho:     by('zoho_only'),
       zohoTot:  (rows || []).reduce((s, r) => s + r.zoho, 0),
       intTot:   (rows || []).reduce((s, r) => s + r.internal, 0),
+      differenceCount: (rows || []).filter(r => r.diff !== 0).length,
+      absoluteGap: (rows || []).reduce((s, r) => s + Math.abs(r.diff), 0),
     };
   }, [rows]);
 
   const exportXlsx = () => {
     if (!filtered.length) return;
     const aoa = [
-      ['مطابقة أرصدة العملاء — زوهو المرجع (حيّ)', '', '', new Date().toISOString().slice(0, 10)],
+      ['مطابقة كشف لمحة مع رصيد Zoho المحاسبي', '', '', new Date().toISOString().slice(0, 10)],
       [],
-      ['العميل/المتجر', 'الهاتف', 'نوع الفوترة', 'حالة المنصّة', 'زوهو (مفتوح)', 'عدد الفواتير', 'أقدم فاتورة', 'استحقاق لمحة', 'الفرق', 'رصيد لصالح العميل', 'الحالة', 'أسماء زوهو', 'أسماء الاستحقاق'],
+      ['العميل/المتجر', 'الهاتف', 'نوع الفوترة', 'حالة المنصّة', 'رصيد Zoho المحاسبي', 'عدد الفواتير', 'أقدم فاتورة', 'رصيد كشف لمحة', 'الفرق (لمحة − Zoho)', 'رصيد المحفظة', 'الحالة', 'أسماء Zoho', 'أسماء كشف لمحة'],
       ...filtered.map(r => [
         r.storeName, r.phone || '', r.billingType || '', r.platformStatus || '',
         r.zoho, r.zohoOpenCnt, r.zohoOldest || '', r.internal, r.diff, r.wallet,
@@ -986,12 +992,27 @@ function ZohoLiveTab({ rows, initialSearch = '' }) {
 
   if (rows == null) return <Card style={{ padding: 50, textAlign: 'center' }}><Spinner size={26}/></Card>;
 
+  const sourceMeta = rows.sourceMeta || {};
+  const comparisonIsFinal = !sourceMeta.lamhaStale && !sourceMeta.zohoStale && sourceMeta.sameWindow;
+
   return (
     <>
+      <section className={`reconciliation-source-context${comparisonIsFinal ? ' is-current' : ' is-stale'}`} role="status">
+        <div>
+          <strong>{comparisonIsFinal ? 'المصدران ضمن نافذة زمنية واحدة' : 'الفروقات للمراجعة وليست حكمًا نهائيًا بعد'}</strong>
+          <span>
+            كشف لمحة: {sourceMeta.lamha?.sourceFile || 'غير متوفر'} · {fmtDateTime(sourceMeta.lamha?.uploadedAt)}
+            {' '}| Zoho: {fmtDateTime(sourceMeta.zoho?.syncedAt)}
+          </span>
+        </div>
+        {!comparisonIsFinal ? <small>حدّث المصدر الأقدم قبل اعتماد نتيجة المطابقة أو اتخاذ إجراء على العميل.</small> : null}
+      </section>
+
       {/* KPI strip */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(155px,1fr))', gap: 10, marginBottom: 14 }}>
+      <div className="reconciliation-kpi-strip">
         {[
-          { k: '', label: 'زوهو (المرجع)', val: kpi.zohoTot, sub: 'فواتير مفتوحة الآن', color: 'var(--accent)' },
+          { k: 'differences', label: 'فروق تحتاج مراجعة', val: kpi.absoluteGap, sub: `${kpi.differenceCount} متجرًا · مجموع القيمة المطلقة`, color: 'var(--red)' },
+          { k: '', label: 'رصيد Zoho المحاسبي', val: kpi.zohoTot, sub: 'إجمالي الرصيد المفتوح', color: 'var(--accent)' },
           // عمر الكشف ظاهر على البطاقة (2026-07-17) — المستخدم ظن الرقم معطلاً
           // وهو من ملف invoice_details منقطع منذ أسبوع
           { k: '', label: 'استحقاق لمحة', val: kpi.intTot,
@@ -1003,9 +1024,8 @@ function ZohoLiveTab({ rows, initialSearch = '' }) {
               return `${m.sourceFile || 'كشف'} — ${when}${days >= 3 ? ` (قديم ${days} يوم ⚠️)` : ''}`;
             })(),
             color: rows.internalMeta?.uploadedAt && (Date.now() - new Date(rows.internalMeta.uploadedAt).getTime()) > 3 * 86_400_000 ? 'var(--red)' : '#3B82F6' },
-          { k: 'matched', label: 'مطابق للهللة', val: kpi.matched.reduce((s, r) => s + r.zoho, 0), sub: `${kpi.matched.length} عميلاً`, color: 'var(--green)' },
-          { k: 'needs_investigation', label: 'يحتاج تحقيقاً', val: kpi.invest.reduce((s, r) => s + Math.abs(r.diff), 0), sub: `${kpi.invest.length} عميل — فرق`, color: 'var(--red)' },
-          { k: 'internal_only', label: 'داخلي فقط', val: kpi.internal.reduce((s, r) => s + r.internal, 0), sub: `${kpi.internal.length} — أرصدة قديمة بلا فاتورة زوهو`, color: 'var(--gold)' },
+          { k: 'matched', label: 'مطابق بدقة', val: kpi.matched.reduce((s, r) => s + r.zoho, 0), sub: `${kpi.matched.length} عميلاً بلا فرق`, color: 'var(--green)' },
+          { k: 'internal_only', label: 'كشف لمحة فقط', val: kpi.internal.reduce((s, r) => s + Math.abs(r.internal), 0), sub: `${kpi.internal.length} حالة`, color: 'var(--gold)' },
         ].map(c => (
           <button key={c.label} onClick={() => c.k && setSt(st === c.k ? '' : c.k)}
             style={{ textAlign: 'right', padding: '10px 12px', borderRadius: 10, cursor: c.k ? 'pointer' : 'default',
@@ -1019,7 +1039,7 @@ function ZohoLiveTab({ rows, initialSearch = '' }) {
       </div>
 
       {/* شريط الفلاتر */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+      <div className="reconciliation-filter-toolbar">
         <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
           <Search size={14} style={{ position: 'absolute', right: 12, top: 9, color: 'var(--muted)' }}/>
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="بحث بالعميل/المتجر/الهاتف…"
@@ -1027,23 +1047,24 @@ function ZohoLiveTab({ rows, initialSearch = '' }) {
         </div>
         <select value={st} onChange={e => setSt(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12.5 }}>
           <option value="">كل الحالات</option>
+          <option value="differences">كل الفروقات</option>
           {Object.entries(RECON_STATUS_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
         </select>
         <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportXlsx} disabled={!filtered.length}>تصدير</Btn>
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 8 }}>
         عرض <b style={{ color: 'var(--text)' }}>{filtered.length}</b> من {rows.length} —
-        المرجع = فواتير زوهو المفتوحة الحيّة (مزامنة كل 30 دقيقة + فوري بالويبهوك) · الداخلي = آخر استحقاق لمحة مرفوع · «داخلي فقط» = في الاستحقاق بلا فاتورة زوهو
+        الفرق = رصيد كشف لمحة ناقص رصيد Zoho المحاسبي · لا يوجد تسامح مالي: فرق 0.01 يظهر في هذه القائمة
       </div>
 
       {/* الجدول */}
       {!filtered.length ? <Card><Empty icon="📭" title="لا نتائج" sub="جرّب فلتراً آخر"/></Card> : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           <div className="m-flow" style={{ maxHeight: 620, overflowY: 'auto' }}>
-            <table className="m-cards" style={{ width: '100%', fontSize: 12.5 }}>
+            <table className="m-cards reconciliation-result-table" style={{ width: '100%', fontSize: 12.5 }}>
               <thead style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--surface)' }}>
                 <tr>
-                  {['العميل / المتجر', 'زوهو (مفتوح)', 'استحقاق لمحة', 'الفرق', 'رصيد لصالح العميل', 'الحالة'].map(h => (
+                  {['العميل / المتجر', 'Zoho المحاسبي', 'كشف لمحة', 'الفرق', 'المحفظة', 'الحالة', ''].map(h => (
                     <th key={h} style={{ padding: '10px 12px', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -1063,10 +1084,10 @@ function ZohoLiveTab({ rows, initialSearch = '' }) {
                         </div>
                       </td>
                       <td data-label="زوهو" style={{ padding: '9px 12px', fontFamily: 'var(--font-mono)', fontWeight: 700, whiteSpace: 'nowrap', color: r.zoho > 0.5 ? 'var(--text)' : 'var(--muted2)' }}>{fmt(r.zoho)}</td>
-                      <td data-label="الداخلي" style={{ padding: '9px 12px', fontFamily: 'var(--font-mono)', fontWeight: 600, whiteSpace: 'nowrap', color: r.internal ? 'var(--text)' : 'var(--muted2)' }}>{fmt(r.internal)}</td>
+                      <td data-label="كشف لمحة" style={{ padding: '9px 12px', fontFamily: 'var(--font-mono)', fontWeight: 600, whiteSpace: 'nowrap', color: r.internal ? 'var(--text)' : 'var(--muted2)' }}>{fmt(r.internal)}</td>
                       <td data-label="الفرق" style={{ padding: '9px 12px', fontFamily: 'var(--font-mono)', fontWeight: 700, whiteSpace: 'nowrap',
-                        color: Math.abs(r.diff) <= 1 ? 'var(--muted2)' : r.diff > 0 ? 'var(--gold)' : 'var(--red)' }}>
-                        {Math.abs(r.diff) <= 1 ? '—' : fmt(r.diff)}
+                        color: r.diff === 0 ? 'var(--muted2)' : r.diff > 0 ? 'var(--gold)' : 'var(--red)' }}>
+                        {r.diff === 0 ? '—' : fmt(r.diff)}
                       </td>
                       <td data-label="رصيد لصالح العميل" style={{ padding: '9px 12px', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
                         color: r.wallet < -0.5 ? 'var(--red)' : r.wallet > 0.5 ? 'var(--green)' : 'var(--muted2)' }}>
@@ -1077,6 +1098,9 @@ function ZohoLiveTab({ rows, initialSearch = '' }) {
                           color: m.color, background: `color-mix(in srgb, ${m.color} 13%, transparent)` }}>
                           {m.icon} {m.label}
                         </span>
+                      </td>
+                      <td data-label="فتح" style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
+                        {r.storeId ? <Btn size="sm" variant="ghost" onClick={() => onOpenStore?.(r.storeId)}>فتح 360 <ChevronLeft size={12}/></Btn> : <span style={{ color: 'var(--muted2)', fontSize: 11 }}>غير مرتبط</span>}
                       </td>
                     </tr>
                   );
