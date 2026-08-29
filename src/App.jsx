@@ -500,10 +500,12 @@ function AppInner({ theme, toggleTheme }) {
   }, [profile, pathAllowed, rawPath, location.search, navigate]);
 
   useEffect(() => {
-    const title = PAGE_TITLES[rawPath]
+    const title = rawPath === '/customer-money' && new URLSearchParams(location.search).get('worklist') === '1'
+      ? 'قائمة التنفيذ'
+      : PAGE_TITLES[rawPath]
       ?? (rawPath.startsWith('/settings') ? 'الإعدادات' : 'ShipAudit');
     document.title = `${title} — ShipAudit Pro`;
-  }, [rawPath]);
+  }, [location.search, rawPath]);
 
   // ── Load carriers ──
   const reloadCarriers = useCallback(async () => {
@@ -632,6 +634,7 @@ function AppInner({ theme, toggleTheme }) {
   const currentSection = NAV_SECTIONS.find(section => section.id === currentNavItem?.section);
   const centerRouteSection = NAV_SECTIONS.find(section => section.path === pathname);
   const contextParams = new URLSearchParams(location.search);
+  const worklistScoped = rawPath === '/customer-money' && contextParams.get('worklist') === '1';
   const reportScoped = (
     rawPath === '/carrier-kpi'
     || rawPath === '/platform-carriers'
@@ -650,7 +653,9 @@ function AppInner({ theme, toggleTheme }) {
     || (detailSectionId ? NAV_SECTIONS.find(section => section.id === detailSectionId) : null)
     || centerRouteSection
     || currentSection;
-  const currentTitle = pathname === '/overview'
+  const currentTitle = worklistScoped
+    ? 'قائمة التنفيذ'
+    : pathname === '/overview'
     ? 'مركز القيادة'
     : centerRouteSection?.label ?? currentSubTab?.label
       ?? currentNavItem?.label

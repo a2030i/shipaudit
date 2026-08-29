@@ -60,14 +60,14 @@ test('مسار مراجعة الإيقاف لا يوسع الصلاحية خار
   assert.equal(hasExtendedOperationalFilters({ minDays: '30' }), true);
 });
 
-test('واجهة التنفيذ تبدأ بشروط حرة وتكشف الإجراءات قبل التحديد', async () => {
+test('واجهة التنفيذ تبدأ بشروط حرة وتكشف الإجراءات بعد التحديد', async () => {
   const [queue, resultSet, launcher] = await Promise.all([
     readFile(new URL('../src/components/operations/AgingOperationsQueue.jsx', import.meta.url), 'utf8'),
     readFile(new URL('../src/components/operations/OperationalResultSet.jsx', import.meta.url), 'utf8'),
     readFile(new URL('../src/components/QuickActionLauncher.jsx', import.meta.url), 'utf8'),
   ]);
   assert.match(queue, /ضع شروطك وأنشئ قائمة التنفيذ/);
-  assert.match(queue, /showActionsWhenEmpty: true/);
+  assert.match(queue, /showActionsWhenEmpty: false/);
   assert.match(queue, /إيقاف الحسابات/);
   assert.match(queue, /حملة WhatsApp/);
   assert.match(resultSet, /حدد عميلًا أو أكثر لتفعيل الإجراء/);

@@ -158,6 +158,7 @@ export default function CustomerMoney({ isActive = true }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const isWorklistMode = searchParams.get('worklist') === '1';
   const [applyTarget, setApplyTarget] = useState(null);   // { zohoId, name } عند فتح مودال التطبيق
   const [d, setD] = useState(null);
   const [viewUpdatedAt, setViewUpdatedAt] = useState(null);
@@ -1295,10 +1296,10 @@ export default function CustomerMoney({ isActive = true }) {
   );
 
   return (
-    <div className="customer-money-page workspace-page">
+    <div className={`customer-money-page workspace-page${isWorklistMode ? ' is-worklist-mode' : ''}`}>
       <PageHeader icon={<HandCoins size={22}/>} iconColor="var(--green)"
-        title="مركز العملاء المالي"
-        subtitle="ضع شروطك، افحص النتائج، ثم نفّذ الإجراء الفردي أو الجماعي من المساحة نفسها"/>
+        title={isWorklistMode ? 'قائمة التنفيذ' : 'مركز العملاء المالي'}
+        subtitle={isWorklistMode ? 'أضف شروطك، راجع النتائج، ثم حدّد ونفّذ من الشاشة نفسها' : 'ضع شروطك، افحص النتائج، ثم نفّذ الإجراء الفردي أو الجماعي من المساحة نفسها'}/>
 
       <AgingOperationsQueue
         rows={agingPageRows}
@@ -1326,6 +1327,7 @@ export default function CustomerMoney({ isActive = true }) {
         campaignPanel={campaignSegmentsPanel}
       />
 
+      {!isWorklistMode ? <>
       <section className="customer-finance-command" aria-label="مركز إجراءات مال العملاء">
         <div className="customer-finance-command__head">
           <div><span>القرار الآن</span><h2>من يحتاج تحصيلًا أو تواصلًا اليوم؟</h2><p>Zoho للأرقام المالية · لمحة للنشاط · هاتف وWhatsApp وIVR للتنفيذ.</p></div>
@@ -1705,6 +1707,7 @@ export default function CustomerMoney({ isActive = true }) {
       </>)}
       </div>
       </details>
+      </> : null}
 
       <BulkPreflightDialog
         open={Boolean(bulkAction)}

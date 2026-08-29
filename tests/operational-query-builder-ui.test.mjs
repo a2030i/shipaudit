@@ -12,9 +12,16 @@ test('customer finance opens with a flexible condition builder before executive 
   assert.ok(page.indexOf('<AgingOperationsQueue') < page.indexOf('customer-finance-command'));
   assert.match(queue, /ضع شروطك وأنشئ قائمة التنفيذ/);
   assert.match(queue, /أضف شرطًا…/);
+  assert.match(page, /isWorklistMode \? 'قائمة التنفيذ'/);
+  assert.match(page, /!isWorklistMode \? <>/);
   assert.match(queue, /CONDITION_ORDER/);
   assert.match(queue, /visible\.has\(key\)/);
   assert.match(queue, /مسح كل الشروط/);
+});
+
+test('worklist does not occupy the page with disabled bulk actions before selection', async () => {
+  const resultSet = await readFile(new URL('../src/components/operations/AgingOperationsQueue.jsx', import.meta.url), 'utf8');
+  assert.match(resultSet, /showActionsWhenEmpty: false/);
 });
 
 test('conditions cover finance, Lamha, collections and contact without a route per scenario', async () => {

@@ -201,7 +201,7 @@ export default function AgingOperationsQueue({
     onSelectAllResults: onToggleAll,
     onClear: () => onToggleAll(false),
     disabled: loading || !sourceHealthy || !reconciliation?.ok,
-    showActionsWhenEmpty: true,
+    showActionsWhenEmpty: false,
     actions: [
       ...(canSuspend ? [{ key: 'suspend', label: 'إيقاف الحسابات', icon: <ShieldAlert size={14}/>, variant: 'primary', onClick: () => onBulk('suspend') }] : []),
       { key: 'assign', label: 'إسناد', icon: <UserRoundCog size={14}/>, onClick: () => onBulk('assign') },
