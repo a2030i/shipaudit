@@ -46,7 +46,7 @@ test('statement probe is read-only, uses the employee secret, and never returns 
   const source = await readFile(new URL('../supabase/functions/lamha-financial-guard/index.ts', import.meta.url), 'utf8');
   const probeSource = source.slice(
     source.indexOf('async function probeStatementExport'),
-    source.indexOf('function nestedStoreRecords'),
+    source.indexOf('async function syncStatementExport'),
   );
   assert.match(source, /Deno\.env\.get\('LAMHA_EMPLOYEE_TOKEN'\)/);
   assert.match(source, /\/stores\/statements\/export/);
@@ -54,4 +54,24 @@ test('statement probe is read-only, uses the employee secret, and never returns 
   assert.match(probeSource, /readOnly: true/);
   assert.doesNotMatch(probeSource, /method:\s*'PATCH'/);
   assert.doesNotMatch(probeSource, /rows:\s*parsed\.rows/);
+});
+
+test('midnight directory sync also persists the Lamha statement atomically', async () => {
+  const [source, migration, cron] = await Promise.all([
+    readFile(new URL('../supabase/functions/lamha-financial-guard/index.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../supabase/migrations/20260829213000_lamha_statement_midnight_sync.sql', import.meta.url), 'utf8'),
+    readFile(new URL('../supabase/migrations/20260828082515_lamha_daily_read_sync.sql', import.meta.url), 'utf8'),
+  ]);
+  assert.match(cron, /'0 21 \* \* \*'/);
+  assert.match(source, /const directory = await syncDirectory/);
+  assert.match(source, /const statement = await syncStatementExport/);
+  assert.match(source, /ingest_lamha_statement_snapshot/);
+  assert.match(source, /financialRows = parsed\.rows\.filter\(row => row\.balance != null\)/);
+  assert.match(migration, /security definer/);
+  assert.match(migration, /jsonb_typeof\(p_rows\) <> 'array'/);
+  assert.match(migration, /lamha_statement_store_ids_not_unique/);
+  assert.match(migration, /match_method[\s\S]*'lamha_store_id'/);
+  assert.match(migration, /'internal_settlement'/);
+  assert.match(migration, /'api_sync'/);
+  assert.doesNotMatch(migration, /http_|PATCH|activate|deactivate/i);
 });

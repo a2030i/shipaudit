@@ -260,6 +260,73 @@ async function probeStatementExport(token: string) {
   };
 }
 
+async function syncStatementExport(token: string, actorId: string | null) {
+  const exported = await lamhaStatementExportFetch(token);
+  if (!exported.ok) {
+    throw new Error(exported.status === 401
+      ? 'lamha_statement_token_authentication_failed'
+      : exported.status === 403
+        ? 'lamha_statement_authorization_scope_failed'
+        : `lamha_statement_export_failed:${exported.status}`);
+  }
+  if (!exported.contentType.includes('spreadsheetml')) {
+    throw new Error(`lamha_statement_content_type_invalid:${exported.contentType || 'missing'}`);
+  }
+
+  let workbook;
+  try {
+    workbook = XLSX.read(exported.bytes, { type: 'array', cellDates: true });
+  } catch (error) {
+    throw new Error(`lamha_statement_export_workbook_invalid:${String((error as Error).message || error)}`);
+  }
+  const firstSheet = workbook.SheetNames[0];
+  if (!firstSheet) throw new Error('lamha_statement_export_workbook_empty');
+  const sheetRows = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], {
+    header: 1,
+    raw: true,
+    defval: null,
+  }) as unknown[][];
+  const parsed = parseLamhaStatementExportRows(sheetRows);
+  const financialRows = parsed.rows.filter(row => row.balance != null);
+  if (!financialRows.length) throw new Error('lamha_statement_export_no_financial_rows');
+
+  const sourceHash = await sha256({ headers: parsed.headers, rows: parsed.rows });
+  const fileName = `lamha-statement-api-${riyadhDateKey()}-${sourceHash.slice(0, 12)}.xlsx`;
+  const totalBalanceCents = financialRows.reduce(
+    (sum, row) => sum + Math.round(Number(row.balance) * 100),
+    0,
+  );
+  const { data, error } = await db.rpc('ingest_lamha_statement_snapshot', {
+    p_file_name: fileName,
+    p_source_hash: sourceHash,
+    p_rows: financialRows,
+    p_metadata: {
+      endpoint: '/stores/statements/export',
+      read_only: true,
+      response_contract: 'xlsx',
+      sheet_name: firstSheet,
+      headers: parsed.headers,
+      store_count: parsed.rows.length,
+      financial_row_count: financialRows.length,
+      total_balance: totalBalanceCents / 100,
+      byte_length: exported.bytes.byteLength,
+      latency_ms: exported.latencyMs,
+      rate_limit: exported.rateLimit,
+    },
+    p_actor_id: actorId,
+  });
+  if (error) throw new Error(`lamha_statement_snapshot_failed:${error.message}`);
+  return {
+    ...data,
+    fileName,
+    storeCount: parsed.rows.length,
+    financialRowCount: financialRows.length,
+    totalBalance: totalBalanceCents / 100,
+    latencyMs: exported.latencyMs,
+    rateLimit: exported.rateLimit,
+  };
+}
+
 function nestedStoreRecords(payload: unknown): Json[] {
   const queue: unknown[] = [payload];
   const seen = new Set<object>();
@@ -864,7 +931,9 @@ Deno.serve(async req => {
       return response(req, { ok: false, error: 'cron_read_only' }, 403);
     }
     if (action === 'sync-directory') {
-      return response(req, { ok: true, action, data: await syncDirectory(token, auth.userId) });
+      const directory = await syncDirectory(token, auth.userId);
+      const statement = await syncStatementExport(token, auth.userId);
+      return response(req, { ok: true, action, data: { directory, statement } });
     }
     if (action === 'sync-profile-details') {
       return response(req, { ok: true, action, data: await syncProfileDetails(token, auth.userId) });
