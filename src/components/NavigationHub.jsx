@@ -154,6 +154,7 @@ export default function NavigationHub({
   onSignOut,
 }) {
   const [sectionId, setSectionId] = useState(null);
+  const overlayRef = useRef(null);
   const panelRef = useRef(null);
   const closeRef = useRef(null);
 
@@ -165,6 +166,34 @@ export default function NavigationHub({
     requestAnimationFrame(() => closeRef.current?.focus());
     return () => { document.body.style.overflow = previousOverflow; };
   }, [open, initialSectionId]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const viewport = window.visualViewport;
+    const syncVisibleViewport = () => {
+      const overlay = overlayRef.current;
+      if (!overlay) return;
+      overlay.style.setProperty(
+        '--navigation-viewport-height',
+        `${Math.round(viewport?.height || window.innerHeight)}px`,
+      );
+      overlay.style.setProperty(
+        '--navigation-viewport-top',
+        `${Math.round(viewport?.offsetTop || 0)}px`,
+      );
+    };
+
+    syncVisibleViewport();
+    viewport?.addEventListener('resize', syncVisibleViewport);
+    viewport?.addEventListener('scroll', syncVisibleViewport, { passive: true });
+    window.addEventListener('orientationchange', syncVisibleViewport);
+    return () => {
+      viewport?.removeEventListener('resize', syncVisibleViewport);
+      viewport?.removeEventListener('scroll', syncVisibleViewport);
+      window.removeEventListener('orientationchange', syncVisibleViewport);
+    };
+  }, [open]);
 
   const orderedSections = useMemo(() => CENTER_ORDER
     .map(id => sections.find(section => section.id === id))
@@ -231,7 +260,7 @@ export default function NavigationHub({
   };
 
   return (
-    <div className="navigation-hub" role="presentation" onMouseDown={event => {
+    <div ref={overlayRef} className="navigation-hub" role="presentation" onMouseDown={event => {
       if (event.target === event.currentTarget) onClose();
     }}>
       <section

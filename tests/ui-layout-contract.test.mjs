@@ -123,6 +123,7 @@ test('permissions modal has one scroll region and a persistent action bar', asyn
 test('V2 shell keeps one compact desktop rail and one mobile navigation catalog', async () => {
   const app = await read('src/App.jsx');
   const css = await read('src/navigation-hub.css');
+  const hub = await read('src/components/NavigationHub.jsx');
   const sidebar = await read('src/components/ExecutiveSidebar.jsx');
 
   assert.match(app, /<NavigationHub/);
@@ -134,6 +135,12 @@ test('V2 shell keeps one compact desktop rail and one mobile navigation catalog'
   assert.match(css, /\.navigation-hub__destinations\s*\{[\s\S]*repeat\(2,/);
   assert.match(css, /\.app-layout,[\s\S]*display:\s*grid\s*!important[\s\S]*grid-template-areas:\s*"main primary"/);
   assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.app-layout > \.sidebar,[\s\S]*display:\s*none\s*!important/);
+  assert.match(hub, /window\.visualViewport/);
+  assert.match(hub, /--navigation-viewport-height/);
+  assert.match(hub, /--navigation-viewport-top/);
+  assert.match(css, /height:\s*var\(--navigation-viewport-height, 100dvh\)/);
+  assert.match(css, /padding:\s*max\(8px, env\(safe-area-inset-top, 0px\)\)/);
+  assert.match(css, /\.navigation-hub__header\s*\{[\s\S]*position:\s*sticky/);
 });
 
 test('shared modal isolates the background and restores it after the last overlay closes', async () => {
