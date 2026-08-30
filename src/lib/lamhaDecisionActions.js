@@ -74,6 +74,17 @@ export function evaluateLamhaStopEligibility(row, liveResult, now = Date.now()) 
   return { status: 'review', reason: 'حالة تشغيل الحساب غير متاحة' };
 }
 
+export function evaluateLamhaStopPreflight(row, liveResult, now = Date.now()) {
+  if (!decisionStoreId(row)) return { status: 'ineligible', reason: 'لا يوجد Store ID صالح' };
+  if (isLamhaStatusResultFresh(liveResult, now)) return evaluateLamhaStopEligibility(row, liveResult, now);
+  const snapshotState = decisionAccountOperatingState(row?.customer || row);
+  if (snapshotState === 'operating') {
+    return { status: 'eligible', reason: 'حالة محفوظة؛ ستتحقق لمحة مباشرة قبل الإيقاف' };
+  }
+  if (snapshotState === 'stopped') return { status: 'ineligible', reason: 'الحساب موقوف في آخر مزامنة' };
+  return { status: 'review', reason: 'حالة تشغيل الحساب غير متاحة في آخر مزامنة' };
+}
+
 export function decisionFinancialImpact(row, decision) {
   const customer = row?.customer || row || {};
   if (decision === LAMHA_DECISION_TYPES.NEGATIVE_WALLET) {

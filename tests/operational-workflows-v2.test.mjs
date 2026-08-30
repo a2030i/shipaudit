@@ -11,8 +11,11 @@ import {
 } from '../src/lib/operationalWorkflows.js';
 import {
   DEFAULT_SUSPENSION_MIN_OVERDUE, decisionFinancialImpact, evaluateLamhaStopEligibility,
-  filterActionableSuspensionRows,
+  evaluateLamhaStopPreflight, filterActionableSuspensionRows,
 } from '../src/lib/lamhaDecisionActions.js';
+import {
+  LAMHA_WRITE_BATCH_SIZE, recoverLamhaWriteResults, updateLamhaStoreStatuses,
+} from '../src/lib/lamhaStoreStatusService.js';
 
 test('result set selection supports a visible page without dropping another page', () => {
   let selection = new Set(['off-page']);
@@ -126,6 +129,37 @@ test('wallet decision preflight only allows a fresh, actively operating Lamha ac
   }, now).status, 'review');
 });
 
+test('wallet preflight uses the stored midnight account state without requiring a new Lamha scan', () => {
+  const enabled = { customer: { storeId: 1258, platformStatus: 'active' } };
+  const disabled = { customer: { storeId: 1259, platformStatus: 'inactive' } };
+  assert.equal(evaluateLamhaStopPreflight(enabled, null).status, 'eligible');
+  assert.deepEqual(evaluateLamhaStopPreflight(disabled, null), {
+    status: 'ineligible', reason: 'الحساب موقوف في آخر مزامنة',
+  });
+});
+
+test('lost write responses are reconciled by read-only state without duplicating the write', () => {
+  const results = recoverLamhaWriteResults([10, 20, 30], 'deactivate', [
+    { ok: true, storeId: 10, store: { canCreateShipments: false } },
+    { ok: true, storeId: 20, store: { canCreateShipments: true } },
+    { ok: false, storeId: 30, error: 'lamha_timeout' },
+  ]);
+  assert.equal(results[0].ok, true);
+  assert.equal(results[0].recoveredAfterTransportLoss, true);
+  assert.equal(results[0].changed, null);
+  assert.equal(results[1].error, 'lamha_write_outcome_not_applied');
+  assert.equal(results[2].error, 'lamha_write_outcome_unknown');
+  assert.equal(results[2].retryable, false);
+});
+
+test('Lamha writes are rejected client-side above the five-store safe batch', async () => {
+  assert.equal(LAMHA_WRITE_BATCH_SIZE, 5);
+  await assert.rejects(
+    () => updateLamhaStoreStatuses([1, 2, 3, 4, 5, 6], false, 'financial_policy'),
+    /لا تتجاوز 5 متاجر/,
+  );
+});
+
 test('wallet decision impact keeps negative wallet and positive-wallet invoice cases distinct', () => {
   assert.equal(decisionFinancialImpact({ customer: { walletBalance: -42.75 } }, 'negative'), 42.75);
   assert.equal(decisionFinancialImpact({ customer: { walletBalance: 80, owed: 125 } }, 'deduct'), 80);
@@ -180,7 +214,7 @@ test('operational surfaces share the V2 result, preflight, and action-result con
   assert.match(money, /decisionSelectionStorageKey/);
   assert.match(money, /الحد الأدنى للمبلغ المتجاوز/);
   assert.match(money, /decisionMinAmount/);
-  assert.match(walletReview, /فحص حالة الحسابات مباشرة من لمحة/);
+  assert.match(walletReview, /تظهر حالة الحساب من آخر مزامنة/);
   assert.match(walletReview, /إيقاف الحسابات والتحقق من النتيجة في لمحة/);
   assert.doesNotMatch(money, /label: 'فحص حالة لمحة ومراجعة الإيقاف', variant: 'danger'/);
   assert.match(aging, /<OperationalResultSet/);
@@ -190,7 +224,7 @@ test('operational surfaces share the V2 result, preflight, and action-result con
   assert.match(collections, /className="collections-today-plan"/);
   assert.match(lamha, /context: 'financial_policy'/);
   assert.match(lamha, /<ActionResult/);
-  assert.match(walletReview, /context: enforceFinancialPolicy \? 'financial_policy' : 'direct'/);
+  assert.match(walletReview, /actionContext = 'financial_policy'/);
   assert.match(walletReview, /mode: 'deactivate'/);
   assert.match(walletReview, /الإيقاف لا يطبّق رصيدًا ولا يسوي فاتورة ولا يكتب في Zoho/);
   assert.match(store, /createSubmissionGuard/);

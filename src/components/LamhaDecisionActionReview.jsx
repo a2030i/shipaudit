@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from './UI.jsx';
 import BulkPreflightDialog from './operations/BulkPreflightDialog.jsx';
 import {
-  lamhaStatusFailureLabel, loadCachedLamhaStoreStatuses, needsLamhaStatusRefresh,
+  lamhaStatusFailureLabel, loadCachedLamhaStoreStatuses,
   runLamhaStoreOperation,
 } from '../lib/lamhaStoreStatusService.js';
 import {
-  decisionFinancialImpact, decisionStoreId, decisionTitle, evaluateLamhaStopEligibility,
+  decisionFinancialImpact, decisionStoreId, decisionTitle, evaluateLamhaStopPreflight,
 } from '../lib/lamhaDecisionActions.js';
 import { loadLamhaFinancialPolicyData } from '../lib/lamhaFinancialPolicyService.js';
 import {
@@ -19,14 +19,13 @@ const MONEY = value => Number(value || 0).toLocaleString('en-US', {
 
 export default function LamhaDecisionActionReview({ rows = [], decision, enforceFinancialPolicy = false, onClose }) {
   const [results, setResults] = useState(() => new Map());
-  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState({ completed: 0, total: 0, label: '' });
   const [actionResult, setActionResult] = useState(null);
   const [policy, setPolicy] = useState({ loading: enforceFinancialPolicy, rows: new Map(), error: null });
-  const stopRef = useRef(false);
   const submissionGuardRef = useRef(createSubmissionGuard());
   const storeIds = useMemo(() => [...new Set(rows.map(decisionStoreId).filter(Boolean))], [rows]);
+  const actionContext = 'financial_policy';
 
   useEffect(() => {
     let cancelled = false;
@@ -47,47 +46,21 @@ export default function LamhaDecisionActionReview({ rows = [], decision, enforce
 
   useEffect(() => {
     let cancelled = false;
-    stopRef.current = false;
     const load = async () => {
-      setLoading(true);
-      let restored = [];
       try {
         const cached = await loadCachedLamhaStoreStatuses(storeIds);
-        restored = cached.results || [];
+        if (cancelled) return;
+        setResults(new Map((cached.results || []).map(result => [Number(result.storeId), result])));
       } catch {
-        restored = [];
+        if (!cancelled) setResults(new Map());
       }
-      if (cancelled) return;
-      const restoredMap = new Map(restored.map(result => [Number(result.storeId), result]));
-      setResults(restoredMap);
-      const targets = storeIds.filter(storeId => needsLamhaStatusRefresh(restoredMap.get(storeId)));
-      if (targets.length) {
-        setProgress({ completed: 0, total: targets.length, label: 'فحص حالة الحسابات مباشرة من لمحة' });
-        const summary = await runLamhaStoreOperation({
-          storeIds: targets,
-          mode: 'get',
-          context: enforceFinancialPolicy ? 'financial_policy' : 'direct',
-          shouldStop: () => cancelled || stopRef.current,
-          onProgress: ({ completed, total, results: nextResults }) => {
-            if (cancelled) return;
-            setProgress({ completed, total, label: 'فحص حالة الحسابات مباشرة من لمحة' });
-            setResults(current => {
-              const next = new Map(current);
-              nextResults.forEach(result => next.set(Number(result.storeId), result));
-              return next;
-            });
-          },
-        });
-        if (!cancelled && summary.failed) toast(`${summary.failed} حساب تعذر فحصه ويحتاج مراجعة`, 'warn');
-      }
-      if (!cancelled) setLoading(false);
     };
     load();
-    return () => { cancelled = true; stopRef.current = true; };
-  }, [enforceFinancialPolicy, storeIds]);
+    return () => { cancelled = true; };
+  }, [storeIds]);
 
   const preflight = useMemo(() => summarizeBulkPreflight(rows, row => {
-    if (loading || policy.loading) return { status: 'review', reason: 'جارٍ فحص حالة لمحة والاستحقاق المالي' };
+    if (policy.loading) return { status: 'review', reason: 'جارٍ التحقق من الاستحقاق المالي' };
     if (enforceFinancialPolicy) {
       if (policy.error) return { status: 'review', reason: 'تعذر التحقق من قاعدة الإيقاف المالية' };
       const policyRow = policy.rows.get(decisionStoreId(row));
@@ -95,8 +68,8 @@ export default function LamhaDecisionActionReview({ rows = [], decision, enforce
       if (!policyRow.eligible) return { status: 'ineligible', reason: policyRow.exclusionReason || 'غير مؤهل ماليًا' };
       if (policyRow.policyGroup !== 'overdue') return { status: 'ineligible', reason: 'لم يعد لديه قابل للتحصيل متجاوز 30 يومًا' };
     }
-    return evaluateLamhaStopEligibility(row, results.get(decisionStoreId(row)));
-  }), [enforceFinancialPolicy, loading, policy, results, rows]);
+    return evaluateLamhaStopPreflight(row, results.get(decisionStoreId(row)));
+  }), [enforceFinancialPolicy, policy, results, rows]);
   const eligibleAmount = preflight.eligible.reduce((sum, entry) => (
     sum + decisionFinancialImpact(entry.item, decision)
   ), 0);
@@ -133,7 +106,7 @@ export default function LamhaDecisionActionReview({ rows = [], decision, enforce
       const summary = await runLamhaStoreOperation({
         storeIds: eligibleRows.map(decisionStoreId),
         mode: 'deactivate',
-        context: enforceFinancialPolicy ? 'financial_policy' : 'direct',
+        context: actionContext,
         onProgress: ({ completed, total }) => setProgress({ completed, total, label: 'إيقاف الحسابات والتحقق من النتيجة في لمحة' }),
       });
       setActionResult(summarizeActionResults([
@@ -141,7 +114,11 @@ export default function LamhaDecisionActionReview({ rows = [], decision, enforce
           key: Number(item.storeId),
           label: nameById.get(Number(item.storeId)) || `متجر #${item.storeId}`,
           status: item.ok ? (item.changed === false ? 'skipped' : 'success') : 'failed',
-          reason: item.ok && item.changed === false ? 'كان الحساب موقوفًا قبل التنفيذ' : item.error || item.message || null,
+          reason: item.ok && item.changed === false
+            ? 'كان الحساب موقوفًا قبل التنفيذ'
+            : item.ok && item.recoveredAfterTransportLoss
+              ? 'تم تأكيد الإيقاف بعد انقطاع الرد'
+              : lamhaStatusFailureLabel(item) || item.message || null,
         })),
         ...[...preflight.ineligible, ...preflight.requiresReview].map(entry => ({
           key: decisionStoreId(entry.item), label: entry.item.customer?.storeName || entry.item.customer?.name,
@@ -171,19 +148,20 @@ export default function LamhaDecisionActionReview({ rows = [], decision, enforce
     progress={progress}
     result={actionResult}
     impact={<div><span>الأثر المرتبط بالحالة <strong>{MONEY(eligibleAmount)} ر.س</strong></span><small style={{ display: 'block', marginTop: 5 }}>الإيقاف لا يطبّق رصيدًا ولا يسوي فاتورة ولا يكتب في Zoho.</small></div>}
-    notice={loading
-      || policy.loading
-      ? 'جارٍ استعادة الفحوص الحديثة وقراءة حالة لمحة والتحقق من قاعدة الإيقاف المالية.'
+    notice={policy.loading
+      ? 'تظهر حالة الحساب من آخر مزامنة، وجارٍ التحقق من قاعدة الإيقاف المالية.'
       : enforceFinancialPolicy
-        ? 'المؤهل فقط: قابل للتحصيل متجاوز 30 يومًا، بلا فرق مطابقة، وحساب لمحة يعمل. يعاد التحقق المالي قبل التنفيذ.'
-        : 'المؤهل فقط هو الحساب الذي أثبتت قراءة لمحة الحديثة أنه يسمح بإنشاء الشحنات.'}
+        ? 'تعرض الحالة المحفوظة فورًا. عند التنفيذ تتحقق لمحة من الحالة الحالية قبل كل إيقاف، ويعاد التحقق المالي مرة واحدة.'
+        : 'تعرض الحالة من آخر مزامنة محفوظة، وتتحقق لمحة مباشرة من الحالة الحالية قبل كل إيقاف.'}
     renderRow={entry => {
       const row = entry.item;
       const storeId = decisionStoreId(row);
       const live = results.get(storeId);
       const policyRow = policy.rows.get(storeId);
       const reason = entry.status === 'eligible'
-        ? enforceFinancialPolicy ? `مؤهل · ${MONEY(policyRow?.overdue30Amount)} ر.س متجاوز +30` : 'حساب لمحة يعمل'
+        ? enforceFinancialPolicy
+          ? `مؤهل · ${MONEY(policyRow?.overdue30Amount)} ر.س متجاوز +30 · ${entry.reason || 'فحص لمحة حديث'}`
+          : entry.reason || 'حساب لمحة يعمل · فحص حديث'
         : entry.reason || lamhaStatusFailureLabel(live);
       return <div className={`is-${entry.status}`} key={row.identityKey || storeId}>
         <span><b>{row.customer?.storeName || row.customer?.name || `متجر #${storeId}`}</b><small style={{ display: 'block' }}>#{storeId || '—'} · {MONEY(decisionFinancialImpact(row, decision))} ر.س</small></span>

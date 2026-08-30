@@ -13,6 +13,8 @@ const LAMHA_ERROR_LABELS = {
   lamha_identifier_mismatch: 'أعادت لمحة حسابًا لا يطابق رقم المتجر المطلوب',
   lamha_status_write_failed: 'رفضت لمحة تحديث حالة حساب المتجر',
   lamha_status_verification_failed: 'أُرسل الطلب لكن لم تؤكد لمحة حالة الحساب الجديدة',
+  lamha_write_outcome_not_applied: 'لم يتغير حساب المتجر بعد انقطاع الرد؛ لم يُعد الإجراء تلقائيًا',
+  lamha_write_outcome_unknown: 'انقطع الرد وتعذر تأكيد حالة الحساب؛ راجع الحالة قبل إعادة الإجراء',
   lamha_rate_limit_wait_timeout: 'تعذر تنفيذ الطلب ضمن حد لمحة الآمن؛ أعد المحاولة بعد قليل',
   lamha_export_failed: 'تعذر تنزيل تصدير متاجر لمحة',
   lamha_export_content_type_invalid: 'أعادت لمحة استجابة غير متوقعة بدل ملف المتاجر',
@@ -28,9 +30,19 @@ async function lamhaFunctionError(error) {
   }
   const code = payload?.error;
   const baseCode = String(code || '').split(':')[0];
-  const message = LAMHA_ERROR_LABELS[code] || LAMHA_ERROR_LABELS[baseCode] || payload?.message || error?.message || 'تعذر الوصول إلى لمحة';
+  const rawMessage = String(error?.message || '');
+  const httpStatus = Number(error?.context?.status) || null;
+  const transportFailure = /failed to send a request|failed to fetch|networkerror|load failed/i.test(rawMessage);
+  const uncertainWriteOutcome = transportFailure || (httpStatus != null && httpStatus >= 500);
+  const genericFunctionFailure = /edge function returned a non-2xx|functionsfetcherror|functionshttperror/i.test(rawMessage);
+  const message = LAMHA_ERROR_LABELS[code] || LAMHA_ERROR_LABELS[baseCode] || payload?.message
+    || (transportFailure || genericFunctionFailure ? 'تعذر استلام رد خدمة لمحة' : rawMessage)
+    || 'تعذر الوصول إلى لمحة';
   const observed = payload?.observedStatus ? ` (الحالة المرصودة: ${payload.observedStatus})` : '';
-  return new Error(`${message}${observed}`);
+  const normalized = new Error(`${message}${observed}`);
+  normalized.code = code || baseCode || null;
+  normalized.uncertainWriteOutcome = uncertainWriteOutcome;
+  return normalized;
 }
 
 async function callLamhaStoreStatus(action, storeId) {
@@ -55,6 +67,7 @@ export async function syncLamhaDirectory() {
 }
 
 export const LAMHA_BATCH_SIZE = 10;
+export const LAMHA_WRITE_BATCH_SIZE = 5;
 export const LAMHA_STATUS_FRESH_MS = 15 * 60 * 1000;
 export const LAMHA_STATUS_UPDATED_EVENT = 'shipaudit:lamha-status-updated';
 
@@ -150,12 +163,12 @@ export async function loadCachedLamhaStoreStatuses(storeIds) {
   return data;
 }
 
-async function callLamhaStoreBatch(action, storeIds, context = 'direct') {
+async function callLamhaStoreBatch(action, storeIds, context = 'direct', maxBatchSize = LAMHA_BATCH_SIZE) {
   const ids = [...new Set((storeIds || [])
     .map(Number)
     .filter(id => Number.isSafeInteger(id) && id > 0))];
   if (!ids.length) throw new Error('اختر متجرًا واحدًا على الأقل');
-  if (ids.length > LAMHA_BATCH_SIZE) throw new Error(`الدفعة الواحدة لا تتجاوز ${LAMHA_BATCH_SIZE} متاجر`);
+  if (ids.length > maxBatchSize) throw new Error(`الدفعة الواحدة لا تتجاوز ${maxBatchSize} متاجر`);
   const { data, error } = await supabase.functions.invoke('lamha-store-status', {
     body: { action: `batch-${action}`, storeIds: ids, context },
   });
@@ -165,7 +178,52 @@ async function callLamhaStoreBatch(action, storeIds, context = 'direct') {
 }
 
 export const loadLamhaStoreStatuses = (storeIds, context) => callLamhaStoreBatch('get', storeIds, context);
-export const updateLamhaStoreStatuses = (storeIds, active, context) => callLamhaStoreBatch(active ? 'activate' : 'deactivate', storeIds, context);
+export const updateLamhaStoreStatuses = (storeIds, active, context) => callLamhaStoreBatch(
+  active ? 'activate' : 'deactivate', storeIds, context, LAMHA_WRITE_BATCH_SIZE,
+);
+
+export function recoverLamhaWriteResults(storeIds, mode, verificationResults = []) {
+  const verifiedById = new Map((verificationResults || []).map(result => [Number(result?.storeId), result]));
+  const desired = mode === 'activate';
+  return (storeIds || []).map(rawStoreId => {
+    const storeId = Number(rawStoreId);
+    const verification = verifiedById.get(storeId);
+    if (verification?.ok && verification.store?.canCreateShipments === desired) {
+      return {
+        ...verification,
+        ok: true,
+        changed: null,
+        recoveredAfterTransportLoss: true,
+        message: 'تم تأكيد الحالة من لمحة بعد انقطاع الرد',
+      };
+    }
+    if (verification?.ok) {
+      return {
+        ok: false,
+        storeId,
+        error: 'lamha_write_outcome_not_applied',
+        retryable: true,
+        recoveredAfterTransportLoss: true,
+      };
+    }
+    return {
+      ok: false,
+      storeId,
+      error: 'lamha_write_outcome_unknown',
+      retryable: false,
+      recoveredAfterTransportLoss: true,
+    };
+  });
+}
+
+async function verifyWriteOutcomeAfterTransportLoss(batch, mode, context) {
+  try {
+    const verification = await loadLamhaStoreStatuses(batch, context);
+    return recoverLamhaWriteResults(batch, mode, verification.results);
+  } catch {
+    return recoverLamhaWriteResults(batch, mode, []);
+  }
+}
 
 export function estimateLamhaOperationSeconds(storeCount, mode = 'get') {
   const requestsPerStore = mode === 'get' ? 1 : 3;
@@ -183,9 +241,10 @@ export async function runLamhaStoreOperation({
     .map(Number)
     .filter(id => Number.isSafeInteger(id) && id > 0))];
   const output = [];
-  for (let index = 0; index < ids.length; index += LAMHA_BATCH_SIZE) {
+  const batchSize = mode === 'get' ? LAMHA_BATCH_SIZE : LAMHA_WRITE_BATCH_SIZE;
+  for (let index = 0; index < ids.length; index += batchSize) {
     if (shouldStop()) break;
-    const batch = ids.slice(index, index + LAMHA_BATCH_SIZE);
+    const batch = ids.slice(index, index + batchSize);
     let result;
     try {
       result = mode === 'get'
@@ -194,12 +253,25 @@ export async function runLamhaStoreOperation({
       output.push(...result.results);
       cacheLamhaOperationResults(result.results, { mode, context });
     } catch (error) {
-      output.push(...batch.map(storeId => ({
-        ok: false,
-        storeId,
-        error: error?.message || 'تعذر تنفيذ الدفعة',
-        cacheSaved: false,
-      })));
+      if (mode === 'get') {
+        output.push(...batch.map(storeId => ({
+          ok: false,
+          storeId,
+          error: error?.message || 'تعذر فحص الدفعة',
+          cacheSaved: false,
+        })));
+      } else if (error?.uncertainWriteOutcome) {
+        const recovered = await verifyWriteOutcomeAfterTransportLoss(batch, mode, context);
+        output.push(...recovered);
+        cacheLamhaOperationResults(recovered, { mode, context });
+      } else {
+        output.push(...batch.map(storeId => ({
+          ok: false,
+          storeId,
+          error: error?.message || 'تعذر تنفيذ الدفعة',
+          cacheSaved: false,
+        })));
+      }
     }
     onProgress?.({
       completed: Math.min(index + batch.length, ids.length),

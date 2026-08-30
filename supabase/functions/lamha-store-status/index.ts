@@ -9,6 +9,7 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 const LAMHA_BASE = 'https://app2.lamha.sa/api/v1';
 const MAX_BATCH_SIZE = 10;
+const MAX_WRITE_BATCH_SIZE = 5;
 const MAX_RESTORE_IDS = 5000;
 const STATUS_SCAN_ACTION = 'فحص حالات حسابات لمحة';
 const STATUS_CACHE_TTL_MS = 15 * 60 * 1000;
@@ -468,6 +469,10 @@ Deno.serve(async (req) => {
         return json(req, { ok: false, error: 'invalid_batch', maxBatchSize: MAX_BATCH_SIZE }, 400);
       }
       const itemAction = action.slice(6) as 'get' | 'activate' | 'deactivate';
+      const maxBatchSize = itemAction === 'get' ? MAX_BATCH_SIZE : MAX_WRITE_BATCH_SIZE;
+      if (storeIds.length > maxBatchSize) {
+        return json(req, { ok: false, error: 'invalid_batch', maxBatchSize }, 400);
+      }
       const context = body?.context === 'financial_policy' ? 'financial_policy' : 'direct';
       const results = [];
       for (const storeId of storeIds) {
