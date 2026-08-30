@@ -133,12 +133,14 @@ test('UI requires review, refreshes finance before writes, and keeps Lamha throt
   assert.match(service, /loadCachedLamhaStoreStatuses/);
   assert.match(service, /LAMHA_STATUS_FRESH_MS/);
   assert.match(service, /LAMHA_BATCH_SIZE = 10/);
+  assert.match(service, /LAMHA_WRITE_BATCH_SIZE = 5/);
   assert.match(component, /فحص من زال عنهم الحجز المالي/);
   assert.match(component, /needsLamhaStatusRefresh/);
   const edge = await readFile(new URL('../supabase/functions/lamha-store-status/index.ts', import.meta.url), 'utf8');
   assert.match(edge, /restore-scan/);
   assert.match(edge, /STATUS_SCAN_ACTION/);
   assert.match(edge, /financial_policy/);
+  assert.match(edge, /MAX_WRITE_BATCH_SIZE = 5/);
   assert.match(edge, /READ_RETRY_LIMIT = 1/);
   assert.match(edge, /TRANSIENT_HTTP_STATUSES/);
   assert.match(edge, /lamha_identifier_mismatch/);

@@ -38,7 +38,8 @@ test('opening decision results is read-only and Lamha mutation remains a reviewe
   assert.match(customerMoney, /فتح النتائج للقراءة فقط ولا ينفذ خصمًا أو إيقافًا/);
   assert.match(customerMoney, /فحص حالة لمحة ومراجعة الإيقاف/);
   assert.match(customerMoney, /<LamhaDecisionActionReview rows=\{decisionScopeRows\}/);
-  assert.match(lamhaReview, /evaluateLamhaStopEligibility/);
+  assert.match(lamhaReview, /evaluateLamhaStopPreflight/);
+  assert.match(lamhaReview, /actionContext = 'financial_policy'/);
   assert.match(lamhaReview, /createSubmissionGuard/);
   assert.doesNotMatch(customerMoney, /runLamhaStoreOperation/);
 });
