@@ -65,7 +65,9 @@ test('automatic Lamha export replaces the manual store upload path in primary UX
     readFile(new URL('../supabase/migrations/20260829082852_lamha_export_wallet_authority.sql', import.meta.url), 'utf8'),
   ]);
   assert.match(guard, /lamhaExportFetch/);
-  assert.match(guard, /p_source: 'lamha_employee_api_export_daily'/);
+  assert.match(guard, /lamha_employee_api_export_scheduled/);
+  assert.match(guard, /lamha_employee_api_export_manual/);
+  assert.match(guard, /syncDirectory\(token, auth\.userId, auth\.kind === 'cron' \? 'cron' : 'user'\)/);
   assert.match(guard, /parsedExport\.rows\.length !== rawRows\.length/);
   assert.match(uploads, /تم إيقاف رفع دليل المتاجر يدويًا/);
   assert.doesNotMatch(uploads, /id:\s*'merchants'/);
