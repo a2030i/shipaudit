@@ -4,6 +4,38 @@
 @media(max-width:800px){.finance-executive{padding:15px 12px calc(105px + env(safe-area-inset-bottom))}.fex-header{display:block}.fex-header h1{font-size:23px}.fex-header p{font-size:9px}.fex-header__controls{margin-top:11px}.fex-header__controls>small{display:none}.fex-period{flex:1}.fex-period span{flex:1;justify-content:center}.fex-refresh{width:38px;padding:0;justify-content:center}.fex-refresh span{display:none}.fex-section__heading>small{display:none}.fex-metrics{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;margin-inline:-12px;padding-inline:12px;border-inline:0;border-radius:0;background:transparent}.fex-metric{flex:0 0 180px;min-height:96px;scroll-snap-align:start;border:1px solid #dfe5ed!important;border-radius:10px;margin-inline-end:7px}.fex-grid--primary{grid-template-columns:1fr}.fex-equation{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;background:#fff}.fex-equation>span{flex:0 0 126px;scroll-snap-align:start}.fex-equation>span.is-result{flex-basis:165px}.fex-control-rows{grid-template-columns:1fr}.fex-control-rows button{border-inline-end:0;border-top:1px solid #e7ebf1}.fex-control-rows button:first-child{border-top:0}.fex-merchant-pulse{grid-template-columns:105px minmax(0,1fr);gap:9px}.fex-merchant-pulse__movement{display:flex;overflow-x:auto;scroll-snap-type:x mandatory}.fex-merchant-pulse__movement button{flex:0 0 125px;scroll-snap-align:start}.fex-panel{padding:12px}.fex-panel__heading h2,.fex-section__heading h2{font-size:14px}}
 @media(max-width:460px){.fex-pnl-bridge button{grid-template-columns:105px minmax(70px,1fr) 75px;gap:7px}.fex-forecast-summary{grid-template-columns:1fr}.fex-collection-line{display:flex;overflow-x:auto}.fex-collection-line span{flex:0 0 138px}.fex-merchant-pulse{grid-template-columns:1fr}.fex-merchant-pulse__total{grid-template-columns:1fr auto;align-items:center}.fex-merchant-pulse__total span{grid-column:1/-1}.fex-merchant-pulse__states{width:100%}.fex-merchant-pulse__movement{grid-column:auto}}
 
+/* Mobile finance is a decision surface, not a horizontal carousel. */
+@media(max-width:800px){
+  .fex-header{margin-bottom:10px}
+  .fex-header>div:first-child>span{display:none}
+  .fex-header h1{font-size:19px}
+  .fex-header p{margin-top:3px;line-height:1.55}
+  .fex-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));overflow:visible;margin-inline:0;padding-inline:0;border:1px solid #dfe5ed;border-radius:10px;background:#fff}
+  .fex-metric{min-height:88px;grid-template-columns:29px minmax(0,1fr) 11px;gap:7px;padding:10px 9px;margin:0!important;border:0!important;border-block-end:1px solid #e7ebf1!important;border-inline-end:1px solid #e7ebf1!important;border-radius:0;scroll-snap-align:none}
+  .fex-metric:nth-child(2n){border-inline-end:0!important}
+  .fex-metric:nth-last-child(-n+2){border-block-end:0!important}
+  .fex-metric__icon{width:29px;height:29px}
+  .fex-metric small,.fex-metric em{font-size:9px}
+  .fex-metric strong{font-size:13px}
+  .fex-equation{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));overflow:visible;background:#fff}
+  .fex-equation>span{min-height:68px;display:grid;align-content:center;flex:none;padding:9px 10px;border-block-end:1px solid #e2e7ee;scroll-snap-align:none}
+  .fex-equation>span:nth-child(2n){border-inline-end:0}
+  .fex-equation>span.is-result{grid-column:1/-1;min-height:62px;border-block-end:0}
+  .fex-equation small{font-size:9px}
+  .fex-equation strong{font-size:12px}
+  .fex-merchant-pulse__movement{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));overflow:visible}
+  .fex-merchant-pulse__movement button{min-height:58px;flex:none;scroll-snap-align:none}
+  .fex-merchant-pulse__movement button:nth-child(2n){border-inline-end:0}
+  .fex-merchant-pulse__movement button:nth-child(n+3){border-top:1px solid #e7ebf1}
+  .fex-residual{font-size:9.5px}
+}
+@media(max-width:460px){
+  .fex-collection-line{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));overflow:visible}
+  .fex-collection-line span{min-width:0;flex:none;padding:8px 6px}
+  .fex-collection-line small{font-size:8px}
+  .fex-collection-line strong{font-size:9.5px}
+}
+
 /* The chart rule intentionally sizes only the chart SVG. The inline chevron
    inside the CTA must retain its icon dimensions. */
 .fex-cash-chart>span svg{width:13px;height:13px;overflow:visible}

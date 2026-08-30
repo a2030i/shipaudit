@@ -766,7 +766,7 @@ export default function Collections({ isActive = true }) {
                         {STAGE_LABELS[t.stage] || t.stage}
                       </span>
                     </td>
-                    <td data-label="الدين" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--red)' }}>
+                    <td data-label="الدين" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', fontWeight: 750, color: 'var(--text)' }}>
                       {fmtCompact(taskDebt(t))}
                     </td>
                     <td data-label="عمر الدين" style={{ padding: '10px 12px', fontSize: 11, color: 'var(--muted)' }}>

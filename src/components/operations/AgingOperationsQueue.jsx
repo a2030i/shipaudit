@@ -133,10 +133,12 @@ function RowCard({ row, selected, onSelect, onOpen, onInvoices }) {
       </details>
     </div>
     <div className="aoq-card__reason"><WalletCards size={15}/><span><b>سبب الظهور:</b> {row.reason}</span></div>
-    <div className="aoq-card__next"><span>الإجراء التالي</span><strong>{row.nextAction}</strong></div>
-    <div className="aoq-card__actions">
-      <button type="button" onClick={onOpen} disabled={!canOpenStore} title={canOpenStore ? 'فتح Store 360' : 'Store ID غير متاح'}>فتح الملف <ArrowLeft size={14}/></button>
-      <button type="button" onClick={onInvoices} disabled={!canOpenStore} title={canOpenStore ? 'فتح الفواتير المكوّنة للمبلغ' : 'Store ID غير متاح'}>الفواتير المكوّنة للمبلغ <FileText size={14}/></button>
+    <div className="aoq-card__decision">
+      <div className="aoq-card__next"><span>الإجراء التالي</span><strong>{row.nextAction}</strong></div>
+      <div className="aoq-card__actions">
+        <button type="button" onClick={onOpen} disabled={!canOpenStore} title={canOpenStore ? 'فتح Store 360' : 'Store ID غير متاح'}>فتح الملف <ArrowLeft size={14}/></button>
+        <button type="button" onClick={onInvoices} disabled={!canOpenStore} title={canOpenStore ? 'فتح الفواتير المكوّنة للمبلغ' : 'Store ID غير متاح'} aria-label="فتح الفواتير المكوّنة للمبلغ"><FileText size={14}/><span>الفواتير</span></button>
+      </div>
     </div>
   </article>;
 }
@@ -217,10 +219,10 @@ export default function AgingOperationsQueue({
     disabled: loading || !sourceHealthy || !reconciliation?.ok,
     showActionsWhenEmpty: false,
     actions: [
-      ...(canSuspend ? [{ key: 'suspend', label: 'إيقاف الحسابات', icon: <ShieldAlert size={14}/>, variant: 'primary', onClick: () => onBulk('suspend') }] : []),
+      ...(canSuspend ? [{ key: 'suspend', label: 'إيقاف الحسابات', icon: <ShieldAlert size={14}/>, variant: 'danger', onClick: () => onBulk('suspend') }] : []),
       { key: 'assign', label: 'إسناد', icon: <UserRoundCog size={14}/>, onClick: () => onBulk('assign') },
       { key: 'followup', label: 'متابعة', icon: <CalendarClock size={14}/>, onClick: () => onBulk('followup') },
-      { key: 'campaign', label: 'حملة WhatsApp', icon: <Megaphone size={14}/>, variant: 'accent', onClick: () => onBulk('campaign') },
+      { key: 'campaign', label: 'حملة WhatsApp', icon: <Megaphone size={14}/>, variant: 'primary', onClick: () => onBulk('campaign') },
       { key: 'ivr', label: 'مراجعة IVR', icon: <PhoneCall size={14}/>, onClick: () => onBulk('ivr') },
       { key: 'export', label: 'تصدير', icon: <Download size={14}/>, onClick: () => onBulk('export') },
     ],

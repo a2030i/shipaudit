@@ -27,3 +27,48 @@
   .aoq-card__facts>.aoq-card__secondary{flex-basis:100%}
   .aoq-card__actions{max-inline-size:100%;scrollbar-width:thin}
 }
+
+/* V2 operational result rows: one dense decision row, without a second
+   action-only row or alarm coloring for ordinary financial values. */
+.aoq-list__head,.aoq-card{grid-template-columns:24px minmax(190px,1.15fr) minmax(300px,1.8fr) minmax(170px,1fr) minmax(190px,.9fr)}
+.aoq-list__head{min-height:36px;font-size:10px}
+.aoq-card{min-height:78px;padding-block:8px}
+.aoq-amount strong{color:var(--text)!important}
+.aoq-card__reason{font-size:9.5px;line-height:1.45}
+.aoq-card__reason svg{color:var(--muted)}
+.aoq-card__decision{min-width:0;display:grid;gap:6px}
+.aoq-card__decision .aoq-card__next{display:grid;gap:2px}
+.aoq-card__decision .aoq-card__next span{font-size:9px}
+.aoq-card__decision .aoq-card__next strong{overflow:hidden;color:var(--text);text-overflow:ellipsis;white-space:nowrap}
+.aoq-card__decision .aoq-card__actions{display:flex;justify-content:flex-start;gap:5px;padding:0}
+.aoq-card__decision .aoq-card__actions button{min-height:30px;padding:4px 7px;color:var(--text2);background:var(--surface);font-size:9px}
+@media(max-width:1180px) and (min-width:701px){
+  .aoq-list__head,.aoq-card{grid-template-columns:24px minmax(160px,1fr) minmax(240px,1.5fr) minmax(145px,.9fr) minmax(165px,.9fr);gap:8px}
+  .aoq-list__head span:nth-child(5){display:block}
+  .aoq-card__decision{grid-column:auto}
+}
+@media(max-width:900px) and (min-width:701px){
+  .aoq-list__head,.aoq-card{grid-template-columns:24px minmax(145px,1fr) minmax(230px,1.55fr) minmax(155px,.95fr);gap:7px}
+  .aoq-list__head span:nth-child(4){display:none}
+  .aoq-list__head span:nth-child(5){display:block}
+  .aoq-card__reason{display:none}
+  .aoq-card__decision{grid-column:auto}
+}
+@media(max-width:700px){
+  .aoq-card{min-height:0;grid-template-columns:26px minmax(0,1fr);gap:5px 8px;padding:8px 9px}
+  .aoq-card__select{grid-column:1;grid-row:1;align-self:start;padding-top:2px}
+  .aoq-card__select input{inline-size:20px;block-size:20px;min-inline-size:20px!important;min-block-size:20px!important}
+  .aoq-card__identity{grid-column:2;grid-row:1;align-items:center}
+  .aoq-card__identity small{margin-top:1px}
+  .aoq-card__facts{grid-column:2;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px 8px;padding:0;font-size:8.3px;line-height:1.3}
+  .aoq-card__facts>span:nth-child(n+5){display:none}
+  .aoq-card__facts>.aoq-card__secondary{display:none}
+  .aoq-card__reason{grid-column:2;display:block;max-block-size:28px;overflow:hidden;font-size:8.8px;line-height:1.55}
+  .aoq-card__reason svg{display:none}
+  .aoq-card__decision{grid-column:2;min-block-size:40px;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:7px}
+  .aoq-card__decision .aoq-card__next,.aoq-card__decision .aoq-card__actions{grid-column:auto;grid-row:auto}
+  .aoq-card__decision .aoq-card__next{align-self:center;line-height:1.35}
+  .aoq-card__decision .aoq-card__actions{align-self:center;block-size:36px;overflow:visible}
+  .aoq-card__decision .aoq-card__actions button{min-height:36px;padding-inline:9px}
+  .aoq-card__decision .aoq-card__actions button:last-child span{display:none}
+}

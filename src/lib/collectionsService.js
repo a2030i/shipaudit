@@ -28,12 +28,12 @@
 import { supabase } from './supabase.js';
 
 const TRIGGER_LABELS = {
-  over_credit_limit:  '🛑 تجاوز السقف',
-  aged_30:            '🟡 متأخّر 30 يوم',
-  aged_60:            '🟠 متأخّر 60 يوم',
-  aged_90:            '🔴 متأخّر 90 يوم',
-  prepaid_with_debt:  '🚨 دفع مسبق وعليه دين',
-  manual:             '✍ يدوي',
+  over_credit_limit:  'تجاوز السقف',
+  aged_30:            'متأخّر 30 يوم',
+  aged_60:            'متأخّر 60 يوم',
+  aged_90:            'متأخّر 90 يوم',
+  prepaid_with_debt:  'دفع مسبق وعليه دين',
+  manual:             'يدوي',
 };
 const STAGE_LABELS = {
   todo:       'جديدة',

@@ -36,3 +36,13 @@
 @media(max-width:700px){.s360-action-center{position:relative;top:auto}.s360-kpi-row{grid-template-columns:repeat(3,minmax(0,1fr))}.s360-kpi{min-height:108px}.s360-kpi.is-secondary{display:none}.s360-decision-panel,.s360-reconciliation-status{grid-template-columns:auto minmax(0,1fr);padding:14px;gap:10px}.s360-decision-panel>button,.s360-reconciliation-status>button{grid-column:1/3;width:100%}.s360-decision-panel__copy strong{font-size:13.5px}.s360-decision-panel__copy p{font-size:10px}.s360-summary-grid{gap:7px}.s360-summary-grid .card{padding:12px}.s360-view-stack{gap:17px}}
 .s360-communication-summary{width:100%;display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 0 12px;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);font:inherit;cursor:pointer;text-align:right}.s360-communication-summary:hover{border-color:color-mix(in srgb,var(--accent) 38%,var(--border));background:color-mix(in srgb,var(--accent) 3%,var(--card))}.s360-communication-summary>div{display:flex;align-items:center;gap:8px;min-width:0}.s360-communication-summary span{display:grid;gap:2px;min-width:0}.s360-communication-summary b{font-size:10.5px}.s360-communication-summary small{color:var(--muted);font-size:9.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}@media(max-width:600px){.s360-communication-summary{align-items:stretch;flex-direction:column}.s360-communication-summary>div:last-child{justify-content:space-between;padding-top:7px;border-top:1px solid var(--border)}}
 @media(max-width:700px){.s360-shared-contact-context>div{grid-template-columns:1fr}}
+
+/* Two readable summary columns beat three truncated mini-cards on phones. */
+@media(max-width:700px){
+  .s360-kpi-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+  .s360-kpi{min-height:88px;padding:9px;border-radius:10px}
+  .s360-kpi-label{font-size:10px}
+  .s360-kpi strong{min-height:18px;font-size:14px}
+  .s360-kpi-detail{font-size:9.5px}
+  .s360-drill{font-size:9px}
+}

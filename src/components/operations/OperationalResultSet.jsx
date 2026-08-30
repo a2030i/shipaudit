@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Clock3, Database, RefreshCw, SearchX } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock3, Database, Info, RefreshCw, SearchX } from 'lucide-react';
 import { Btn, Spinner } from '../UI.jsx';
 import { isOperationalDataStale } from '../../lib/operationalWorkflows.js';
 import './operational-result-set.css';
@@ -32,7 +32,7 @@ export function ResultSetContext({
       <div><h2>{title}</h2>{description ? <p>{description}</p> : null}</div>
       {actions ? <div className="ors-context__actions">{actions}</div> : null}
     </div>
-    {reason ? <div className="ors-context__reason"><AlertTriangle size={15}/><span><b>سبب ظهور النتائج:</b> {reason}</span></div> : null}
+    {reason ? <div className="ors-context__reason"><Info size={15}/><span><b>سبب ظهور النتائج:</b> {reason}</span></div> : null}
     {metrics.length ? <dl className="ors-context__metrics">{metrics.map(metric => <div key={metric.key || metric.label}><dt>{metric.label}</dt><dd>{metric.value}</dd>{metric.detail ? <small>{metric.detail}</small> : null}</div>)}</dl> : null}
     <div className="ors-context__meta">
       <span className={`ors-source is-${sourceTone}`}><Database size={13}/>{source || 'المصدر غير محدد'}</span>
