@@ -79,7 +79,8 @@ test('Store 360 leads with a decision and exposes scoped reconciliation in finan
 test('Store 360 uses the local Lamha mirror first and reserves live reads for explicit refresh', async () => {
   const page = await read('../src/pages/Store360Page.jsx');
   assert.match(page, /if \(refreshKey === 0\)/);
-  assert.match(page, /source: 'local'/);
+  assert.match(page, /source: 'daily-snapshot'/);
+  assert.match(page, /setStatus\(snapshotStatus\)/);
   assert.match(page, /loadLamhaStoreStatus\(id\)/);
   assert.match(page, /refreshLamhaStatus/);
 });
