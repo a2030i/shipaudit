@@ -2,7 +2,20 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const migrationUrl = new URL('../supabase/migrations/20260830120000_lamha_store_performance_command_center.sql', import.meta.url);
+const migrationUrl = new URL('../supabase/migrations/20260829215247_lamha_store_performance_command_center.sql', import.meta.url);
+
+const migrationChain = [
+  '../supabase/migrations/20260829215247_lamha_store_performance_command_center.sql',
+  '../supabase/migrations/20260829215359_lamha_store_performance_require_midnight.sql',
+  '../supabase/migrations/20260829215712_lamha_store_performance_recent_first.sql',
+];
+
+test('Lamha performance migration history matches the three production receipts', async () => {
+  const migrations = await Promise.all(migrationChain.map(path => readFile(new URL(path, import.meta.url), 'utf8')));
+  assert.match(migrations[0], /create or replace function public\.lamha_store_performance_command_center/);
+  assert.match(migrations[1], /to_regprocedure\('public\.lamha_store_performance_command_center/);
+  assert.match(migrations[2], /order keeps recent operational activity first/);
+});
 
 test('Lamha daily performance uses one canonical Riyadh midnight snapshot per day', async () => {
   const sql = await readFile(migrationUrl, 'utf8');
