@@ -47,6 +47,7 @@ import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import {
   loadActivationConfig,
   loadCustomerActivationCommandCenter,
+  loadLamhaStorePerformance,
   loadPlatformSalesPipeline,
 } from '../lib/retargetingService.js';
 
@@ -121,11 +122,20 @@ export default function Overview({ carriers = [], isActive = true }) {
     setCustomerGrowth(current => ({ ...current, loading: true, error: null }));
     try {
       const config = await loadActivationConfig();
-      const [growth, stoppedQueue] = await Promise.all([
+      const [growth, stoppedQueue, neverShippedQueue] = await Promise.all([
         loadCustomerActivationCommandCenter(config.days, config.target, 8),
         loadPlatformSalesPipeline({ bucket: 'stopped', page: 0, limit: 1 }),
+        loadLamhaStorePerformance({ filter: 'never_shipped', page: 0, limit: 1 }),
       ]);
-      setCustomerGrowth({ loading: false, config, data: growth, stoppedCount: stoppedQueue.count, error: null, loadedAt: new Date().toISOString() });
+      setCustomerGrowth({
+        loading: false,
+        config,
+        data: growth,
+        stoppedCount: stoppedQueue.count,
+        neverShippedCount: neverShippedQueue.count,
+        error: null,
+        loadedAt: new Date().toISOString(),
+      });
     } catch (error) {
       setCustomerGrowth(current => ({ ...current, loading: false, error: error.message || 'تعذر تحميل نبض نمو العملاء' }));
     }

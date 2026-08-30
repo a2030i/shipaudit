@@ -482,7 +482,7 @@ export default function FigmaCommandCenter({
           </div>
           <div className="fco-movement__grid">
             <MovementMetric label="نشطون الآن" value={growthAvailable ? growthCurrent.active : '—'} note="عملاء فريدون بالهاتف" tone="green" onClick={() => navigate('/retargeting?view=activation&performanceFilter=active_5d')}/>
-            <MovementMetric label="متاجر لم تشحن إطلاقًا" value={merchantPulse.available ? merchantPulse.neverShipped : '—'} note="تذهب إلى فريق المبيعات" tone="amber" onClick={() => navigate('/retargeting?view=activation&performanceFilter=never_shipped')}/>
+            <MovementMetric label="متاجر لم تشحن إطلاقًا" value={growthAvailable ? money(customerGrowth.neverShippedCount) : '—'} note="تذهب إلى فريق المبيعات" tone="amber" onClick={() => navigate('/retargeting?view=activation&performanceFilter=never_shipped')}/>
             <MovementMetric label="اشتغلوا ثم توقفوا" value={growthAvailable ? money(customerGrowth.stoppedCount) : '—'} note="تذهب إلى الحفاظ على العملاء" tone="red" onClick={() => navigate('/retargeting?tab=pipeline&bucket=stopped&work=all')}/>
             <MovementMetric label="عادوا للشحن" value={growthAvailable ? growthOutcomes.resumed : '—'} note="نتيجة موضوعية آخر 30 يومًا" tone="blue" onClick={() => navigate('/retargeting?tab=pipeline&bucket=reactivated&work=all')}/>
           </div>

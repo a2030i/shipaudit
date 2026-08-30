@@ -25,11 +25,13 @@ test('the executive command center exposes the growth target and direct operatio
     read('src/components/operations/FigmaCommandCenter.jsx'),
   ]);
   assert.match(overview, /loadCustomerActivationCommandCenter/);
+  assert.match(overview, /loadLamhaStorePerformance\(\{ filter: 'never_shipped'/);
   assert.match(overview, /customerGrowth=\{customerGrowth\}/);
   for (const label of ['نمو العملاء النشطين', 'الفجوة إلى المستهدف', 'متاجر لم تشحن إطلاقًا', 'اشتغلوا ثم توقفوا', 'عادوا للشحن']) {
     assert.match(command, new RegExp(label));
   }
   assert.match(command, /performanceFilter=never_shipped/);
+  assert.match(command, /customerGrowth\.neverShippedCount/);
   assert.match(command, /bucket=stopped&work=all/);
   assert.match(command, /work=unassigned/);
 });
