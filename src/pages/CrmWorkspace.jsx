@@ -1124,7 +1124,12 @@ function LeadUploadModal({ employees, userId, onClose, onSaved }) {
         sourceChannel: 'excel',
         campaignName,
       });
-      toast(`أضيف ${res.added} جهة محتملة · تخطي ${res.skipped}${res.skippedExisting ? ` (منهم ${res.skippedExisting} عميل لدينا مستبعَد)` : ''}`, 'success');
+      toast(
+        `أضيف ${res.added} رقمًا فريدًا · استُبعد ${res.skipped}`
+        + `${res.skippedDuplicatePhone ? ` (مكرر: ${res.skippedDuplicatePhone})` : ''}`
+        + `${res.skippedExisting ? ` (عميل لمحة: ${res.skippedExisting})` : ''}`,
+        'success',
+      );
       onSaved();
     } catch (e) { toast(`فشل الحفظ: ${e.message}`, 'error'); }
     setBusy(false);
@@ -1171,11 +1176,11 @@ function LeadUploadModal({ employees, userId, onClose, onSaved }) {
               <CrmKpi label="صفوف مقروءة" value={fmt0(s.totalRows)} color="var(--accent3)"/>
               <CrmKpi label="بأرقام صالحة" value={fmt0(s.withPhone)} color="var(--green)"/>
               <CrmKpi label="أرقام غير صالحة" value={fmt0(s.invalidPhone)} color="var(--red)"/>
-              <CrmKpi label="أرقام مكررة" value={fmt0(s.duplicateRows)} color="var(--gold)"/>
+              <CrmKpi label="صفوف مكررة ستُستبعد" value={fmt0(s.duplicateExcessRows || 0)} color="var(--gold)"/>
             </div>
-            {s.duplicateRows > 0 && (
+            {s.duplicateExcessRows > 0 && (
               <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: 'color-mix(in srgb, var(--gold) 10%, transparent)', color: 'var(--gold)', fontSize: 12 }}>
-                يوجد {fmt0(s.duplicatePhones)} رقم مستخدم في أكثر من متجر. لن نحذفها، سنحفظها مع وسم “نفس الرقم” لتراجعها المبيعات.
+                يوجد {fmt0(s.duplicatePhones)} رقم مكرر. سيُحفظ سجل واحد فقط لكل رقم، وتُستبعد {fmt0(s.duplicateExcessRows)} صفوف مكررة تلقائيًا.
               </div>
             )}
             <Card style={{ padding: 12, marginTop: 12 }}>

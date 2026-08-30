@@ -2,10 +2,9 @@
 //
 // This importer is intentionally stricter than the old upload:
 // - Phones are normalized to the Saudi international form: 966...
-// - Exact repeated leads are skipped, but same-phone/different-store rows
-//   are kept and clearly flagged for the sales team.
-// - Leads whose phone already exists in the platform merchants snapshot
-//   are retained with matched_store_* metadata instead of being hidden.
+// - A phone is one campaign audience identity. Every later row with the same
+//   normalized phone is skipped even when the store name differs.
+// - Leads whose phone exists in the latest Lamha directory are excluded.
 
 import { supabase } from './supabase.js';
 import { normalizeName } from './crmService.js';
@@ -106,18 +105,6 @@ export function isRealSaudiMobile(v) {
 
 // اسم جهة وهمي/سبام يُرفَض عند الرفع والإضافة (قواعد التنظيف الصارمة 2026-07-22).
 // نصوص العرض فقط — لا يمسّ الأرقام. مبنيّ على فحص 89,671 صفاً فعلياً.
-// جوهر اسم الجهة لغرض إزالة التكرار: يزيل بادئات عامة (متجر/محل/شركة/مؤسسة/
-// سوق/ستور/store/shop/the) من الاسم **المطبَّع** فيتساوى «تراكيب» و«متجر تراكيب».
-// يُطبَّق على طرفي المقارنة (الموجود + الجديد). فراغ بعد التجريد → يرجع الأصل
-// (كي لا تتصادم كل «متجر X» ذات الجوهر الفارغ).
-const LEAD_PREFIX_RE = /^(?:متجر|محل|شركه|مؤسسه|موسسه|سوق|ستور|store|shop|the)\s+/;
-function dedupCore(norm) {
-  let s = String(norm || '');
-  let prev;
-  do { prev = s; s = s.replace(LEAD_PREFIX_RE, ''); } while (s !== prev);
-  return s.trim() || String(norm || '').trim();
-}
-
 // توحيد المنصّة: الإنجليزي = العربي (Salla→سلة · Zid→زد). يطابق canon SQL.
 export function canonPlatform(p) {
   if (!p) return null;
@@ -287,6 +274,7 @@ function duplicateDiagnostics(rows) {
   return {
     duplicatePhones: [...byPhone.values()].filter(list => list.length > 1).length,
     duplicateRows: [...byPhone.values()].filter(list => list.length > 1).reduce((s, list) => s + list.length, 0),
+    duplicateExcessRows: [...byPhone.values()].filter(list => list.length > 1).reduce((s, list) => s + list.length - 1, 0),
   };
 }
 
@@ -437,9 +425,8 @@ function cleanSocialLinks(v) {
   return Object.fromEntries(Object.entries(obj).filter(([, val]) => val != null && val !== ''));
 }
 
-// Upload a cleaned snapshot. Exact duplicate identity = same normalized
-// phone + same normalized name. Same phone with different names is not
-// removed; it is inserted with duplicate_count so the team can decide.
+// Upload a cleaned snapshot. The normalized phone is the audience identity:
+// keep only one row per phone and exclude phones in the latest Lamha directory.
 export async function uploadLeadsSnapshot({
   rows,
   userId = null,
@@ -478,13 +465,10 @@ export async function uploadLeadsSnapshot({
     if (error) throw error;
     existing.push(...(data || []));
   }
-  const existingIdentities = new Set();
-  const existingPhones = new Map();
+  const existingPhones = new Set();
   for (const r of existing || []) {
     const phone = normalizeSaudiPhone(r.phone_normalized || r.phone);
-    const norm = dedupCore(r.name_normalized || '');   // «تراكيب» = «متجر تراكيب»
-    if (phone && norm) existingIdentities.add(`${phone}|${norm}`);
-    if (phone) existingPhones.set(phone, (existingPhones.get(phone) || 0) + 1);
+    if (phone) existingPhones.add(phone);
   }
 
   const owners = Array.isArray(assigneeIds) && assigneeIds.length
@@ -508,13 +492,10 @@ export async function uploadLeadsSnapshot({
     // رقم عميل لدينا (تطابق منصّة بالهاتف) لا يُقبل في «المتاجر الخارجية» —
     // الهدف فرص جديدة لا عملاء قائمين (قرار المستخدم 2026-07-22).
     if (r.matchedStore) { skippedExisting++; continue; }
-    const identity = `${r.phoneNormalized}|${dedupCore(nameNorm)}`;
-    if (existingIdentities.has(identity) || batchSeen.has(identity)) { skippedExact++; continue; }
-    batchSeen.add(identity);
+    if (existingPhones.has(r.phoneNormalized) || batchSeen.has(r.phoneNormalized)) { skippedExact++; continue; }
+    batchSeen.add(r.phoneNormalized);
 
     const owner = owners.length ? owners[toInsert.length % owners.length] : null;
-    const priorPhoneCount = existingPhones.get(r.phoneNormalized) || 0;
-    const duplicateCount = Math.max(Number(r.duplicateCount) || 1, priorPhoneCount + Number(r.duplicateCount || 1));
     const matched = null;   // لم يعد يُدرَج مطابق (يُتخطّى أعلاه)
     toInsert.push({
       name: r.name,
@@ -543,9 +524,9 @@ export async function uploadLeadsSnapshot({
       first_response_due_at: firstResponseDueAt,
       snapshot_id: snapshotId,
       source_row_number: r.rowNumber || null,
-      duplicate_key: duplicateCount > 1 ? r.phoneNormalized : null,
-      duplicate_count: duplicateCount,
-      duplicate_names: duplicateCount > 1 ? (r.duplicateNames || []).slice(0, 12) : [],
+      duplicate_key: null,
+      duplicate_count: 1,
+      duplicate_names: [],
       matched_store_id: matched?.storeId || null,
       matched_store_name: matched?.storeName || null,
       matched_store_status: matched?.status || null,
@@ -561,10 +542,29 @@ export async function uploadLeadsSnapshot({
 
   let added = 0;
   for (let i = 0; i < toInsert.length; i += 200) {
-    const chunk = toInsert.slice(i, i + 200);
-    const { error } = await supabase.from('crm_leads').insert(chunk);
-    if (error) throw error;
-    added += chunk.length;
+    let chunk = toInsert.slice(i, i + 200);
+    for (let attempt = 0; attempt < 2 && chunk.length; attempt++) {
+      const { error } = await supabase.from('crm_leads').insert(chunk);
+      if (!error) {
+        added += chunk.length;
+        break;
+      }
+      // The database unique index closes the small race between two imports.
+      // Re-read only this chunk, remove the phones the other import won, then
+      // retry once. Never expose a raw Postgres uniqueness error to the user.
+      if (error.code !== '23505') throw error;
+      const { data: nowExisting, error: lookupError } = await supabase.rpc('crm_find_existing_leads', {
+        p_phones: chunk.map(row => row.phone_normalized),
+      });
+      if (lookupError) throw lookupError;
+      const occupied = new Set((nowExisting || []).map(row => normalizeSaudiPhone(row.phone_normalized)).filter(Boolean));
+      const pending = chunk.filter(row => !occupied.has(row.phone_normalized));
+      skippedExact += chunk.length - pending.length;
+      chunk = pending;
+      if (attempt === 1 && chunk.length) {
+        throw new Error('تعذر إكمال الرفع بسبب تزامن ملف آخر. لم تُكرر الأرقام؛ أعد المحاولة لإضافة المتبقي فقط.');
+      }
+    }
   }
   if (added) {
     invalidateLeadCaches();
@@ -577,12 +577,14 @@ export async function uploadLeadsSnapshot({
     added,
     skipped: skippedExact + skippedInvalidPhone + skippedNoName + skippedExisting,
     skippedExact,
+    skippedDuplicatePhone: skippedExact,
     skippedInvalidPhone,
     skippedNoName,
     skippedExisting,
     matchedPlatform,
     duplicatePhones: parsed.stats?.duplicatePhones || 0,
     duplicateRows: parsed.stats?.duplicateRows || 0,
+    duplicateExcessRows: parsed.stats?.duplicateExcessRows || 0,
     snapshotId,
   };
 }
