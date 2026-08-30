@@ -82,7 +82,22 @@ function safeReturnTo(value, fallback = '/customers') {
   return value?.startsWith('/') && !value.startsWith('//') ? value : fallback;
 }
 
-function useLamhaAccountStatus(isAdmin, storeId, localStatus) {
+function lamhaSnapshotStatus(localStatus, snapshotUpdatedAt = null) {
+  const normalized = String(localStatus || '').trim().toLowerCase();
+  const canCreateShipments = ['active', 'نشط'].includes(normalized)
+    ? true
+    : ['inactive', 'غير نشط'].includes(normalized) ? false : null;
+  return {
+    state: canCreateShipments == null ? 'unverified' : 'snapshot',
+    value: localStatus || null,
+    canCreateShipments,
+    error: null,
+    source: 'daily-snapshot',
+    checkedAt: snapshotUpdatedAt || null,
+  };
+}
+
+function useLamhaAccountStatus(isAdmin, storeId, localStatus, snapshotUpdatedAt) {
   const [status, setStatus] = useState(EMPTY_LAMHA_STATUS);
   const [refreshKey, setRefreshKey] = useState(0);
   useEffect(() => {
@@ -93,45 +108,52 @@ function useLamhaAccountStatus(isAdmin, storeId, localStatus) {
       return undefined;
     }
     if (refreshKey === 0) {
-      const normalized = String(localStatus || '').trim().toLowerCase();
-      const visualCanCreateShipments = ['active', 'نشط'].includes(normalized)
-        ? true
-        : ['inactive', 'غير نشط'].includes(normalized) ? false : null;
-      setStatus({ state: 'cache-loading', value: localStatus || null, visualCanCreateShipments, canCreateShipments: null, error: null, source: 'local' });
+      const snapshotStatus = lamhaSnapshotStatus(localStatus, snapshotUpdatedAt);
+      setStatus(snapshotStatus);
       loadCachedLamhaStoreStatuses([id])
         .then(cached => {
           if (cancelled) return;
           const result = (cached.results || []).find(item => Number(item.storeId) === id);
           if (isLamhaStatusResultFresh(result)) {
-            setStatus({ state: 'available', value: result.store?.status || null, visualCanCreateShipments, canCreateShipments: result.store?.canCreateShipments ?? null, error: null, source: 'live-cache' });
+            setStatus({
+              state: 'available', value: result.store?.status || null,
+              canCreateShipments: result.store?.canCreateShipments ?? null,
+              error: null, source: 'live-cache', checkedAt: result.checkedAt || result.checked_at || null,
+            });
           } else {
-            setStatus({ state: 'unverified', value: localStatus || null, visualCanCreateShipments, canCreateShipments: null, error: result?.error || null, source: 'local' });
+            setStatus({ ...snapshotStatus, error: result?.error || null });
           }
         })
         .catch(() => {
-          if (!cancelled) setStatus({ state: 'unverified', value: localStatus || null, visualCanCreateShipments, canCreateShipments: null, error: null, source: 'local' });
+          if (!cancelled) setStatus(snapshotStatus);
         });
       return () => { cancelled = true; };
     }
     setStatus({ ...EMPTY_LAMHA_STATUS, state: 'loading' });
     loadLamhaStoreStatus(id)
       .then(result => {
-        if (!cancelled) setStatus({ state: 'available', value: result.store?.status || null, canCreateShipments: result.store?.canCreateShipments ?? null, error: null, source: 'live' });
+        if (!cancelled) setStatus({
+          state: 'available', value: result.store?.status || null,
+          canCreateShipments: result.store?.canCreateShipments ?? null,
+          error: null, source: 'live', checkedAt: result.checkedAt || result.checked_at || new Date().toISOString(),
+        });
       })
       .catch(error => {
         if (!cancelled) setStatus({ state: 'error', value: null, canCreateShipments: null, error: error.message });
       });
     return () => { cancelled = true; };
-  }, [isAdmin, storeId, localStatus, refreshKey]);
+  }, [isAdmin, storeId, localStatus, snapshotUpdatedAt, refreshKey]);
   const refresh = useCallback(() => setRefreshKey(value => value + 1), []);
   return [status, setStatus, refresh];
 }
 
 function lamhaAccountLabel(status) {
-  if (status.state === 'loading' || status.state === 'idle' || status.state === 'cache-loading') return 'حساب لمحة: جارٍ التحقق…';
+  if (status.state === 'loading' || status.state === 'idle') return 'حساب لمحة: جارٍ التحقق…';
   if (status.state === 'restricted') return 'حساب لمحة: يتطلب صلاحية مدير';
   if (status.state === 'error') return 'حساب لمحة: تعذر الفحص';
-  if (status.state === 'unverified') return 'حساب لمحة: يحتاج فحصًا مباشرًا';
+  if (status.state === 'unverified') return 'حساب لمحة: الحالة غير متاحة';
+  if (status.state === 'snapshot' && status.canCreateShipments === true) return 'حساب لمحة: نشط حسب المزامنة';
+  if (status.state === 'snapshot' && status.canCreateShipments === false) return 'حساب لمحة: غير نشط حسب المزامنة';
   if (status.canCreateShipments === true) return 'حساب لمحة: نشط';
   if (status.canCreateShipments === false) return 'حساب لمحة: غير نشط';
   return 'حساب لمحة: غير متاح من القراءة';
@@ -264,8 +286,8 @@ function StoreStatusConfirmModal({ store, finance, task, canCreateShipments, act
       <div className={`s360-status-confirm__icon ${activating ? 'is-active' : 'is-danger'}`}>{activating ? <Power size={24}/> : <PowerOff size={24}/>}</div>
       <div><b>{store.storeName}</b><span>Store ID: {store.storeId}</span></div>
       <p>{activating
-        ? 'سيُعاد تشغيل حساب المتجر في لمحة فورًا. سيتم التحقق من الحالة بعد التنفيذ.'
-        : 'سيُوقف حساب المتجر في لمحة فورًا ولن يتمكن من متابعة العمليات الجديدة حتى إعادة تشغيله.'}</p>
+        ? 'ستتحقق لمحة مباشرة من الحالة الحالية أولًا، ثم يُعاد تشغيل الحساب ويُتحقق من النتيجة.'
+        : 'ستتحقق لمحة مباشرة من الحالة الحالية أولًا، ثم يُوقف الحساب ولن يتمكن من متابعة العمليات الجديدة حتى إعادة تشغيله.'}</p>
       <div className="s360-status-confirm__state"><span>الحالة الحالية</span><strong>{canCreateShipments === true ? 'نشط' : canCreateShipments === false ? 'غير نشط' : 'غير متاحة'}</strong></div>
       <div className="s360-status-confirm__state"><span>حالة الحساب المطلوبة</span><strong>{activating ? 'نشط' : 'غير نشط'}</strong></div>
       <div className="s360-status-confirm__state"><span>إنشاء الشحنات بعد التنفيذ</span><strong>{activating ? 'مسموح' : 'متوقف'}</strong></div>
@@ -306,7 +328,11 @@ function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onRelo
     setStatusBusy(true); setStatusResult(null);
     try {
       const result = await updateLamhaStoreStatus(store.storeId, activate);
-      setLamhaStatus({ state: 'available', value: result.store?.status || (activate ? 'active' : 'inactive'), canCreateShipments: result.store?.canCreateShipments ?? activate, error: null });
+      setLamhaStatus({
+        state: 'available', value: result.store?.status || (activate ? 'active' : 'inactive'),
+        canCreateShipments: result.store?.canCreateShipments ?? activate,
+        error: null, source: 'live', checkedAt: result.checkedAt || result.checked_at || new Date().toISOString(),
+      });
       setStatusResult(summarizeActionResults([{ key: store.storeId, label: store.storeName, status: 'success' }]));
       toast(activate ? 'تم تشغيل حساب المتجر في لمحة' : 'تم إيقاف حساب المتجر في لمحة', 'success');
     } catch (error) {
@@ -315,22 +341,28 @@ function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onRelo
     } finally { setStatusBusy(false); }
   });
   const closeStatusModal = () => { setModal(null); setStatusResult(null); };
+  const statusLoading = lamhaStatus.state === 'loading';
   const statusReason = !isAdmin ? 'هذا الإجراء متاح للمدير فقط'
     : !validStoreId ? 'لا يوجد Store ID صالح'
-      : ['loading', 'cache-loading'].includes(lamhaStatus.state) ? 'جارٍ قراءة الحالة الحية من لمحة'
+      : statusLoading ? 'جارٍ قراءة الحالة الحية من لمحة'
         : lamhaStatus.state === 'error' ? `تعذر قراءة الحالة: ${lamhaStatus.error}`
           : null;
-  const accountStatusLabel = ['loading', 'cache-loading'].includes(lamhaStatus.state) ? 'جارٍ الفحص…'
+  const accountStatusLabel = statusLoading ? 'جارٍ الفحص…'
     : lamhaStatus.state === 'error' ? 'تعذر الفحص'
-      : lamhaStatus.state === 'unverified' ? 'لم تُفحص مباشرة'
+      : lamhaStatus.state === 'unverified' ? 'الحالة غير متاحة'
       : lamhaStatus.canCreateShipments === true ? 'نشط'
         : lamhaStatus.canCreateShipments === false ? 'غير نشط'
           : 'غير متاحة من القراءة';
-  const shipmentAccessLabel = lamhaStatus.canCreateShipments === true ? 'إنشاء الشحنات مسموح'
-    : lamhaStatus.canCreateShipments === false ? 'إنشاء الشحنات متوقف'
-      : lamhaStatus.state === 'unverified' && lamhaStatus.visualCanCreateShipments != null
-        ? `الحالة البصرية: ${lamhaStatus.visualCanCreateShipments ? 'نشط' : 'غير نشط'} — يلزم فحص مباشر`
-        : statusReason || 'افحص الحالة الحية قبل اتخاذ قرار الحساب';
+  const statusEvidence = lamhaStatus.state === 'snapshot'
+    ? `حسب مزامنة لمحة اليومية${lamhaStatus.checkedAt ? ` · ${DATE(lamhaStatus.checkedAt, true)}` : ''}`
+    : ['live', 'live-cache'].includes(lamhaStatus.source)
+      ? `فحص مباشر${lamhaStatus.checkedAt ? ` · ${DATE(lamhaStatus.checkedAt, true)}` : ''}`
+      : null;
+  const shipmentAccessLabel = lamhaStatus.canCreateShipments === true
+    ? `إنشاء الشحنات مسموح${statusEvidence ? ` · ${statusEvidence}` : ''}`
+    : lamhaStatus.canCreateShipments === false
+      ? `إنشاء الشحنات متوقف${statusEvidence ? ` · ${statusEvidence}` : ''}`
+      : statusReason || 'الحالة غير موجودة في آخر مزامنة؛ استخدم التحديث المباشر';
   const actions = [
     { icon: Target, label: 'تسجيل نتيجة مبيعات', reason: !store.phone ? 'لا يوجد رقم تواصل' : !salesAllowed ? 'تحتاج صلاحية إدارة المبيعات' : null, onClick: store.phone && salesAllowed ? () => setModal('sales') : null },
     { icon: CalendarClock, label: 'جدولة متابعة', reason: !store.phone ? 'لا يوجد رقم تواصل' : !salesAllowed ? 'تحتاج صلاحية إدارة المبيعات' : null, onClick: store.phone && salesAllowed ? () => setModal('followup') : null },
@@ -367,11 +399,18 @@ function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onRelo
             onClick={() => setModal('store-activate')}
             aria-label={`تشغيل المتجر ${store.storeName} في لمحة`}
           >تشغيل الحساب</button> : null}
+          {lamhaStatus.canCreateShipments != null ? <button
+            type="button"
+            className="s360-lamha-status__action is-refresh"
+            onClick={statusLoading || !isAdmin || !validStoreId ? undefined : refreshLamhaStatus}
+            disabled={statusLoading || !isAdmin || !validStoreId}
+            aria-label={`تحديث حالة حساب ${store.storeName} مباشرة من لمحة`}
+          >تحديث مباشر</button> : null}
           {lamhaStatus.canCreateShipments == null ? <button
             type="button"
             className="s360-lamha-status__action"
-            onClick={['loading', 'cache-loading'].includes(lamhaStatus.state) || !isAdmin || !validStoreId ? undefined : refreshLamhaStatus}
-            disabled={['loading', 'cache-loading'].includes(lamhaStatus.state) || !isAdmin || !validStoreId}
+            onClick={statusLoading || !isAdmin || !validStoreId ? undefined : refreshLamhaStatus}
+            disabled={statusLoading || !isAdmin || !validStoreId}
             aria-label={`إعادة فحص حالة حساب ${store.storeName} في لمحة`}
           >{lamhaStatus.state === 'loading' ? 'جارٍ الفحص…' : 'فحص مباشر'}</button> : null}
         </span>
@@ -689,7 +728,12 @@ export default function Store360Page({ identity }) {
   const [viewData, setViewData] = useState({});
   const [viewLoading, setViewLoading] = useState({});
   const [shipmentPage, setShipmentPage] = useState(0);
-  const [lamhaStatus, setLamhaStatus, refreshLamhaStatus] = useLamhaAccountStatus(isAdmin, core?.store?.storeId, core?.store?.status);
+  const [lamhaStatus, setLamhaStatus, refreshLamhaStatus] = useLamhaAccountStatus(
+    isAdmin,
+    core?.store?.storeId,
+    core?.store?.status,
+    core?.sources?.identity?.updatedAt,
+  );
   const currentUrl = `${location.pathname}${location.search}`;
 
   const loadCore = useCallback(async () => {

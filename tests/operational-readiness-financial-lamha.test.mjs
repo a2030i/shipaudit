@@ -141,14 +141,23 @@ test('Lamha status cache rejects observations created before the enablement cont
   assert.match(edge, /Number\(raw\?\.statusContractVersion\) !== STATUS_CONTRACT_VERSION/);
 });
 
-test('Customer 360 never promotes the visual merchant snapshot to a verified Lamha status', async () => {
+test('Customer 360 uses the daily Lamha snapshot immediately and keeps direct refresh available', async () => {
   const store360 = await read('src/pages/Store360Page.jsx');
   assert.match(store360, /loadCachedLamhaStoreStatuses\(\[id\]\)/);
   assert.match(store360, /isLamhaStatusResultFresh\(result\)/);
-  assert.match(store360, /state: 'unverified'/);
-  assert.match(store360, /الحالة البصرية:.*يلزم فحص مباشر/);
+  assert.match(store360, /state: canCreateShipments == null \? 'unverified' : 'snapshot'/);
+  assert.match(store360, /source: 'daily-snapshot'/);
+  assert.match(store360, /canCreateShipments,/);
+  assert.match(store360, /حسب مزامنة لمحة اليومية/);
+  assert.match(store360, />تحديث مباشر<\/button>/);
   assert.match(store360, /'فحص مباشر'\}<\/button>/);
-  assert.doesNotMatch(store360, /source: 'local' \}\);\s*return undefined/);
+  assert.doesNotMatch(store360, /الحالة البصرية:.*يلزم فحص مباشر/);
+});
+
+test('Customer 360 explains that Lamha validates current state before account writes', async () => {
+  const store360 = await read('src/pages/Store360Page.jsx');
+  assert.match(store360, /ستتحقق لمحة مباشرة من الحالة الحالية أولًا/);
+  assert.match(store360, /updateLamhaStoreStatus\(store\.storeId, activate\)/);
 });
 
 test('Customer 360 resolves financial identity from the authoritative Lamha Zoho ID without tolerance', async () => {
