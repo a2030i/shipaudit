@@ -44,6 +44,11 @@ import SourceStatusStrip from '../components/SourceStatusStrip.jsx';
 import { metricDefinition } from '../lib/metricCatalog.js';
 import FigmaCommandCenter from '../components/operations/FigmaCommandCenter.jsx';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
+import {
+  loadActivationConfig,
+  loadCustomerActivationCommandCenter,
+  loadPlatformSalesPipeline,
+} from '../lib/retargetingService.js';
 
 const fmtMonth = (period) => {
   if (!period) return '—';
@@ -72,6 +77,7 @@ export default function Overview({ carriers = [], isActive = true }) {
   const [loadError, setLoadError] = useState(null);
   const [vat, setVat]         = useState(null);   // ضريبة الربع الجاري (كاش زوهو)
   const [executiveFinance, setExecutiveFinance] = useState({ period: null, loading: true });
+  const [customerGrowth, setCustomerGrowth] = useState({ loading: true, data: null, error: null });
   // Selected month persists for the session (sessionStorage) so a
   // historical month being examined survives a refresh / navigating
   // away and back — but resets to the current month on a fresh login.
@@ -111,7 +117,22 @@ export default function Overview({ carriers = [], isActive = true }) {
     }
   }, [period]);
 
+  const refreshCustomerGrowth = useCallback(async () => {
+    setCustomerGrowth(current => ({ ...current, loading: true, error: null }));
+    try {
+      const config = await loadActivationConfig();
+      const [growth, stoppedQueue] = await Promise.all([
+        loadCustomerActivationCommandCenter(config.days, config.target, 8),
+        loadPlatformSalesPipeline({ bucket: 'stopped', page: 0, limit: 1 }),
+      ]);
+      setCustomerGrowth({ loading: false, config, data: growth, stoppedCount: stoppedQueue.count, error: null, loadedAt: new Date().toISOString() });
+    } catch (error) {
+      setCustomerGrowth(current => ({ ...current, loading: false, error: error.message || 'تعذر تحميل نبض نمو العملاء' }));
+    }
+  }, []);
+
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
+  useEffect(() => { if (isActive) refreshCustomerGrowth(); }, [isActive, refreshCustomerGrowth, location.pathname]);
 
   // الربحية والفوترة وتوقع السيولة موجودة أصلاً في مصادر المالية. نحمّلها بعد
   // أول رسم لمركز القيادة، وبشكل متوازٍ، حتى لا يؤخر أي مصدر غير متاح بقية الشاشة.
@@ -277,9 +298,10 @@ export default function Overview({ carriers = [], isActive = true }) {
       data={data}
       vat={vat}
       executiveFinance={executiveFinance}
+      customerGrowth={customerGrowth}
       period={period}
       refreshing={loading}
-      onRefresh={refresh}
+      onRefresh={() => { void refresh(); void refreshCustomerGrowth(); }}
       onPrevious={goPrev}
       onNext={goNext}
       onCurrent={() => setPeriod(currentPeriod())}

@@ -147,6 +147,7 @@ button.lamha-pulse-notice { width: 100%; text-align: start; cursor: pointer; fon
 .lamha-result-toolbar label { min-width: 220px; max-width: 360px; flex: 1; display: flex; align-items: center; gap: 7px; margin-inline-start: auto; padding: 7px 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface2); color: var(--muted); }
 .lamha-result-toolbar input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--text); font: 12px var(--font-sans); }
 .lamha-result-toolbar > button { padding: 6px 8px; border: 0; background: transparent; color: var(--brand); font: 700 10.5px var(--font-sans); cursor: pointer; }
+.lamha-result-toolbar > button.lamha-result-assign{display:flex;align-items:center;gap:5px;padding:7px 10px;border:1px solid color-mix(in srgb,var(--brand) 25%,var(--border));border-radius:8px;background:color-mix(in srgb,var(--brand) 6%,var(--surface));white-space:nowrap}.lamha-result-toolbar > button:disabled{opacity:.5;cursor:default}.lamha-assignment-review{display:grid;gap:15px}.lamha-assignment-review>div{display:flex;align-items:center;gap:11px;padding:13px;color:var(--brand);background:color-mix(in srgb,var(--brand) 7%,var(--surface));border:1px solid color-mix(in srgb,var(--brand) 22%,var(--border));border-radius:11px}.lamha-assignment-review>div span{display:grid;gap:3px}.lamha-assignment-review>div b{color:var(--text);font-size:13px}.lamha-assignment-review>div small,.lamha-assignment-review p{color:var(--muted);font-size:10.5px;line-height:1.65}.lamha-assignment-review label{display:grid;gap:6px}.lamha-assignment-review label>span{font-size:11px;font-weight:800}.lamha-assignment-review p{margin:0;padding:10px 12px;border-inline-start:3px solid var(--green);background:var(--surface2);border-radius:8px}.lamha-assignment-review footer{display:flex;justify-content:flex-end;gap:8px}
 .lamha-result-loading { border: 0; border-radius: 0; justify-content: center; }
 .lamha-result-scroll { overflow-x: auto; }
 .lamha-result-set table { width: 100%; min-width: 1040px; border-collapse: collapse; font-size: 11.5px; }
@@ -197,6 +198,7 @@ button.lamha-pulse-notice { width: 100%; text-align: start; cursor: pointer; fon
   .lamha-result-toolbar { align-items: stretch; flex-wrap: wrap; }
   .lamha-result-toolbar > div { flex: 1; }
   .lamha-result-toolbar label { order: 3; min-width: 100%; max-width: none; margin: 0; }
+  .lamha-result-toolbar > button.lamha-result-assign{order:2}
   .lamha-result-scroll { overflow: visible; }
   .lamha-result-set table { min-width: 0; display: block; }
   .lamha-result-set thead { display: none; }
@@ -227,4 +229,5 @@ button.lamha-pulse-notice { width: 100%; text-align: start; cursor: pointer; fon
   .lamha-pulse-signal-icon svg { width: 14px; }
   .lamha-pulse-signal small { font-size: 9.5px; }
   .lamha-daily-trend.ui-card { padding-inline: 10px; }
+  .lamha-result-toolbar > button.lamha-result-assign{width:100%;justify-content:center}.lamha-assignment-review footer{display:grid;grid-template-columns:1fr}.lamha-assignment-review footer button{width:100%}
 }

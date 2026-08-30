@@ -746,7 +746,7 @@ export default function CustomerWatch({ isActive = true }) {
                 gap: 12, marginBottom: 28,
               }}>
                 <QuickStat icon={<ShoppingBag/>}  label="إجمالي المتاجر"      value={fmtCount(t.merchantsCount)} color="var(--green)"/>
-                <QuickStat icon={<UserPlus/>}     label="نشط حالياً"           value={fmtCount(t.activeCount)} hint={`${t.inactiveCount} غير نشط`} color="var(--green)"/>
+                <QuickStat icon={<UserPlus/>}     label="حساب لمحة قابل للشحن" value={fmtCount(t.activeCount)} hint={`${t.inactiveCount} حساب موقوف في لمحة`} color="var(--green)"/>
                 <QuickStat icon={<TrendingUp/>}   label="جدد آخر 30 يوم"       value={fmtCount(t.newLast30Days)} hint={`${t.newThisMonth} هذا الشهر`} color="var(--brand)"/>
                 <QuickStat icon={<ZapOff/>}       label="لم يبدأ الشحن"        value={fmtCount(t.neverShipped)} hint="سجّل ولم ينفّذ أول شحنة" color="#EF4444"/>
                 <QuickStat icon={<Wallet/>} label="أرصدة محافظ موجبة" value={`${fmtCompact(t.walletPositiveTotal)} ر.س`} hint="فتح المتاجر ذات المحفظة الموجبة والفواتير المفتوحة" color="var(--green)" onClick={() => navigate('/customer-money?decision=deduct&returnTo=%2Fcustomer-360')}/>

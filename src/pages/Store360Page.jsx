@@ -25,6 +25,11 @@ import {
 import { saveAudienceHandoff } from '../lib/agingOperations.js';
 import { createSubmissionGuard, summarizeActionResults } from '../lib/operationalWorkflows.js';
 import { moneyToMinorUnits } from '../lib/customerFinancialPosition.js';
+import {
+  CUSTOMER_CONTACT_OUTCOMES,
+  CUSTOMER_OUTCOME_GROUPS,
+  shippingLifecycle,
+} from '../lib/customerGrowthTaxonomy.js';
 import './store-360.css';
 
 const VIEWS = [
@@ -216,33 +221,52 @@ function ActionButton({ icon: Icon, label, reason, onClick, external = false }) 
 function SalesActionModal({ store, mode, onClose, onSaved }) {
   const tomorrow = new Date(Date.now() + 86_400_000);
   const local = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-  const [form, setForm] = useState({ outcome: mode === 'followup' ? 'needs_followup' : 'contacted', nextAt: local, note: '', activityType: 'call' });
+  const lifecycle = shippingLifecycle({ shipmentCount: store.shipmentCount, lastShipmentAt: store.lastShipmentAt });
+  const [form, setForm] = useState({ outcome: mode === 'followup' ? 'needs_followup' : '', nextAt: local, note: '', activityType: 'call' });
   const [saving, setSaving] = useState(false);
   const save = async () => {
+    if (mode !== 'followup' && !form.outcome) return toast('اختر نتيجة التواصل أو سبب التوقف', 'error');
     if (!form.nextAt) return toast('حدّد موعد الإجراء التالي', 'error');
+    if (form.outcome === 'data_issue' && !form.note.trim()) return toast('اكتب تفاصيل مشكلة البيانات أو السجل المكرر', 'error');
     setSaving(true);
     try {
       await recordPlatformSalesActivity({
         phone: store.phone, outcome: form.outcome, activityType: form.activityType,
         nextAt: new Date(form.nextAt).toISOString(), note: form.note.trim() || null, touch: mode !== 'followup',
       });
-      toast(mode === 'followup' ? 'تمت جدولة المتابعة' : 'تم تسجيل نتيجة المبيعات', 'success');
+      toast(mode === 'followup' ? 'تمت جدولة المتابعة' : lifecycle.key === 'stopped' ? 'تم تسجيل إفادة الحفاظ على العميل' : 'تم تسجيل نتيجة التفعيل', 'success');
       await onSaved?.(); onClose();
     } catch (error) { toast(`تعذر الحفظ: ${error.message}`, 'error'); }
     setSaving(false);
   };
-  return <Modal title={mode === 'followup' ? `جدولة متابعة — ${store.storeName}` : `تسجيل نتيجة — ${store.storeName}`} onClose={onClose} width={520}>
+  const modalTitle = mode === 'followup'
+    ? `جدولة متابعة — ${store.storeName}`
+    : lifecycle.key === 'stopped'
+      ? `إفادة الحفاظ على العميل — ${store.storeName}`
+      : lifecycle.key === 'never_shipped'
+        ? `نتيجة تفعيل أول شحنة — ${store.storeName}`
+        : `تسجيل نتيجة — ${store.storeName}`;
+  return <Modal title={modalTitle} onClose={onClose} width={560}>
     <div className="s360-form">
-      {mode !== 'followup' ? <label>النتيجة<select value={form.outcome} onChange={e => setForm(current => ({ ...current, outcome: e.target.value }))}>
-        <option value="contacted">تم التواصل</option><option value="interested">مهتم</option><option value="no_answer">لم يرد</option>
-        <option value="needs_followup">يحتاج متابعة</option><option value="not_interested">غير مهتم</option><option value="price_issue">مشكلة سعر</option>
-      </select></label> : null}
+      {mode !== 'followup' ? <>
+        <div className={`s360-growth-context is-${lifecycle.key}`}>
+          <span>{lifecycle.owner}</span>
+          <b>{lifecycle.label}</b>
+          <small>{lifecycle.daysSinceLast == null ? 'المطلوب: الوصول إلى أول شحنة' : `آخر شحنة منذ ${lifecycle.daysSinceLast} يومًا · سجّل السبب قبل إغلاق المتابعة`}</small>
+        </div>
+        <label>نتيجة التواصل / سبب التوقف<select value={form.outcome} onChange={e => setForm(current => ({ ...current, outcome: e.target.value }))}>
+          <option value="">اختر إفادة قابلة للتحليل…</option>
+          {CUSTOMER_OUTCOME_GROUPS.map(group => <optgroup key={group.label} label={group.label}>
+            {group.options.map(value => <option key={value} value={value}>{CUSTOMER_CONTACT_OUTCOMES[value]}</option>)}
+          </optgroup>)}
+        </select></label>
+      </> : null}
       <label>قناة التواصل<select value={form.activityType} onChange={e => setForm(current => ({ ...current, activityType: e.target.value }))}>
         <option value="call">مكالمة</option><option value="whatsapp">واتساب يدوي</option><option value="meeting">اجتماع</option><option value="email">بريد</option><option value="note">ملاحظة</option>
       </select></label>
       <label>موعد الإجراء التالي<input type="datetime-local" value={form.nextAt} onChange={e => setForm(current => ({ ...current, nextAt: e.target.value }))}/></label>
-      <label>ملاحظة<textarea rows={3} value={form.note} onChange={e => setForm(current => ({ ...current, note: e.target.value }))}/></label>
-      <p>يستخدم هذا الإجراء مسار المبيعات الحالي، ولا يرسل رسالة أو حملة.</p>
+      <label>إفادة العميل والتفاصيل<textarea rows={3} value={form.note} onChange={e => setForm(current => ({ ...current, note: e.target.value }))} placeholder="ماذا قال العميل؟ ما العائق؟ وما الإجراء المتفق عليه؟"/></label>
+      <p>يحفظ السبب والموعد والمسؤول داخل سجل العميل، ولا يرسل رسالة أو حملة.</p>
       <div className="s360-form-actions"><Btn variant="ghost" onClick={onClose}>إلغاء</Btn><Btn variant="accent" onClick={save} disabled={saving}>{saving ? 'جارٍ الحفظ…' : 'حفظ'}</Btn></div>
     </div>
   </Modal>;
@@ -363,8 +387,14 @@ function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onRelo
     : lamhaStatus.canCreateShipments === false
       ? `إنشاء الشحنات متوقف${statusEvidence ? ` · ${statusEvidence}` : ''}`
       : statusReason || 'الحالة غير موجودة في آخر مزامنة؛ استخدم التحديث المباشر';
+  const lifecycle = shippingLifecycle({ shipmentCount: store.shipmentCount, lastShipmentAt: store.lastShipmentAt });
+  const salesActionLabel = lifecycle.key === 'stopped'
+    ? 'تسجيل إفادة الحفاظ على العميل'
+    : lifecycle.key === 'never_shipped'
+      ? 'تسجيل نتيجة تفعيل أول شحنة'
+      : 'تسجيل نتيجة مبيعات';
   const actions = [
-    { icon: Target, label: 'تسجيل نتيجة مبيعات', reason: !store.phone ? 'لا يوجد رقم تواصل' : !salesAllowed ? 'تحتاج صلاحية إدارة المبيعات' : null, onClick: store.phone && salesAllowed ? () => setModal('sales') : null },
+    { icon: Target, label: salesActionLabel, reason: !store.phone ? 'لا يوجد رقم تواصل' : !salesAllowed ? 'تحتاج صلاحية إدارة المبيعات' : null, onClick: store.phone && salesAllowed ? () => setModal('sales') : null },
     { icon: CalendarClock, label: 'جدولة متابعة', reason: !store.phone ? 'لا يوجد رقم تواصل' : !salesAllowed ? 'تحتاج صلاحية إدارة المبيعات' : null, onClick: store.phone && salesAllowed ? () => setModal('followup') : null },
     { icon: HandCoins, label: 'تسجيل وعد تحصيل', reason: !core.customerName ? 'لا يوجد حساب مالي مرتبط' : !task ? 'لا توجد مهمة تحصيل مفتوحة' : !promiseAllowed ? 'تحتاج صلاحية تسجيل وعد تحصيل' : null, onClick: core.customerName && task && promiseAllowed ? () => setModal('promise') : null },
     { icon: ReceiptText, label: 'فتح الفواتير', onClick: () => changeView('finance', { invoice: 'open' }) },
@@ -435,6 +465,7 @@ function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onRelo
 function DecisionPanel({ core, work, lamhaStatus, changeView, onOpenReconciliation }) {
   const finance = core.financial;
   const reconciliation = core.lamhaZohoReconciliation;
+  const lifecycle = shippingLifecycle({ shipmentCount: core.store.shipmentCount, lastShipmentAt: core.store.lastShipmentAt });
   const financeUnavailable = core.sources.finance?.status === 'unavailable';
   let tone = 'success';
   let icon = <CheckCircle2 size={22}/>;
@@ -471,6 +502,16 @@ function DecisionPanel({ core, work, lamhaStatus, changeView, onOpenReconciliati
     title = 'مستحقات متأخرة بلا مهمة تحصيل مفتوحة';
     detail = 'ابدأ الإجراء من مركز الإجراءات مع إبقاء مرحلة المبيعات مستقلة.';
     actionLabel = 'فتح المبيعات والتحصيل'; onAction = () => changeView('work');
+  } else if (lifecycle.key === 'never_shipped') {
+    tone = 'info'; icon = <Target size={22}/>; eyebrow = 'تفعيل أول شحنة';
+    title = 'سُجّل العميل ولم ينفّذ أول شحنة';
+    detail = `المسؤولية: ${lifecycle.owner}. سجّل نتيجة التواصل وحدّد موعد الخطوة التالية.`;
+    actionLabel = 'فتح المبيعات والمتابعة'; onAction = () => changeView('work');
+  } else if (lifecycle.key === 'stopped') {
+    tone = 'warning'; icon = <AlertTriangle size={22}/>; eyebrow = 'الحفاظ على العملاء';
+    title = `توقف العميل عن الشحن منذ ${lifecycle.daysSinceLast} يومًا`;
+    detail = `${work?.owner ? `المسؤول: ${work.owner}.` : 'لا يوجد مسؤول مسند.'} يجب تسجيل سبب التوقف والخطوة التالية.`;
+    actionLabel = 'فتح الإفادة والمتابعة'; onAction = () => changeView('work');
   } else if (work?.nextAction) {
     tone = 'info'; eyebrow = 'الإجراء المجدول';
     title = work.nextAction.label || 'يوجد إجراء تالٍ';

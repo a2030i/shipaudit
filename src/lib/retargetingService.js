@@ -115,6 +115,23 @@ export async function loadLamhaStorePerformance({
   };
 }
 
+// يقرأ مجموعة نبض لمحة كاملة لإسناد قائمة المبيعات، لا الصفحة المرئية فقط.
+// تبقى الكتابة في assign_platform_sales_accounts وبحاجز الصلاحية والتدقيق الحاليين.
+export async function loadAllLamhaStorePerformanceRows(filters = {}, { maxRows = 5000 } = {}) {
+  const pageSize = 100;
+  const rows = [];
+  let page = 0;
+  let count = 0;
+  do {
+    const result = await loadLamhaStorePerformance({ ...filters, page, limit: pageSize });
+    count = result.count;
+    rows.push(...result.rows);
+    page += 1;
+    if (!result.rows.length) break;
+  } while (rows.length < count && rows.length < maxRows);
+  return { rows: rows.slice(0, maxRows), count };
+}
+
 // تسميات وألوان الشرائح/الأولوية/القناة — نقطة الحقيقة الواحدة للعرض.
 export const SEGMENTS = {
   new_active:        { label: 'جديد نشط',            color: 'var(--accent3)', icon: '🆕' },

@@ -26,6 +26,10 @@ import {
   hatifInboxUrl,
   loadCustomerCommTimeline,
 } from '../lib/whatsappService.js';
+import {
+  CUSTOMER_CONTACT_OUTCOMES,
+  CUSTOMER_LOSS_REASONS,
+} from '../lib/customerGrowthTaxonomy.js';
 import './PlatformSalesCrm.css';
 
 const SALES_STAGES = {
@@ -40,23 +44,7 @@ const SALES_STAGES = {
   disqualified: { label: 'مستبعد', color: 'var(--muted2)' },
 };
 
-const OUTCOMES = {
-  new: 'بلا نتيجة بعد',
-  contacted: 'تم الرد',
-  whatsapp_sent: 'أُرسلت رسالة',
-  no_answer: 'لم يرد',
-  interested: 'مهتم',
-  needs_followup: 'يحتاج متابعة',
-  price_issue: 'اعتراض على السعر',
-  support_issue: 'مشكلة خدمة',
-  integration_issue: 'مشكلة ربط',
-  competitor: 'انتقل لمنافس',
-  closed_business: 'أغلق نشاطه',
-  not_interested: 'غير مهتم',
-  finance: 'يحتاج معالجة مالية',
-  returned: 'عاد للشحن',
-  converted: 'تحوّل لعميل',
-};
+const OUTCOMES = CUSTOMER_CONTACT_OUTCOMES;
 
 const ACTIVITY_TYPES = {
   note: 'ملاحظة إدارية',
@@ -74,15 +62,7 @@ const NEXT_TYPES = {
   other: 'إجراء آخر',
 };
 
-const LOSS_REASONS = [
-  ['price', 'السعر'],
-  ['competitor', 'اختار منافسًا'],
-  ['no_need', 'لا توجد حاجة حاليًا'],
-  ['no_response', 'تعذّر الوصول بعد المحاولات'],
-  ['closed_business', 'توقّف النشاط'],
-  ['product_gap', 'الخدمة لا تغطي احتياجه'],
-  ['other', 'سبب آخر'],
-];
+const LOSS_REASONS = CUSTOMER_LOSS_REASONS;
 
 const PIPELINE_BUCKETS = [
   { id: 'new', label: 'الجدد', icon: Store },
@@ -94,7 +74,7 @@ const PIPELINE_BUCKETS = [
 
 const SMART_BUCKETS = [
   { id: 'hot_live_new', label: 'لايف جديد عالي النية', icon: Zap },
-  { id: 'recent_stop', label: 'تجاوز 5 أيام بلا شحن', icon: PhoneCall },
+  { id: 'recent_stop', label: 'توقف أكثر من 5 أيام', icon: PhoneCall },
   { id: 'wallet_stranded', label: 'رصيد يحتاج حلًا', icon: WalletCards },
   { id: 'live_inactive', label: 'ربط لايف غير نشط', icon: Link2Off },
 ];
@@ -561,7 +541,7 @@ function AccountDrawer({ phone, employees, onClose, onSaved }) {
                   {Object.entries(SALES_STAGES).map(([key, meta]) => <option key={key} value={key}>{meta.label}</option>)}
                 </Select>
                 <Select
-                  label="نتيجة التواصل"
+                  label="نتيجة التواصل / سبب التوقف"
                   value={form.outcome}
                   onChange={event => setForm({ ...form, outcome: event.target.value })}
                 >
@@ -890,6 +870,21 @@ export default function PlatformSalesCrm({ isActive = true }) {
     setBulkBusy(false);
   };
 
+  const retentionQueue = ['recent_stop', 'stopped', 'reactivated'].includes(bucket);
+  const queueContext = retentionQueue
+    ? {
+        team: 'فريق الحفاظ على العملاء',
+        title: bucket === 'reactivated' ? 'متابعة العائدين للنشاط' : 'استعادة العملاء المتوقفين',
+        detail: bucket === 'reactivated'
+          ? 'تابع استمرار الشحن بعد العودة، ولا تعتبر أول شحنة جديدة إغلاقًا نهائيًا للحالة.'
+          : 'تبدأ المتابعة من اليوم السادس بعد آخر شحنة، ويجب تسجيل سبب التوقف وموعد الخطوة التالية.',
+      }
+    : {
+        team: 'فريق المبيعات',
+        title: 'الوصول إلى أول شحنة',
+        detail: 'العميل الذي لم يشحن إطلاقًا يبقى في مسار التفعيل حتى تسجيل أول شحنة فعلية من بيانات المنصة.',
+      };
+
   return (
     <div className="psc-page">
       <PageHeader
@@ -923,6 +918,14 @@ export default function PlatformSalesCrm({ isActive = true }) {
         )}
       />
 
+      <section className={`psc-queue-context ${retentionQueue ? 'is-retention' : 'is-sales'}`} aria-label="ملكية قائمة العمل الحالية">
+        <span className="psc-queue-context__icon">{retentionQueue ? <RotateCcw size={18}/> : <Target size={18}/>}</span>
+        <div><small>{queueContext.team}</small><strong>{queueContext.title}</strong><p>{queueContext.detail}</p></div>
+        <button type="button" onClick={() => chooseWorkFilter('unassigned')}>
+          <b>{fmtNumber(workSummary.unassigned)}</b><span>بلا مسؤول</span>
+        </button>
+      </section>
+
       <div className="psc-summary-grid">
         <SummaryCard
           icon={<Zap size={18}/>}
@@ -935,12 +938,12 @@ export default function PlatformSalesCrm({ isActive = true }) {
         />
         <SummaryCard
           icon={<PhoneCall size={18}/>}
-          label="تجاوز 5 أيام بلا شحن"
+          label="توقف أكثر من 5 أيام"
           value={summary.recent_stop}
           tone="var(--gold)"
           active={bucket === 'recent_stop'}
           onClick={() => { setLens('pipeline'); chooseBucket('recent_stop'); }}
-          hint="يبدأ من اليوم السادس"
+          hint="سبق له الشحن · يبدأ من اليوم السادس"
         />
         <SummaryCard
           icon={<WalletCards size={18}/>}

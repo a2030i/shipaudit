@@ -16,7 +16,6 @@ import {
   SlidersHorizontal,
   ShieldCheck,
   UploadCloud,
-  UserPlus,
   UserRoundX,
   UsersRound,
   WalletCards,
@@ -208,11 +207,12 @@ function TaskRow({ icon: Icon, title, note, status, tone, onClick }) {
   );
 }
 
-function MovementMetric({ label, value, note, tone = 'blue' }) {
+function MovementMetric({ label, value, note, tone = 'blue', onClick }) {
+  const Component = onClick ? 'button' : 'article';
   return (
-    <article className={`fco-movement__metric fco-movement__metric--${tone}`}>
-      <strong>{value}</strong><span>{label}</span><small>{note}</small>
-    </article>
+    <Component className={`fco-movement__metric fco-movement__metric--${tone}${onClick ? ' is-action' : ''}`} type={onClick ? 'button' : undefined} onClick={onClick}>
+      <strong>{value}</strong><span>{label}</span><small>{note}</small>{onClick ? <ArrowLeft size={13}/> : null}
+    </Component>
   );
 }
 
@@ -235,6 +235,7 @@ export default function FigmaCommandCenter({
   data,
   vat,
   executiveFinance,
+  customerGrowth,
   period,
   refreshing,
   onRefresh,
@@ -247,7 +248,6 @@ export default function FigmaCommandCenter({
   const decisions = data?.customerDecisions || {};
   const decisionSummary = data?.customerDecisionSummary || {};
   const stopRows = decisions.stopPostpaid || [];
-  const activateRows = decisions.activatePostpaid || [];
   const deductRows = decisions.deductPrepaid || [];
   const negativeRows = decisions.negativePrepaid || [];
   const thresholdStopRows = stopRows.filter(row => suspensionDecisionAmount(row) > DEFAULT_SUSPENSION_MIN_OVERDUE);
@@ -296,7 +296,6 @@ export default function FigmaCommandCenter({
   const stopCount = Array.isArray(decisions.stopPostpaid)
     ? actionableStopRows.length
     : decisionSummary.stopPostpaid?.count ?? 0;
-  const activateCount = decisionSummary.activatePostpaid?.count ?? activateRows.length;
   const deductCount = decisionSummary.deductPrepaid?.count ?? deductRows.length;
   const negativeCount = decisionSummary.negativeWallet?.count ?? decisionSummary.negativePrepaid?.count ?? negativeRows.length;
   const stopAmount = Array.isArray(decisions.stopPostpaid)
@@ -311,6 +310,13 @@ export default function FigmaCommandCenter({
   const zatcaCount = Number(invoiceOps.zatcaTodayCount || 0) + Number(invoiceOps.zatcaOverdueCount || 0);
   const zatcaAmount = Number(invoiceOps.zatcaTodayTotal || 0) + Number(invoiceOps.zatcaOverdueTotal || 0);
   const merchantPulse = data?.merchantPulse || {};
+  const growth = customerGrowth?.data || {};
+  const growthCurrent = growth.current || {};
+  const growthMovement = growth.movement || {};
+  const growthExecution = growth.execution || {};
+  const growthOutcomes = growth.outcomes30d || {};
+  const growthAvailable = Boolean(customerGrowth?.data && !customerGrowth?.error);
+  const growthProgress = Math.max(0, Math.min(100, Number(growthCurrent.progress_pct) || 0));
   const aging = data?.customerAging || {};
   const overdue30 = Number(aging.b31_60 || 0) + Number(aging.b61_90 || 0) + Number(aging.b90p || 0);
   const cash = data?.cashPosition || {};
@@ -468,14 +474,24 @@ export default function FigmaCommandCenter({
 
       <div className="fco-dashboard-grid">
         <section className="fco-panel fco-movement">
-          <div className="fco-card-heading"><span><UsersRound size={18}/> حركة العملاء</span><button type="button" onClick={() => navigate('/merchants')}>عرض العملاء <ArrowLeft size={14}/></button></div>
-          <div className="fco-movement__grid">
-            <MovementMetric label="عملاء جدد" value={merchantPulse.available ? merchantPulse.newThisPeriod : '—'} note={monthLabel(period)} tone="blue"/>
-            <MovementMetric label="سددوا هذا الشهر" value={merchantPulse.paidThisPeriod ?? '—'} note="حسب آخر دفعة" tone="green"/>
-            <MovementMetric label="سجلوا ولم يشحنوا" value={merchantPulse.available ? merchantPulse.neverShipped : '—'} note="فرصة تفعيل" tone="amber"/>
-            <MovementMetric label="متوقفون ولديهم رصيد" value={merchantPulse.available ? merchantPulse.stoppedWithWallet : '—'} note={`${compactMoney(merchantPulse.stoppedWalletAmount)} ر.س`} tone="red"/>
+          <div className="fco-card-heading"><span><UsersRound size={18}/> نمو العملاء النشطين</span><button type="button" onClick={() => navigate('/retargeting?view=activation')}>فتح مركز النمو <ArrowLeft size={14}/></button></div>
+          <div className="fco-growth-target">
+            <div><small>نشط خلال {customerGrowth?.config?.days || 5} أيام</small><strong>{growthAvailable ? money(growthCurrent.active) : customerGrowth?.loading ? '…' : '—'} <span>من {growthAvailable ? money(growthCurrent.target) : '—'}</span></strong></div>
+            <div><span>الفجوة إلى المستهدف</span><b>{growthAvailable ? money(growthCurrent.gap) : '—'} عميل</b></div>
+            <div className="fco-growth-target__track"><i style={{ width: `${growthProgress}%` }}/></div>
           </div>
-          <div className="fco-movement__summary"><UserPlus size={17}/><span><b>{activateCount}</b> حساب دفع لاحق جاهز لإعادة التشغيل الآن</span><button type="button" onClick={() => navigate('/merchants?decision=activate')}>فتح القائمة</button></div>
+          <div className="fco-movement__grid">
+            <MovementMetric label="نشطون الآن" value={growthAvailable ? growthCurrent.active : '—'} note="عملاء فريدون بالهاتف" tone="green" onClick={() => navigate('/retargeting?view=activation&performanceFilter=active_5d')}/>
+            <MovementMetric label="متاجر لم تشحن إطلاقًا" value={merchantPulse.available ? merchantPulse.neverShipped : '—'} note="تذهب إلى فريق المبيعات" tone="amber" onClick={() => navigate('/retargeting?view=activation&performanceFilter=never_shipped')}/>
+            <MovementMetric label="اشتغلوا ثم توقفوا" value={growthAvailable ? money(customerGrowth.stoppedCount) : '—'} note="تذهب إلى الحفاظ على العملاء" tone="red" onClick={() => navigate('/retargeting?tab=pipeline&bucket=stopped&work=all')}/>
+            <MovementMetric label="عادوا للشحن" value={growthAvailable ? growthOutcomes.resumed : '—'} note="نتيجة موضوعية آخر 30 يومًا" tone="blue" onClick={() => navigate('/retargeting?tab=pipeline&bucket=reactivated&work=all')}/>
+          </div>
+          <div className="fco-growth-discipline">
+            <button type="button" onClick={() => navigate('/retargeting?tab=pipeline&bucket=all&work=unassigned')}><b>{growthAvailable ? money(growthExecution.unassigned) : '—'}</b><span>بلا مسؤول</span></button>
+            <button type="button" onClick={() => navigate('/retargeting?tab=pipeline&bucket=all&work=never_contacted')}><b>{growthAvailable ? money(growthExecution.never_contacted) : '—'}</b><span>لم نتواصل</span></button>
+            <button type="button" onClick={() => navigate('/retargeting?tab=pipeline&bucket=all&work=due')}><b>{growthAvailable ? money(growthExecution.overdue) : '—'}</b><span>متابعة متأخرة</span></button>
+            <span className={`fco-growth-net ${Number(growthMovement.net) < 0 ? 'is-negative' : ''}`}>صافي الحركة: <b>{growthAvailable ? `${Number(growthMovement.net) >= 0 ? '+' : ''}${money(growthMovement.net)}` : '—'}</b></span>
+          </div>
         </section>
 
         <section className="fco-panel fco-aging">

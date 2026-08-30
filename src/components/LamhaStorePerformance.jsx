@@ -2,11 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   AlertTriangle, ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight,
-  Clock3, PackageCheck, RefreshCw, Search, Store, Truck, UserPlus, UserRoundX,
+  Clock3, PackageCheck, RefreshCw, Search, Store, Truck, UserPlus, UserRoundPlus, UserRoundX,
 } from 'lucide-react';
-import { Btn, Card, Empty, Spinner } from './UI.jsx';
-import { loadLamhaStorePerformance } from '../lib/retargetingService.js';
+import { Btn, Card, Empty, Modal, Select, Spinner, toast } from './UI.jsx';
+import {
+  assignPlatformSalesAccounts,
+  loadAllLamhaStorePerformanceRows,
+  loadLamhaStorePerformance,
+} from '../lib/retargetingService.js';
 import { buildStore360Url } from '../lib/store360Navigation.js';
+import { loadEmployees } from '../lib/employeeService.js';
+import { useAuth } from '../lib/auth.jsx';
 import './LamhaStorePerformance.css';
 
 const PAGE_SIZE = 25;
@@ -81,6 +87,7 @@ function StateBadge({ row }) {
 }
 
 export default function LamhaStorePerformance() {
+  const { can, isAdmin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const initialParams = useMemo(() => new URLSearchParams(location.search), []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -91,6 +98,11 @@ export default function LamhaStorePerformance() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [assignmentOpen, setAssignmentOpen] = useState(false);
+  const [assignmentBusy, setAssignmentBusy] = useState(false);
+  const [assignmentRows, setAssignmentRows] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [ownerId, setOwnerId] = useState('');
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -153,6 +165,48 @@ export default function LamhaStorePerformance() {
     : data?.metric?.source === 'lamha_employee_api_export_manual'
       ? 'تحديث يدوي'
       : 'لقطة API الأقرب لمنتصف الليل';
+  const canAssignQueue = (isAdmin || can('crm.assign')) && ['never_shipped', 'dormant_30'].includes(filter);
+  const assignmentPhones = useMemo(() => [...new Set(assignmentRows.map(row => String(row.phone || '').trim()).filter(Boolean))], [assignmentRows]);
+  const eligibleEmployees = useMemo(() => employees.filter(employee => (
+    employee.role !== 'admin'
+    && employee.permissions?.['sales.view'] === true
+    && employee.permissions?.['sales.manage'] === true
+  )), [employees]);
+
+  const openAssignment = async () => {
+    setAssignmentBusy(true);
+    try {
+      const [result, employeeRows] = await Promise.all([
+        loadAllLamhaStorePerformanceRows({ filter, search: appliedSearch }),
+        employees.length ? Promise.resolve(employees) : loadEmployees(),
+      ]);
+      if (result.rows.length !== result.count) throw new Error('تغيّرت النتائج أثناء القراءة. حدّث القائمة ثم أعد المحاولة.');
+      setAssignmentRows(result.rows);
+      setEmployees(employeeRows);
+      setOwnerId('');
+      setAssignmentOpen(true);
+    } catch (assignmentError) {
+      toast(`تعذر تجهيز الإسناد: ${assignmentError.message}`, 'error');
+    } finally {
+      setAssignmentBusy(false);
+    }
+  };
+
+  const confirmAssignment = async () => {
+    if (!ownerId) return toast('اختر الموظف المسؤول', 'warning');
+    if (!assignmentPhones.length) return toast('لا توجد أرقام تواصل صالحة للإسناد', 'warning');
+    setAssignmentBusy(true);
+    try {
+      const result = await assignPlatformSalesAccounts(assignmentPhones, ownerId);
+      toast(`تم إسناد ${Number(result.assigned_count) || assignmentPhones.length} عميل`, 'success');
+      setAssignmentOpen(false);
+      await load();
+    } catch (assignmentError) {
+      toast(`تعذر الإسناد: ${assignmentError.message}`, 'error');
+    } finally {
+      setAssignmentBusy(false);
+    }
+  };
 
   return (
     <section className="lamha-performance" aria-labelledby="lamha-performance-title">
@@ -221,6 +275,7 @@ export default function LamhaStorePerformance() {
           <div className="lamha-result-toolbar">
             <div><b>{FILTERS[filter] || 'نتائج المتاجر'}</b><span>{INT.format(data.count)} نتيجة · افتح المتجر دون مغادرة سياق اليوم</span></div>
             <label><Search size={16}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder="اسم المتجر، رقمه، أو الجوال"/></label>
+            {canAssignQueue ? <button type="button" className="lamha-result-assign" onClick={openAssignment} disabled={assignmentBusy || !data.count}><UserRoundPlus size={14}/> إسناد كل النتائج</button> : null}
             {filter !== 'all' || appliedSearch ? <button type="button" onClick={() => { chooseFilter('all'); setSearch(''); }}>مسح الفلاتر</button> : null}
           </div>
 
@@ -248,6 +303,14 @@ export default function LamhaStorePerformance() {
             <Btn size="sm" variant="ghost" disabled={page + 1 >= totalPages || loading} onClick={() => changePage(page + 1)}>التالي <ChevronLeft size={14}/></Btn>
           </div> : null}
         </Card>
+        {assignmentOpen ? <Modal title={`إسناد ${FILTERS[filter]} لفريق المبيعات`} onClose={() => !assignmentBusy && setAssignmentOpen(false)} width={560}>
+          <div className="lamha-assignment-review">
+            <div><UserRoundPlus size={22}/><span><b>{INT.format(assignmentPhones.length)} عميل فريد سيُسندون</b><small>{INT.format(assignmentRows.length)} متجر · {INT.format(assignmentRows.length - assignmentPhones.length)} سجل مكرر أو بلا رقم تواصل</small></span></div>
+            <label><span>الموظف المسؤول</span><Select value={ownerId} onChange={event => setOwnerId(event.target.value)}><option value="">اختر موظف المبيعات…</option>{eligibleEmployees.map(employee => <option key={employee.id} value={employee.id}>{employee.name || employee.email}</option>)}</Select></label>
+            <p>سيُغيّر الإسناد اسم المسؤول فقط. لن يغيّر حالة الحساب أو النشاط أو أي مبلغ، ولن يرسل رسالة للعميل.</p>
+            <footer><Btn variant="ghost" onClick={() => setAssignmentOpen(false)} disabled={assignmentBusy}>إلغاء</Btn><Btn variant="primary" onClick={confirmAssignment} disabled={assignmentBusy || !ownerId || !assignmentPhones.length}>{assignmentBusy ? 'جارٍ الإسناد…' : `تأكيد إسناد ${INT.format(assignmentPhones.length)} عميل`}</Btn></footer>
+          </div>
+        </Modal> : null}
       </> : null}
     </section>
   );

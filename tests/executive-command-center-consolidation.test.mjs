@@ -51,9 +51,9 @@ test('executive microcharts keep a compact mobile sibling layout', async () => {
   assert.match(css, /@media\(max-width:760px\)\{\.fco-finance-insights\{grid-template-columns:1fr\}/);
 });
 
-test('customer movement and receivables stay primary while sources and routine operations are disclosed on demand', async () => {
+test('customer growth and receivables stay primary while sources and routine operations are disclosed on demand', async () => {
   const command = await read('src/components/operations/FigmaCommandCenter.jsx');
-  const movementIndex = command.indexOf('حركة العملاء');
+  const movementIndex = command.indexOf('نمو العملاء النشطين');
   const agingIndex = command.indexOf('أعمار مديونيات العملاء');
   const secondaryIndex = command.indexOf('التشغيل والتكاملات');
 
