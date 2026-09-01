@@ -9,7 +9,7 @@ import {
 import { Btn, Card, PageHeader, Spinner } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadZohoWebhookHealth } from '../lib/pnlService.js';
-import { loadUploadsOverview } from '../lib/uploadsHubService.js';
+import { loadLamhaDirectorySyncState, loadUploadsOverview } from '../lib/uploadsHubService.js';
 import { loadHatifCallSyncHealth, loadWhatsAppDeliveryHealth } from '../lib/whatsappService.js';
 import { loadWebhookEvents, countWebhookStatuses } from '../lib/webhookService.js';
 import { loadCronHealth } from '../lib/integrityService.js';
@@ -202,6 +202,7 @@ export default function OperationsCenter({ isActive = true }) {
     const tasks = {
       zoho: allowed('zoho.view') ? loadZohoWebhookHealth() : Promise.resolve(null),
       lamha: allowed('uploads.view') ? loadUploadsOverview() : Promise.resolve([]),
+      lamhaDirectory: allowed('uploads.view') ? loadLamhaDirectorySyncState() : Promise.resolve(null),
       hatifDelivery: allowed('whatsapp.view_log') ? loadWhatsAppDeliveryHealth() : Promise.resolve(null),
       hatifSync: allowed('whatsapp.view_log') ? loadHatifCallSyncHealth() : Promise.resolve(null),
       webhooks: allowed('webhook.view') ? loadWebhookEvents({ limit: 200 }) : Promise.resolve([]),
@@ -308,18 +309,20 @@ export default function OperationsCenter({ isActive = true }) {
     if (allowed('uploads.view')) {
       const sources = state.lamha || [];
       const stale = sources.filter((source) => source.stale || !source.last);
-      const latest = sources.map((source) => source.last?.lastAt).filter(Boolean).sort().at(-1);
+      const directory = state.lamhaDirectory;
+      const directoryNeedsAttention = !directory?.lastAt || directory.stale;
       cards.push({
         key: 'lamha', title: 'منصة لمحة', subtitle: 'دليل المتاجر وكشوف التشغيل', icon: FileInput,
-        status: sources.length && stale.length === 0 ? 'healthy' : stale.length ? 'attention' : 'unavailable',
+        status: directoryNeedsAttention || stale.length ? 'attention' : 'healthy',
         path: '/uploads', action: 'فتح المصادر',
         facts: [
-          { label: 'المصادر المتابعة', value: sources.length },
-          { label: 'تحتاج تحديثًا', value: stale.length, tone: stale.length ? 'gold' : 'green' },
-          { label: 'آخر ملف', value: relativeTime(latest) },
+          { label: 'آخر مزامنة للدليل', value: relativeTime(directory?.lastAt), tone: directoryNeedsAttention ? 'gold' : 'green' },
+          { label: 'الجدولة', value: '12:00 ص يوميًا' },
+          { label: 'مصادر يدوية متأخرة', value: stale.length, tone: stale.length ? 'gold' : 'green' },
         ],
-        note: 'الملفات اليدوية فقط؛ بيانات زوهو لا تُرفع كملفات Excel.',
+        note: 'دليل المتاجر يُسحب آليًا من لمحة؛ الملفات الإضافية تبقى منفصلة ولا تستبدل حالة الحساب.',
       });
+      if (directoryNeedsAttention) actions.push({ title: 'راجع مزامنة دليل متاجر لمحة', path: '/uploads', tone: 'gold' });
       if (stale.length) actions.push({ title: `حدّث ${stale.length} من مصادر لمحة`, path: '/uploads', tone: 'gold' });
     }
 

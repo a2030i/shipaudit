@@ -24,6 +24,27 @@ import {
 
 const DAY_MS = 86_400_000;
 
+// لقطة دليل لمحة الآلية ليست ملف رفع يدوي، لكنها يجب أن تبقى مرئية
+// إداريًا حتى يعرف المدير متى اكتملت مزامنة منتصف الليل فعلًا.
+export async function loadLamhaDirectorySyncState() {
+  const { data, error } = await supabase
+    .from('merchants')
+    .select('snapshot_id, snapshot_date, uploaded_at')
+    .order('uploaded_at', { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  const latest = data?.[0] || null;
+  const lastAt = latest?.uploaded_at || null;
+  const ageMs = lastAt ? Date.now() - new Date(lastAt).getTime() : null;
+  return {
+    snapshotId: latest?.snapshot_id || null,
+    snapshotDate: latest?.snapshot_date || null,
+    lastAt,
+    stale: ageMs == null || !Number.isFinite(ageMs) || ageMs > DAY_MS,
+    scheduleLabel: 'يوميًا 12:00 ص بتوقيت السعودية',
+  };
+}
+
 // Per-source metadata. `cadenceDays` drives the stale indicator.
 // `link` is where the operator can drill down for richer workflow
 // (the hub itself is fire-and-forget upload, not browse).

@@ -18,7 +18,7 @@ export const CENTER_PATHS = Object.fromEntries(NAV_SECTIONS.map(section => [sect
 export const CENTER_WORKSPACES = {
   customers: [
     {
-      id: 'directory', label: 'دليل العملاء والمتاجر', entryId: 'customer-watch', memberIds: ['customer-watch'],
+      id: 'directory', label: 'العملاء والمتاجر', entryId: 'customer-watch', memberIds: ['customer-watch'],
       description: 'ابحث عن العميل أو المتجر، ثم افتح صفحة Customer 360 الموحدة.',
     },
   ],
@@ -38,7 +38,7 @@ export const CENTER_WORKSPACES = {
       description: 'راجع المكالمات وشغّل إجراء IVR المصرح به من مكان واحد.',
     },
     {
-      id: 'campaigns', label: 'مركز الحملات الذكي', entryId: 'campaign-center', memberIds: ['campaign-center'], path: '/campaigns',
+      id: 'campaigns', label: 'مركز الإعلانات والحملات', entryId: 'campaign-center', memberIds: ['campaign-center'], path: '/campaigns',
       description: 'أنشئ الجمهور وراجع الحماية واختر القناة قبل إطلاق الحملة.',
     },
   ],
@@ -108,8 +108,8 @@ export const CENTER_WORKSPACES = {
       description: 'إعداد شركات الشحن والعقود والأسعار مع إبقاء كل سجل في عرضه.',
     },
     {
-      id: 'integrations', label: 'التكاملات ومصادر البيانات', entryId: 'operations', memberIds: ['operations'], path: '/operations',
-      description: 'راقب التكاملات والمصادر وWebhooks من مساحة إدارية واحدة.',
+      id: 'integrations', label: 'مزامنة لمحة والتكاملات', entryId: 'operations', memberIds: ['operations'], path: '/operations',
+      description: 'شاهد آخر مزامنة لمحة وصحة بقية المصادر وWebhooks من مكان واحد.',
     },
     {
       id: 'automation', label: 'الأتمتة ووكلاء العمل', entryId: 'work-agents', memberIds: ['work-agents'], path: '/work-agents',
@@ -180,12 +180,12 @@ export const NAV_ITEM_IA = {
   fulfillment:         { label: 'فوترة خدمات العملاء', section: 'shipping', group: 'service_ops', order: 90, visible: true },
   'weight-billing':    { label: 'فوترة الأوزان الزائدة', section: 'shipping', group: 'service_ops', order: 100, visible: true },
 
-  'customer-watch':    { label: 'دليل العملاء والمتاجر', section: 'customers', group: 'customer_ops', order: 10, visible: true },
+  'customer-watch':    { label: 'العملاء والمتاجر', section: 'customers', group: 'customer_ops', order: 10, visible: true },
 
   'sales-hub':         { label: 'فرص البيع من بيانات المنصة', section: 'sales', group: 'sales_ops', order: 10, visible: true },
   // مسارات متقاعدة: تبقى Redirects للتوافق ولا تظهر كبطاقات أو وجهات.
   crm:                 { label: 'إدارة المبيعات', section: 'sales', group: 'sales_ops', order: 20, visible: false },
-  'campaign-center':   { label: 'مركز الحملات الذكي', section: 'sales', group: 'outreach_ops', order: 25, visible: true },
+  'campaign-center':   { label: 'مركز الإعلانات والحملات', section: 'sales', group: 'outreach_ops', order: 25, visible: true },
   'whatsapp-settings': { label: 'الحملات والاتصالات', section: 'sales', group: 'outreach_ops', order: 30, visible: true },
   marketers:           { label: 'المسوّقون والعمولات', section: 'sales', group: 'outreach_ops', order: 40, visible: false },
 

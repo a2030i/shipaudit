@@ -820,7 +820,12 @@ function AppInner({ theme, toggleTheme }) {
                 <PageSlot key={section.id} active={pathname === section.path} scroll>
                   {section.id === 'finance'
                     ? <FinanceExecutive carriers={carriers} isActive={pathname === section.path}/>
-                    : <Navigate to={firstSectionDestination(section.id, CENTER_WORKSPACES, visibleNav)} replace/>}
+                    // لا نُبقِ Navigate مركبًا بعد مغادرة المركز. PageSlot يحتفظ
+                    // بالمحتوى الذي زاره المستخدم؛ وكان التحويل المخفي يعيد
+                    // التنفيذ عند أي تنقل لاحق فيخطف فتح المالية/العملاء/النمو.
+                    : pathname === section.path
+                      ? <Navigate to={firstSectionDestination(section.id, CENTER_WORKSPACES, visibleNav)} replace/>
+                      : null}
                 </PageSlot>
               );
             })}

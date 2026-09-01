@@ -18,7 +18,10 @@ import {
   Card, Btn, Spinner, Empty, Modal, toast, PageHeader, DropZone,
 } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { UPLOAD_SOURCES, ORIGIN_BADGES, loadUploadsOverview, uploadFile, detectFileSource } from '../lib/uploadsHubService.js';
+import {
+  UPLOAD_SOURCES, ORIGIN_BADGES, loadLamhaDirectorySyncState,
+  loadUploadsOverview, uploadFile, detectFileSource,
+} from '../lib/uploadsHubService.js';
 import { saveConsolidatedExpected } from '../lib/codSettlementService.js';
 
 const fmtRel = (iso) => {
@@ -45,13 +48,19 @@ export default function UploadsHub({ isActive = true }) {
   const [consolidated, setConsolidated] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sources, setSources] = useState([]);
+  const [lamhaSync, setLamhaSync] = useState(null);
   const [busy,    setBusy]    = useState({});  // { sourceId: true } while uploading
   const [picker,  setPicker]  = useState(null); // { file, detection } when auto-detect fails
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      setSources(await loadUploadsOverview());
+      const [manualSources, directorySync] = await Promise.all([
+        loadUploadsOverview(),
+        loadLamhaDirectorySyncState(),
+      ]);
+      setSources(manualSources);
+      setLamhaSync(directorySync);
     }
     catch (e) { toast(`فشل التحميل: ${e.message}`, 'error'); }
     setLoading(false);
@@ -163,6 +172,37 @@ export default function UploadsHub({ isActive = true }) {
           </Btn>
         }
       />
+
+      <Card style={{
+        marginBottom: 18, padding: 16, display: 'flex', alignItems: 'center',
+        gap: 14, flexWrap: 'wrap', borderInlineStart: `3px solid ${lamhaSync?.stale ? 'var(--gold)' : 'var(--green)'}`,
+      }}>
+        <span style={{
+          width: 40, height: 40, borderRadius: 10, display: 'grid', placeItems: 'center',
+          color: lamhaSync?.stale ? 'var(--gold)' : 'var(--green)',
+          background: 'color-mix(in srgb, currentColor 10%, transparent)', flexShrink: 0,
+        }}><RefreshCw size={19}/></span>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>مزامنة دليل متاجر لمحة</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3, lineHeight: 1.6 }}>
+            آخر مزامنة: <strong style={{ color: 'var(--text2)' }}>{fmtDateTime(lamhaSync?.lastAt)}</strong>
+            {' · '}{lamhaSync?.scheduleLabel || 'يوميًا 12:00 ص بتوقيت السعودية'}
+          </div>
+        </div>
+        <span style={{
+          padding: '5px 9px', borderRadius: 999, fontSize: 11.5, fontWeight: 800,
+          color: lamhaSync?.stale ? 'var(--gold)' : 'var(--green)',
+          background: lamhaSync?.stale
+            ? 'color-mix(in srgb, var(--gold) 10%, transparent)'
+            : 'color-mix(in srgb, var(--green) 10%, transparent)',
+          border: `1px solid color-mix(in srgb, ${lamhaSync?.stale ? 'var(--gold)' : 'var(--green)'} 28%, transparent)`,
+        }}>
+          {lamhaSync?.lastAt ? (lamhaSync.stale ? 'متأخرة' : 'محدّثة') : 'لا توجد لقطة'}
+        </span>
+        <Btn size="sm" variant="ghost" icon={<ExternalLink size={13}/>} onClick={() => navigate('/accounting-cycle?stage=lamha_sources')}>
+          فتح تفاصيل المزامنة
+        </Btn>
+      </Card>
 
       <Card style={{
         marginBottom: 18,

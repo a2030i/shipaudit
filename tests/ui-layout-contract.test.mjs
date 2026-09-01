@@ -423,7 +423,7 @@ test('approved workspaces live in the navigation hub without removing legacy rou
   const communications = await read('src/pages/WhatsAppSettings.jsx');
 
   assert.match(navigation, /export const CENTER_WORKSPACES/);
-  assert.match(navigation, /label: 'دليل العملاء والمتاجر'/);
+  assert.match(navigation, /label: 'العملاء والمتاجر'/);
   assert.match(navigation, /label: 'النقد والتسويات'/);
   assert.match(navigation, /id: 'cash-settlements'[\s\S]*memberIds: \['money'\]/);
   assert.match(hub, /sectionDestinations/);
@@ -510,7 +510,7 @@ test('phase two groups operations reports and admin into approved workspaces', a
   assert.match(navigation, /shipping:\s*\[[\s\S]*label: 'شركات الشحن'[\s\S]*label: 'المهام والاستثناءات'[\s\S]*label: 'دورة الشهر'[\s\S]*label: 'فوترة الخدمات والأوزان'/);
   assert.match(navigation, /reports:\s*\[[\s\S]*label: 'مكتبة التقارير'[\s\S]*label: 'أداء شركات الشحن'[\s\S]*label: 'التواصل والحملات'[\s\S]*label: 'الملفات المصدّرة'/);
   assert.doesNotMatch(navigation, /label: 'أداء التحصيل'/);
-  assert.match(navigation, /settings:\s*\[[\s\S]*label: 'الفريق والصلاحيات'[\s\S]*label: 'شركات الشحن والعقود'[\s\S]*label: 'التكاملات ومصادر البيانات'[\s\S]*label: 'الأتمتة ووكلاء العمل'[\s\S]*label: 'القنوات والاتصال'[\s\S]*label: 'إعدادات النظام'/);
+  assert.match(navigation, /settings:\s*\[[\s\S]*label: 'الفريق والصلاحيات'[\s\S]*label: 'شركات الشحن والعقود'[\s\S]*label: 'مزامنة لمحة والتكاملات'[\s\S]*label: 'الأتمتة ووكلاء العمل'[\s\S]*label: 'القنوات والاتصال'[\s\S]*label: 'إعدادات النظام'/);
   assert.match(navigation, /'work-agents':\s*\{[^}]*section: 'settings'/);
   assert.match(navigation, /integrity:\s*\{[^}]*section: 'settings'/);
   assert.match(navigation, /'activity-log':\s*\{[^}]*section: 'settings'/);
@@ -531,11 +531,11 @@ test('center view menus stay task-oriented and never exceed six entries', async 
   const decisions = await read('src/pages/DecisionsBoard.jsx');
   const campaigns = await read('src/pages/SmartCampaignCenter.jsx');
   const expected = {
-    sales: ['نمو عملاء لمحة', 'العملاء خارج المنصة', 'المكالمات وIVR', 'مركز الحملات الذكي'],
+    sales: ['نمو عملاء لمحة', 'العملاء خارج المنصة', 'المكالمات وIVR', 'مركز الإعلانات والحملات'],
     finance: ['مركز العملاء المالي', 'النقد والتسويات', 'الحسابات والمطابقة', 'الربحية والسيولة'],
     shipping: ['شركات الشحن', 'المهام والاستثناءات', 'دورة الشهر', 'فوترة الخدمات والأوزان'],
     reports: ['مكتبة التقارير', 'أداء شركات الشحن', 'التواصل والحملات', 'الملفات المصدّرة'],
-    settings: ['الفريق والصلاحيات', 'شركات الشحن والعقود', 'التكاملات ومصادر البيانات', 'الأتمتة ووكلاء العمل', 'القنوات والاتصال', 'إعدادات النظام'],
+    settings: ['الفريق والصلاحيات', 'شركات الشحن والعقود', 'مزامنة لمحة والتكاملات', 'الأتمتة ووكلاء العمل', 'القنوات والاتصال', 'إعدادات النظام'],
   };
   for (const [center, labels] of Object.entries(expected)) {
     assert.deepEqual(CENTER_WORKSPACES[center].map(item => item.label), labels);
@@ -555,6 +555,12 @@ test('center view menus stay task-oriented and never exceed six entries', async 
   assert.match(decisions, /\/whatsapp-settings\?tab=impact/);
   assert.match(decisions, /\/whatsapp-settings\?tab=problems/);
   assert.doesNotMatch(campaigns, /tab=connection/);
+});
+
+test('center redirects unmount after leaving the center route', async () => {
+  const app = await read('src/App.jsx');
+  assert.match(app, /section\.id === 'finance'[\s\S]*pathname === section\.path[\s\S]*<Navigate to=\{firstSectionDestination/);
+  assert.doesNotMatch(app, /section\.id === 'finance'[\s\S]*:\s*<Navigate to=\{firstSectionDestination/);
 });
 
 test('legacy entity and action routes resolve to canonical homes without removing route guards', async () => {
