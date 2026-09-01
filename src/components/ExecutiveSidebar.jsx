@@ -1,8 +1,8 @@
-import { ChevronLeft, LayoutDashboard, LogOut, Menu } from 'lucide-react';
+import { ChevronLeft, LayoutDashboard, LogOut } from 'lucide-react';
 import { LamhaLogo } from './BrandLogo.jsx';
 
 const HOME_PATHS = new Set(['/overview', '/decisions']);
-const PRIMARY_SECTION_IDS = new Set(['finance', 'customers', 'shipping']);
+const SECTION_ORDER = ['sales', 'customers', 'finance', 'shipping', 'reports', 'settings'];
 
 export default function ExecutiveSidebar({
   sections,
@@ -13,15 +13,13 @@ export default function ExecutiveSidebar({
   roleLabel,
   canOpenHome,
   onNavigate,
-  onMore,
   onSignOut,
 }) {
-  const visibleSections = sections.filter(section => (
-    navItems.some(item => item.section === section.id)
-  ));
-  const primarySections = visibleSections.filter(section => PRIMARY_SECTION_IDS.has(section.id));
-  const moreSections = visibleSections.filter(section => !PRIMARY_SECTION_IDS.has(section.id));
-  const moreActive = moreSections.some(section => section.id === currentSectionId);
+  const visibleSections = SECTION_ORDER
+    .map(id => sections.find(section => section.id === id))
+    .filter(section => section && navItems.some(item => item.section === section.id));
+  const campaignItem = navItems.find(item => item.id === 'campaign-center');
+  const campaignActive = pathname === campaignItem?.path;
 
   return (
     <aside className="sidebar" aria-label="التنقل الرئيسي">
@@ -48,35 +46,36 @@ export default function ExecutiveSidebar({
             </button>
           ) : null}
 
-          {primarySections.map(section => {
+          {visibleSections.map(section => {
             const Icon = section.icon;
-            const active = currentSectionId === section.id;
+            const active = currentSectionId === section.id && !(section.id === 'sales' && campaignActive);
             return (
-              <button
-                type="button"
-                key={section.id}
-                className={`primary-center-item${active ? ' active' : ''}`}
-                aria-current={active ? 'page' : undefined}
-                onClick={() => onNavigate(section.path)}
-              >
-                <span className="primary-center-item__icon"><Icon size={19}/></span>
-                <span><strong>{section.label}</strong><small>{section.hint}</small></span>
-                <ChevronLeft size={15}/>
-              </button>
+              <div className="primary-center-entry" key={section.id}>
+                <button
+                  type="button"
+                  className={`primary-center-item${active ? ' active' : ''}`}
+                  aria-current={active ? 'page' : undefined}
+                  onClick={() => onNavigate(section.path)}
+                >
+                  <span className="primary-center-item__icon"><Icon size={19}/></span>
+                  <span><strong>{section.label}</strong><small>{section.hint}</small></span>
+                  <ChevronLeft size={15}/>
+                </button>
+                {section.id === 'sales' && campaignItem ? (
+                  <button
+                    type="button"
+                    className={`primary-center-item primary-center-item--shortcut${campaignActive ? ' active' : ''}`}
+                    aria-current={campaignActive ? 'page' : undefined}
+                    onClick={() => onNavigate(campaignItem.path)}
+                  >
+                    <span className="primary-center-item__icon"><campaignItem.icon size={18}/></span>
+                    <span><strong>الحملات</strong><small>الجمهور · الإطلاق · النتائج</small></span>
+                    <ChevronLeft size={15}/>
+                  </button>
+                ) : null}
+              </div>
             );
           })}
-          {moreSections.length ? (
-            <button
-              type="button"
-              className={`primary-center-item${moreActive ? ' active' : ''}`}
-              aria-current={moreActive ? 'page' : undefined}
-              onClick={onMore}
-            >
-              <span className="primary-center-item__icon"><Menu size={19}/></span>
-              <span><strong>المزيد</strong><small>المبيعات · التقارير · الإدارة</small></span>
-              <ChevronLeft size={15}/>
-            </button>
-          ) : null}
         </div>
       </nav>
 

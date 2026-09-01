@@ -212,6 +212,7 @@ export default function CustomerWatch({ isActive = true }) {
   const navigate = useNavigate();
   const { profile, can } = useAuth();
   const routeParams = new URLSearchParams(location.search);
+  const isCenterWorkspace = location.pathname === '/workspace/customers';
   const isFullProfile = location.pathname === '/customer-360'
     && (routeParams.has('customer') || routeParams.get('open') === '1');
   const profileIdentity = isFullProfile
@@ -503,8 +504,10 @@ export default function CustomerWatch({ isActive = true }) {
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader
         icon={<Users size={22}/>}
-        title="دليل العملاء والمتاجر"
-        subtitle="ابحث عن العميل أو المتجر، ثم افتح ملف العميل 360 الموحد"
+        title={isCenterWorkspace ? 'مركز العملاء' : 'دليل العملاء والمتاجر'}
+        subtitle={isCenterWorkspace
+          ? 'راقب قاعدة العملاء والمخاطر والقوائم التشغيلية، وافتح ملف العميل عند الحاجة'
+          : 'ابحث عن العميل أو المتجر، ثم افتح ملف العميل 360 الموحد'}
         meta={data?.snapshot?.receivables
           ? `المصادر: زوهو${data.snapshot.merchants ? ' + دليل متاجر لمحة' : ''}`
           : null}
@@ -537,6 +540,28 @@ export default function CustomerWatch({ isActive = true }) {
         />
       </details>
 
+      {!isFullProfile ? (
+        <div className="customer-view-tabs" role="tablist" aria-label="طريقة عرض العملاء">
+          {CUSTOMER_DIRECTORY_VIEWS.map(([id, label, description]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={view === id}
+              className={view === id ? 'active' : ''}
+              onClick={() => {
+                const params = new URLSearchParams(location.search);
+                params.set('view', id);
+                navigate(`${location.pathname}?${params.toString()}`);
+              }}
+            >
+              <strong>{label}</strong>
+              <small>{description}</small>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {loading && !data ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><Spinner size={28}/></div>
       ) : !t ? (
@@ -549,20 +574,22 @@ export default function CustomerWatch({ isActive = true }) {
         </Card>
       ) : (
         <>
+          {view === 'overview' && isCenterWorkspace && <CustomerPulseSummary t={t} />}
+
           {/* ── SEARCH BAR ─────────────────────────────────────── */}
-          <Card className="customer-search-hero" style={{ padding: '20px 22px', marginBottom: 16, position: 'relative', zIndex: 50 }}>
+          <Card className={`customer-search-hero${isCenterWorkspace ? ' customer-search-hero--compact' : ''}`} style={{ padding: isCenterWorkspace ? '14px 16px' : '20px 22px', marginBottom: 16, position: 'relative', zIndex: 50 }}>
             <div className="customer-search-copy">
               <div>
-                <div className="customer-search-eyebrow">ابدأ من هنا</div>
-                <h2>افتح ملف عميل</h2>
+                <div className="customer-search-eyebrow">وصول مباشر</div>
+                <h2>{isCenterWorkspace ? 'بحث سريع عن عميل أو متجر' : 'افتح ملف عميل'}</h2>
                 <p>ابحث بالاسم أو رقم المتجر أو الجوال، ثم راجع كل معلوماته في ملف واحد.</p>
               </div>
-              <div className="customer-search-scope">
+              {!isCenterWorkspace ? <div className="customer-search-scope">
                 <span>المديونية</span>
                 <span>المحفظة</span>
                 <span>الشحن</span>
                 <span>التواصل</span>
-              </div>
+              </div> : null}
             </div>
             <div className="customer-search-input">
               <Search size={19} color="var(--brand)"/>
@@ -656,7 +683,7 @@ export default function CustomerWatch({ isActive = true }) {
             )}
           </Card>
 
-          {view === 'overview' && <CustomerPulseSummary t={t} />}
+          {view === 'overview' && !isCenterWorkspace && <CustomerPulseSummary t={t} />}
 
           {/* ── MONTHLY INVOICING TREND ────────────────────────── */}
           {view === 'overview' && chartData && chartData.series[0].data.some(v => v > 0) && (

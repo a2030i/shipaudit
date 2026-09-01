@@ -120,7 +120,7 @@ test('permissions modal has one scroll region and a persistent action bar', asyn
   assert.match(css, /\.permission-modal-footer\s*\{[\s\S]*position:\s*sticky/);
 });
 
-test('V2 shell keeps one compact desktop rail and one mobile navigation catalog', async () => {
+test('V2 shell keeps one direct desktop navigation and one compact mobile directory', async () => {
   const app = await read('src/App.jsx');
   const css = await read('src/navigation-hub.css');
   const hub = await read('src/components/NavigationHub.jsx');
@@ -129,14 +129,17 @@ test('V2 shell keeps one compact desktop rail and one mobile navigation catalog'
   assert.match(app, /<NavigationHub/);
   assert.match(app, /<ExecutiveSidebar/);
   assert.match(sidebar, /<aside className="sidebar" aria-label="التنقل الرئيسي">/);
-  assert.match(sidebar, /PRIMARY_SECTION_IDS = new Set\(\['finance', 'customers', 'shipping'\]\)/);
-  assert.match(sidebar, /<strong>المزيد<\/strong><small>المبيعات · التقارير · الإدارة<\/small>/);
-  assert.match(app, /path: '\/workspace\/operations', label: 'التشغيل'/);
-  assert.doesNotMatch(app.slice(app.indexOf('<nav className="bottom-nav">')), /path: '\/workspace\/sales'/);
+  assert.match(sidebar, /SECTION_ORDER = \['sales', 'customers', 'finance', 'shipping', 'reports', 'settings'\]/);
+  assert.doesNotMatch(sidebar, /<strong>المزيد<\/strong>/);
+  assert.match(sidebar, /<strong>الحملات<\/strong><small>الجمهور · الإطلاق · النتائج<\/small>/);
+  assert.match(app, /path: '\/workspace\/sales',\s+label: 'المبيعات'/);
+  assert.match(app, /path: '\/campaigns',\s+label: 'الحملات'/);
+  assert.match(app, /<StoreActivation isActive=\{pathname === section\.path\}/);
+  assert.match(app, /<CustomerWatch isActive=\{pathname === section\.path\}/);
   assert.doesNotMatch(app, /<CenterLanding/);
   assert.match(css, /\.navigation-hub__catalog\s*\{/);
-  assert.match(css, /\.navigation-hub__group\s*\{[\s\S]*content-visibility:\s*auto/);
-  assert.match(css, /\.navigation-hub__destinations\s*\{[\s\S]*repeat\(2,/);
+  assert.match(css, /\.navigation-hub__center-row\s*\{/);
+  assert.match(css, /\.navigation-hub__destinations\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\)/);
   assert.match(css, /\.app-layout,[\s\S]*display:\s*grid\s*!important[\s\S]*grid-template-areas:\s*"main primary"/);
   assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.app-layout > \.sidebar,[\s\S]*display:\s*none\s*!important/);
   assert.match(hub, /window\.visualViewport/);
@@ -161,9 +164,10 @@ test('shared modal isolates the background and restores it after the last overla
 
 test('primary navigation rail leaves center labels comfortably readable', async () => {
   const shell = await readFile(new URL('../src/shipaudit-os-v2.css', import.meta.url), 'utf8');
-  assert.match(shell, /--sa-primary-rail:\s*124px/);
-  assert.match(shell, /max-width:\s*108px\s*!important/);
-  assert.match(shell, /--sa-primary-rail:\s*100px;/);
+  assert.match(shell, /--sa-primary-rail:\s*196px/);
+  assert.match(shell, /flex-direction:\s*row\s*!important/);
+  assert.match(shell, /font-size:\s*12px\s*!important/);
+  assert.match(shell, /--sa-primary-rail:\s*168px;/);
   assert.doesNotMatch(shell, /--sa-context-rail/);
   assert.match(shell, /\.app-layout\.primary-collapsed\s*\{[\s\S]*--sa-primary-rail:\s*76px/);
   assert.match(shell, /width:\s*min\(86vw,\s*340px\)\s*!important/);
@@ -449,7 +453,8 @@ test('approved workspaces live in the navigation hub without removing legacy rou
   assert.match(cash, /id: 'payments'/);
   assert.match(cash, /id: 'unclassified'/);
   assert.match(cash, /defaultSavedClass: 'unclassified'/);
-  assert.match(customers, /title="دليل العملاء والمتاجر"/);
+  assert.match(customers, /title=\{isCenterWorkspace \? 'مركز العملاء' : 'دليل العملاء والمتاجر'\}/);
+  assert.match(customers, /className="customer-view-tabs"/);
   assert.match(customers, /buildStore360Url\(\{/);
   assert.match(customers, /storeId: identity/);
   assert.match(customers, /لا يمكن فتح Store 360 قبل وجود Store ID مؤكد/);
@@ -461,12 +466,12 @@ test('approved workspaces live in the navigation hub without removing legacy rou
   assert.doesNotMatch(app, /label: 'التحصيل',\s+icon: HandCoins/);
 });
 
-test('navigation hub exposes direct destinations grouped by center on every viewport', async () => {
+test('navigation hub exposes direct compact center rows and contextual destinations', async () => {
   const component = await read('src/components/NavigationHub.jsx');
   const css = await read('src/navigation-hub.css');
 
   assert.match(component, /navigation-hub__catalog/);
-  assert.match(component, /navigation-hub__group/);
+  assert.match(component, /navigation-hub__center-row/);
   assert.match(component, /navigation-hub__destinations/);
   assert.match(component, /activeSection \?/);
   assert.match(css, /\.navigation-hub__catalog\s*\{/);
@@ -531,7 +536,7 @@ test('center view menus stay task-oriented and never exceed six entries', async 
   const decisions = await read('src/pages/DecisionsBoard.jsx');
   const campaigns = await read('src/pages/SmartCampaignCenter.jsx');
   const expected = {
-    sales: ['نمو عملاء لمحة', 'العملاء خارج المنصة', 'المكالمات وIVR', 'مركز الإعلانات والحملات'],
+    sales: ['مركز المبيعات', 'العملاء خارج المنصة', 'المكالمات وIVR', 'مركز الإعلانات والحملات'],
     finance: ['مركز العملاء المالي', 'النقد والتسويات', 'الحسابات والمطابقة', 'الربحية والسيولة'],
     shipping: ['شركات الشحن', 'المهام والاستثناءات', 'دورة الشهر', 'فوترة الخدمات والأوزان'],
     reports: ['مكتبة التقارير', 'أداء شركات الشحن', 'التواصل والحملات', 'الملفات المصدّرة'],

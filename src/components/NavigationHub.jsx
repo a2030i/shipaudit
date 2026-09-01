@@ -212,6 +212,27 @@ export default function NavigationHub({
     ]);
 
   const activeSection = orderedSections.find(section => section.id === sectionId) || null;
+  const campaignItem = navItems.find(item => item.id === 'campaign-center');
+  const centerRows = orderedSections.flatMap(section => [
+    {
+      id: `center:${section.id}`,
+      label: section.label,
+      description: section.hint || 'فتح مركز العمل',
+      icon: section.icon,
+      path: section.path,
+      sectionId: section.id,
+      accent: section.accent,
+    },
+    ...(section.id === 'sales' && campaignItem ? [{
+      id: 'center:campaigns',
+      label: 'الحملات',
+      description: 'الجمهور · الإطلاق · المتابعة والنتائج',
+      icon: campaignItem.icon,
+      path: campaignItem.path,
+      sectionId: 'campaigns',
+      accent: '#2563eb',
+    }] : []),
+  ]);
 
   if (!open) return null;
 
@@ -327,37 +348,35 @@ export default function NavigationHub({
               </button>
             </div>
 
-            <div className="navigation-hub__catalog" aria-label="أقسام النظام">
+            <div className="navigation-hub__catalog navigation-hub__center-list" aria-label="أقسام النظام">
               {canOpenHome ? (
-                <section className="navigation-hub__group">
-                  <div className="navigation-hub__group-heading">
-                    <span className="navigation-hub__group-icon"><LayoutDashboard size={19}/></span>
-                    <strong>الرئيسية</strong>
-                  </div>
-                  <div className="navigation-hub__destinations">
-                    <button type="button" className="navigation-hub__destination" onClick={() => activate({ path: '/overview' })}>
-                      <span className="navigation-hub__destination-icon"><LayoutDashboard size={25}/></span>
-                      <strong>لوحة العمل</strong>
-                      <small>القرارات والمؤشرات ومصادر البيانات</small>
-                    </button>
-                  </div>
-                </section>
+                <button
+                  type="button"
+                  className={`navigation-hub__center-row${currentPath === '/overview' ? ' is-active' : ''}`}
+                  onClick={() => activate({ path: '/overview' })}
+                >
+                  <span className="navigation-hub__destination-icon"><LayoutDashboard size={21}/></span>
+                  <span><strong>الرئيسية</strong><small>القرارات والاستثناءات ومصادر البيانات</small></span>
+                  <ArrowRight size={17}/>
+                </button>
               ) : null}
-              {orderedSections.map(section => {
-                const Icon = section.icon;
+              {centerRows.map(row => {
+                const Icon = row.icon;
+                const active = row.sectionId === 'campaigns'
+                  ? currentPath === row.path
+                  : currentSectionId === row.sectionId && currentPath !== '/campaigns';
                 return (
-                  <section
-                    key={section.id}
-                    className={`navigation-hub__group${currentSectionId === section.id ? ' is-active' : ''}`}
-                    style={{ '--section-accent': section.accent }}
+                  <button
+                    type="button"
+                    key={row.id}
+                    className={`navigation-hub__center-row${active ? ' is-active' : ''}`}
+                    style={{ '--section-accent': row.accent }}
+                    onClick={() => activate(row)}
                   >
-                    <div className="navigation-hub__group-heading">
-                      <span className="navigation-hub__group-icon"><Icon size={19}/></span>
-                      <strong>{section.label}</strong>
-                      <small>{section.destinations.length} وجهة</small>
-                    </div>
-                    {renderDestinations(section)}
-                  </section>
+                    <span className="navigation-hub__destination-icon"><Icon size={21}/></span>
+                    <span><strong>{row.label}</strong><small>{row.description}</small></span>
+                    <ArrowRight size={17}/>
+                  </button>
                 );
               })}
             </div>

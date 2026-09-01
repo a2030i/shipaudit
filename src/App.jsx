@@ -57,6 +57,7 @@ const WebhookEvents = lazy(() => import('./pages/WebhookEvents.jsx'));
 const ContractsOverview = lazy(() => import('./pages/ContractsOverview.jsx'));
 const Tasks = lazy(() => import('./pages/Tasks.jsx'));
 const CustomerWatch = lazy(() => import('./pages/CustomerWatch.jsx'));
+const StoreActivation = lazy(() => import('./pages/StoreActivation.jsx'));
 const CarriersWorkspace = lazy(() => import('./pages/CarriersWorkspace.jsx'));
 const FulfillmentAudit = lazy(() => import('./pages/FulfillmentAudit.jsx'));
 const MoneyHub = lazy(() => import('./pages/MoneyHub.jsx'));
@@ -548,7 +549,7 @@ function AppInner({ theme, toggleTheme }) {
   const goto = (path) => {
     const center = NAV_SECTIONS.find(section => section.path === path);
     let destination = path;
-    if (center && center.id !== 'finance') {
+    if (center && !['finance', 'sales', 'customers'].includes(center.id)) {
       try {
         const saved = localStorage.getItem(`${LAST_CENTER_ROUTE_PREFIX}${center.id}`);
         if (saved?.startsWith('/')) {
@@ -751,7 +752,6 @@ function AppInner({ theme, toggleTheme }) {
           roleLabel={ROLE_LABEL[profile.role] ?? profile.role}
           canOpenHome={isAdmin || can('overview.view')}
           onNavigate={goto}
-          onMore={() => openNavigation()}
           onSignOut={signOut}
         />
 
@@ -820,6 +820,10 @@ function AppInner({ theme, toggleTheme }) {
                 <PageSlot key={section.id} active={pathname === section.path} scroll>
                   {section.id === 'finance'
                     ? <FinanceExecutive carriers={carriers} isActive={pathname === section.path}/>
+                    : section.id === 'sales'
+                      ? <StoreActivation isActive={pathname === section.path}/>
+                      : section.id === 'customers'
+                        ? <CustomerWatch isActive={pathname === section.path}/>
                     // لا نُبقِ Navigate مركبًا بعد مغادرة المركز. PageSlot يحتفظ
                     // بالمحتوى الذي زاره المستخدم؛ وكان التحويل المخفي يعيد
                     // التنفيذ عند أي تنقل لاحق فيخطف فتح المالية/العملاء/النمو.
@@ -1249,12 +1253,17 @@ function AppInner({ theme, toggleTheme }) {
       <nav className="bottom-nav">
         {[
           { path: '/overview',            label: 'الرئيسية', icon: LayoutDashboard, show: isAdmin || can('overview.view') },
-          { path: '/workspace/finance',   label: 'المالية',  icon: DollarSign, sectionId: 'finance', show: visibleNav.some(item => item.section === 'finance') },
+          { path: '/workspace/sales',     label: 'المبيعات', icon: Target, sectionId: 'sales', show: visibleNav.some(item => item.section === 'sales') },
           { path: '/workspace/customers', label: 'العملاء',  icon: Users, sectionId: 'customers', show: visibleNav.some(item => item.section === 'customers') },
-          { path: '/workspace/operations', label: 'التشغيل', icon: Truck, sectionId: 'shipping', show: visibleNav.some(item => item.section === 'shipping') },
+          { path: '/campaigns',           label: 'الحملات',  icon: MessageCircle, exact: true, show: visibleNav.some(item => item.id === 'campaign-center') },
+          { path: '/workspace/finance',   label: 'المالية',  icon: DollarSign, sectionId: 'finance', show: visibleNav.some(item => item.section === 'finance') },
         ].filter(it => it.show).map(it => {
           const Icon = it.icon;
-          const active = it.sectionId ? contextSection?.id === it.sectionId : location.pathname === it.path;
+          const active = it.exact
+            ? location.pathname === it.path
+            : it.sectionId
+              ? contextSection?.id === it.sectionId && !(it.sectionId === 'sales' && location.pathname === '/campaigns')
+              : location.pathname === it.path;
           return (
             <button key={it.path} onClick={() => goto(it.path)} aria-current={active ? 'page' : undefined}
               className={`bottom-nav-btn ${active ? 'active' : ''}`}>
@@ -1263,10 +1272,6 @@ function AppInner({ theme, toggleTheme }) {
             </button>
           );
         })}
-        <button className="bottom-nav-btn" aria-label="فتح قائمة المراكز" onClick={() => openNavigation()}>
-          <Menu size={19}/>
-          <span>القائمة</span>
-        </button>
       </nav>
 
       <MobileExperienceManager routeKey={`${location.pathname}${location.search}`}/>

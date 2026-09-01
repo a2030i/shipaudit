@@ -7,7 +7,7 @@ const read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 test('finance primary navigation opens a real executive workspace instead of restoring a historical table', async () => {
   const app = await read('src/App.jsx');
   assert.match(app, /const FinanceExecutive = lazy\(\(\) => import\('\.\/pages\/FinanceExecutive\.jsx'\)\)/);
-  assert.match(app, /if \(center && center\.id !== 'finance'\)/);
+  assert.match(app, /if \(center && !\['finance', 'sales', 'customers'\]\.includes\(center\.id\)\)/);
   assert.match(app, /section\.id === 'finance'[\s\S]*?<FinanceExecutive carriers=\{carriers\} isActive=\{pathname === section\.path\}/);
   assert.doesNotMatch(app, /<PageSlot key=\{section\.id\} active=\{pathname === section\.path\} scroll>\s*<Navigate/);
   assert.match(app, /<button key=\{it\.path\} onClick=\{\(\) => goto\(it\.path\)\}/);

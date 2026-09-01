@@ -2,9 +2,9 @@
 // تعريف المسار والصلاحية يبقى في App لأنه مرتبط بتركيب الصفحات، أما قرار
 // الظهور والقسم والترتيب والمسمى فيؤخذ حصراً من هذا الملف.
 export const NAV_SECTIONS = [
-  { id: 'finance',   path: '/workspace/finance',    label: 'المالية',  icon: 'DollarSign', accent: '#F59E0B', hint: 'مال العملاء · التحصيل · المطابقة' },
-  { id: 'customers', path: '/workspace/customers',  label: 'العملاء',  icon: 'Users',      accent: '#EF4444', hint: 'الملف الموحد · الخدمة · حالة العميل' },
   { id: 'sales',     path: '/workspace/sales',      label: 'المبيعات', icon: 'Target',     accent: '#8B5CF6', hint: 'نمو عملاء لمحة · العملاء المحتملون · التواصل' },
+  { id: 'customers', path: '/workspace/customers',  label: 'العملاء',  icon: 'Users',      accent: '#EF4444', hint: 'الملف الموحد · الخدمة · حالة العميل' },
+  { id: 'finance',   path: '/workspace/finance',    label: 'المالية',  icon: 'DollarSign', accent: '#F59E0B', hint: 'مال العملاء · التحصيل · المطابقة' },
   { id: 'shipping',  path: '/workspace/operations', label: 'التشغيل',  icon: 'Truck',      accent: '#2B68DE', hint: 'الشحن · الفوترة · الدورة الشهرية' },
   { id: 'reports',   path: '/workspace/reports',    label: 'التقارير', icon: 'FileCheck',  accent: '#22C55E', hint: 'المؤشرات · الرقابة · الأتمتة' },
   { id: 'settings',  path: '/workspace/admin',      label: 'الإدارة',  icon: 'Settings',   accent: '#31D5E1', hint: 'الفريق · العقود · التكاملات' },
@@ -19,12 +19,13 @@ export const CENTER_WORKSPACES = {
   customers: [
     {
       id: 'directory', label: 'العملاء والمتاجر', entryId: 'customer-watch', memberIds: ['customer-watch'],
-      description: 'ابحث عن العميل أو المتجر، ثم افتح صفحة Customer 360 الموحدة.',
+      path: '/workspace/customers',
+      description: 'راقب قاعدة العملاء والحالات المهمة، ثم افتح Customer 360 عند الحاجة.',
     },
   ],
   sales: [
     {
-      id: 'lamha-growth', label: 'نمو عملاء لمحة', entryId: 'sales-hub', memberIds: ['sales-hub'], path: '/retargeting?view=activation',
+      id: 'lamha-growth', label: 'مركز المبيعات', entryId: 'sales-hub', memberIds: ['sales-hub'], path: '/workspace/sales',
       subTabIds: ['today', 'activation', 'pipeline', 'retargeting', 'hatif', 'segments'],
       description: 'النشطون والداخلون والخارجون والشرائح، مع انتقال مباشر إلى عمل اليوم.',
     },

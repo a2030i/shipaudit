@@ -2255,6 +2255,20 @@ tbody tr:hover td:first-child {
   isolation: auto;
 }
 
+.customer-search-hero--compact {
+  background: var(--card) !important;
+  border-color: var(--border) !important;
+}
+
+.customer-search-hero--compact .customer-search-copy {
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.customer-search-hero--compact .customer-search-copy h2 { font-size: 15px; }
+.customer-search-hero--compact .customer-search-copy p { margin-top: 2px; }
+.customer-search-hero--compact .customer-search-input { min-height: 44px; box-shadow: none; }
+
 .customer-search-results {
   overflow: hidden auto;
 }
@@ -2371,14 +2385,16 @@ tbody tr:hover td:first-child {
 }
 
 .customer-view-tabs button strong,
-.customer-view-tabs button span { display: block; }
+.customer-view-tabs button span,
+.customer-view-tabs button small { display: block; }
 
 .customer-view-tabs button strong {
   color: var(--text2);
   font-size: 12.5px;
 }
 
-.customer-view-tabs button span {
+.customer-view-tabs button span,
+.customer-view-tabs button small {
   margin-top: 3px;
   color: var(--muted);
   font-size: 10.5px;
@@ -2459,7 +2475,9 @@ tbody tr:hover td:first-child {
     font-size: 12px;
     font-weight: 800;
   }
-  .customer-view-tabs { display: none; }
+  .customer-view-tabs { display: grid; gap: 4px; margin-bottom: 12px; padding: 4px; }
+  .customer-view-tabs button { min-height: 42px; padding: 6px 4px; text-align: center; }
+  .customer-view-tabs button small { display: none; }
   .customer-reference-grid { grid-template-columns: 1fr; }
   .customer-source-details > summary small { display: none; }
 }
