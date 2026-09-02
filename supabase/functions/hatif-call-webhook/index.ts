@@ -6,7 +6,7 @@
 // verify_jwt=false — الحماية الأساسية توقيع HMAC؛ ?key= انتقال مؤقت حتى تفعيل السر.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { authorizeHatifWebhook } from '../_shared/hatifWebhookAuth.ts';
-import { claimHatifWebhookEvent, failHatifWebhookEvent, finishHatifWebhookEvent } from '../_shared/hatifReliability.ts';
+import { claimHatifWebhookEvent, failHatifWebhookEvent, finishHatifWebhookEvent, hatifErrorMessage } from '../_shared/hatifReliability.ts';
 
 const svc = () => createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 const ok = () => new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -32,11 +32,34 @@ const STATUS_MAP: Record<string, string> = { '0': 'Active', '1': 'Completed', '2
 const SENTIMENT_MAP: Record<string, string> = { '1': 'Positive', '2': 'Neutral', '3': 'Negative', '4': 'Mixed', '5': 'Unknown' };
 const pick = (o: Record<string, any> | null, ...keys: string[]) => { for (const k of keys) { const v = o?.[k]; if (v !== undefined && v !== null && v !== '') return v; } return null; };
 
+function constantTimeEqual(left: string, right: string) {
+  let mismatch = left.length ^ right.length;
+  const width = Math.max(left.length, right.length);
+  for (let i = 0; i < width; i += 1) {
+    mismatch |= (left.charCodeAt(i) || 0) ^ (right.charCodeAt(i) || 0);
+  }
+  return mismatch === 0;
+}
+
+async function isInternalReplay(req: Request, db: ReturnType<typeof svc>) {
+  const supplied = (req.headers.get('X-Cron-Key') || '').trim();
+  if (!supplied) return false;
+  const { data } = await db.from('zoho_auth').select('cron_key').eq('id', 1).maybeSingle();
+  const expected = String(data?.cron_key || '');
+  return !!expected && constantTimeEqual(supplied, expected);
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok');
   const db = svc();
   const rawBody = await req.text();
-  const auth = await authorizeHatifWebhook(req, db, rawBody);
+  // Internal replay is limited to the rotated server-side cron key. It lets us
+  // recover payloads already stored in the durable inbox without exposing the
+  // provider's HMAC secret or weakening normal callback verification.
+  const internalReplay = await isInternalReplay(req, db);
+  const auth = internalReplay
+    ? { ok: true, mode: 'internal_replay' as const }
+    : await authorizeHatifWebhook(req, db, rawBody);
   if (!auth.ok) {
     console.warn('hatif call webhook rejected:', auth.reason);
     return new Response('forbidden', { status: 403 });
@@ -129,7 +152,7 @@ Deno.serve(async (req) => {
     await finishHatifWebhookEvent(db, eventKey, 'processed');
     return ok();
   } catch (e) {
-    const message = String((e as Error)?.message || e);
+    const message = hatifErrorMessage(e);
     console.error('hatif call webhook processing failed:', message);
     if (eventKey) await failHatifWebhookEvent(db, eventKey, e);
     return retry(message);

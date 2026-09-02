@@ -38,6 +38,7 @@ import {
   saveSmartCampaign,
   SMART_CAMPAIGN_CHANNELS,
   SMART_CAMPAIGN_OBJECTIVES,
+  resolveSmartCampaignChannelOutcome,
   updateSmartCampaignOutcome,
 } from '../lib/smartCampaignService.js';
 import { loadHatifUsers, loadOutreachImpact, loadWhatsAppCampaignReport } from '../lib/whatsappService.js';
@@ -644,14 +645,15 @@ export default function SmartCampaignCenter({ isActive = true }) {
 
   const handleChannelDone = async (campaign, result, selectedChannel) => {
     try {
-      const scheduled = !!result?.scheduled;
+      const outcome = resolveSmartCampaignChannelOutcome(result, selectedChannel);
       await updateSmartCampaignOutcome(campaign.id, {
-        status: scheduled ? 'scheduled' : 'running',
+        status: outcome.status,
         channel: selectedChannel,
-        scheduledAt: scheduled ? (result?.scheduledAt || null) : null,
-        launchedAt: scheduled ? null : new Date().toISOString(),
+        scheduledAt: outcome.scheduledAt,
+        launchedAt: outcome.launchedAt,
+        completedAt: outcome.completedAt,
         resultSummary: result || {},
-      }, user?.id || null, scheduled ? 'channel_scheduled' : 'channel_launched');
+      }, user?.id || null, outcome.eventType);
       refreshCampaigns();
     } catch (error) { toast(`تم تنفيذ القناة وتعذّر تحديث سجل المركز: ${error.message}`, 'warn'); }
   };

@@ -426,6 +426,39 @@ export async function updateSmartCampaignOutcome(campaignId, patch, userId, even
   return fromCampaignRow(data);
 }
 
+export function resolveSmartCampaignChannelOutcome(result, channel, completedAt = new Date().toISOString()) {
+  if (result?.scheduled) {
+    return {
+      status: 'scheduled',
+      scheduledAt: result.scheduledAt || null,
+      launchedAt: null,
+      completedAt: null,
+      eventType: 'channel_scheduled',
+    };
+  }
+
+  // إرسال واتساب الفوري يعيد نتيجة كل دفعة قبل استدعاء onSent، لذلك يكون
+  // التنفيذ قد انتهى فعلياً هنا. أما IVR فقد يبقى قيد المعالجة لدى هاتف.
+  if (channel === 'whatsapp') {
+    const failed = Number(result?.failed || 0);
+    return {
+      status: failed > 0 ? 'needs_decision' : 'completed',
+      scheduledAt: null,
+      launchedAt: completedAt,
+      completedAt,
+      eventType: failed > 0 ? 'channel_partial_failure' : 'channel_completed',
+    };
+  }
+
+  return {
+    status: 'running',
+    scheduledAt: null,
+    launchedAt: completedAt,
+    completedAt: null,
+    eventType: 'channel_launched',
+  };
+}
+
 export async function createSmartCampaignTasks(campaignId, recipients, userId) {
   const rows = recipients.map((recipient, index) => ({
     campaign_id: campaignId,

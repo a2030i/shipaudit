@@ -19,3 +19,8 @@ public/fonts/ReadexPro-*.woff2
 public/fonts/Tajawal-*.woff2
 # إعدادات صلاحيات محلية خاصة بالجهاز
 .claude/settings.local.json
+
+# ملفات أدوات محلية وليست جزءًا من حزمة التطبيق
+.codex-tmp/
+pnpm-lock.yaml
+pnpm-workspace.yaml

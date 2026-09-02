@@ -2,6 +2,19 @@
 
 const encoder = new TextEncoder();
 
+export function hatifErrorMessage(reason: unknown): string {
+  if (reason instanceof Error && reason.message) return reason.message;
+  if (reason && typeof reason === 'object') {
+    const value = reason as Record<string, unknown>;
+    const parts = [value.code, value.message, value.details, value.hint]
+      .filter(part => part !== undefined && part !== null && String(part).trim())
+      .map(String);
+    if (parts.length) return parts.join(' | ');
+    try { return JSON.stringify(value); } catch { /* fall through */ }
+  }
+  return String(reason);
+}
+
 export async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', encoder.encode(value));
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
@@ -80,7 +93,7 @@ export async function finishHatifWebhookEvent(
 }
 
 export async function failHatifWebhookEvent(db: any, eventKey: string, reason: unknown) {
-  const message = String(reason instanceof Error ? reason.message : reason).slice(0, 1000);
+  const message = hatifErrorMessage(reason).slice(0, 1000);
   const { error } = await db.from('hatif_webhook_inbox').update({
     status: 'failed',
     last_attempt_at: new Date().toISOString(),
