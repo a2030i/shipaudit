@@ -335,10 +335,8 @@ export default function FigmaCommandCenter({
   const firstCloseBlocker = closeReadiness.blockers?.[0];
   const operationalUploads = data?.operationalUploads || null;
   const uploadItems = operationalUploads?.items || [];
-  const merchantExcelEvidence = uploadItems.find(item => item.key === 'lamha_merchants_excel');
   const apiNeedsUpdate = !merchantPulse.available || sourceTone(states.merchants) !== 'green';
-  const merchantExcelMissing = operationalUploads?.available && merchantExcelEvidence && !merchantExcelEvidence.uploaded;
-  const merchantNeedsUpdate = (data?.lamhaSourceNeedsUpdate ?? apiNeedsUpdate) || merchantExcelMissing;
+  const merchantNeedsUpdate = data?.lamhaSourceNeedsUpdate ?? apiNeedsUpdate;
   const missingUploadCount = operationalUploads?.available
     ? uploadItems.filter(item => !item.uploaded).length
     : null;
@@ -406,7 +404,7 @@ export default function FigmaCommandCenter({
           {showDeductSignal ? <ActionCard tone="blue" icon={WalletCards} title="محفظة موجبة مع فواتير غير مسددة" count={deductCount} value={`${compactMoney(deductAmount)} ر.س`} note="مراجعة تشغيلية للإيقاف؛ تسوية Zoho إجراء مستقل" action="عرض النتائج" onClick={() => navigate('/customer-money?decision=deduct&returnTo=%2Foverview')} unavailable={decisionGuard.status === 'unavailable'} statusMessage={decisionGuard.message} source={states.customerMoney || states.finance || states.zohoInvoices}/> : null}
           {showNegativeSignal ? <ActionCard tone="red" icon={CircleAlert} title="محافظ سالبة تحتاج قرارًا" count={negativeCount} value={`${compactMoney(negativeAmount)} ر.س`} note="إشارة من محفظة لمحة؛ حالة تشغيل الحساب تُفحص حيًا قبل أي إيقاف" action="عرض النتائج" onClick={() => navigate('/customer-money?decision=negative&returnTo=%2Foverview')} unavailable={!negativeAvailable} source={states.merchants}/> : null}
           {showZatcaSignal ? <ActionCard tone={zatcaCount ? 'amber' : 'red'} icon={ReceiptText} title="فواتير زاتكا تحتاج إجراء" count={zatcaCount} value={`${compactMoney(zatcaAmount)} ر.س`} note={`${invoiceOps.draftCount || 0} مسودة في Zoho Books`} action="عرض الفواتير" onClick={() => navigate('/zoho-data?tab=customers&type=invoices&focus=zatca')} unavailable={!invoiceOps.zatcaAvailable} source={states.zatcaPending}/> : null}
-          {showLamhaSignal ? <ActionCard tone="amber" icon={FileSpreadsheet} title="مصدر Lamha يحتاج مراجعة" count={merchantNeedsUpdate ? 1 : 0} value={merchantPulse.total ? `${money(merchantPulse.total)} متجر` : ''} note={apiNeedsUpdate ? 'مزامنة Lamha API تحتاج مراجعة' : merchantExcelMissing ? 'ملف إثراء المتاجر من Excel غير مرفوع لهذه الفترة' : 'API يحتاج فحصًا'} action={apiNeedsUpdate ? 'مراقبة المزامنة' : 'فتح مرحلة الرفع'} onClick={() => navigate(apiNeedsUpdate ? '/operations' : `/accounting-cycle?period=${period}&stage=lamha_sources`)} unavailable={!merchantPulse.loading && !merchantPulse.available} source={states.merchants}/> : null}
+          {showLamhaSignal ? <ActionCard tone="amber" icon={RefreshCw} title="مزامنة Lamha تحتاج مراجعة" count={merchantNeedsUpdate ? 1 : 0} value={merchantPulse.total ? `${money(merchantPulse.total)} متجر` : ''} note="دليل المتاجر الآلي لم يصل أو تجاوز نافذة الحداثة" action="مراقبة المزامنة" onClick={() => navigate('/operations')} unavailable={!merchantPulse.loading && !merchantPulse.available} source={states.merchants}/> : null}
           {!hasAutomatedSignals ? <div className="fco-no-exceptions"><CheckCircle2 size={18}/><span><strong>لا توجد استثناءات حرجة حاليًا</strong><small>ابنِ قائمة بشروطك لإجراء مراجعة أو تنفيذ مخصص.</small></span></div> : null}
         </div>
       </section>
@@ -431,26 +429,15 @@ export default function FigmaCommandCenter({
       </div>
 
       <details className="fco-operations-disclosure">
-        <summary><span><Database size={16}/><strong>مصادر Lamha وملفات الدورة</strong><small>المزامنة، آخر رفع، والملفات الناقصة</small></span><em>{missingUploadCount == null ? 'الحالة غير متاحة' : missingUploadCount ? `${missingUploadCount} عناصر تحتاج رفعًا` : 'الملفات مكتملة'}</em><ArrowLeft size={15}/></summary>
+        <summary><span><Database size={16}/><strong>مصادر Lamha الآلية وملفات الدورة</strong><small>آخر مزامنة والملفات التشغيلية اليدوية فقط</small></span><em>{missingUploadCount == null ? 'الحالة غير متاحة' : missingUploadCount ? `${missingUploadCount} ملفات تشغيلية تحتاج رفعًا` : 'الملفات اليدوية مكتملة'}</em><ArrowLeft size={15}/></summary>
       <section className="fco-section fco-lamha-upload">
         <div className="fco-section__heading">
-          <div><span>مصادر Lamha الأساسية</span><h2>مزامنة API يومية وملفات Excel للإثراء فقط</h2></div>
-          <details className="fco-upload-menu">
-            <summary><UploadCloud size={16}/> رفع ملف لمحة</summary>
-            <div className="fco-upload-menu__popover">
-              <button type="button" onClick={() => navigate(`/accounting-cycle?period=${period}&stage=lamha_sources&source=merchants`)}>
-                <FileSpreadsheet size={18}/><span><strong>إثراء المتاجر من Excel</strong><small>{uploadDateLabel(data?.lamhaUploads?.merchants?.excelUploadedAt)}</small></span><ArrowLeft size={15}/>
-              </button>
-              <button type="button" onClick={() => navigate(`/accounting-cycle?period=${period}&stage=lamha_sources&source=internal_settlement`)}>
-                <ReceiptText size={18}/><span><strong>كشف حساب لمحة</strong><small>{uploadDateLabel(data?.lamhaUploads?.balance?.uploadedAt)}</small></span><ArrowLeft size={15}/>
-              </button>
-            </div>
-          </details>
+          <div><span>مصادر Lamha الأساسية</span><h2>دليل المتاجر وكشف الحساب يتزامنان آليًا يوميًا</h2></div>
+          <button type="button" onClick={() => navigate('/operations')}><RefreshCw size={16}/> مراقبة المزامنة</button>
         </div>
         <div className="fco-lamha-upload__status">
           <button type="button" onClick={() => navigate('/operations')}><RefreshCw size={17}/><span><strong>دليل المتاجر من Lamha API</strong><small>{syncDateLabel(data?.lamhaUploads?.merchants?.apiSyncedAt || data?.lamhaUploads?.merchants?.uploadedAt)}</small></span></button>
-          <button type="button" onClick={() => navigate(`/accounting-cycle?period=${period}&stage=lamha_sources&source=merchants`)}><FileSpreadsheet size={17}/><span><strong>إثراء المتاجر من Excel</strong><small>{data?.lamhaUploads?.merchants?.excelFileName ? `${data.lamhaUploads.merchants.excelFileName} · ${uploadDateLabel(data.lamhaUploads.merchants.excelUploadedAt)}` : uploadDateLabel(data?.lamhaUploads?.merchants?.excelUploadedAt)}</small></span></button>
-          <button type="button" onClick={() => navigate(`/accounting-cycle?period=${period}&stage=lamha_sources&source=internal_settlement`)}><ReceiptText size={17}/><span><strong>كشف حساب Lamha</strong><small>{data?.lamhaUploads?.balance?.fileName ? `${data.lamhaUploads.balance.fileName} · ${uploadDateLabel(data.lamhaUploads.balance.uploadedAt)}` : uploadDateLabel(data?.lamhaUploads?.balance?.uploadedAt)}</small></span></button>
+          <button type="button" onClick={() => navigate('/operations')}><ReceiptText size={17}/><span><strong>كشف الحساب من Lamha API</strong><small>{syncDateLabel(data?.lamhaUploads?.balance?.uploadedAt)}</small></span></button>
         </div>
         <div className="fco-upload-evidence" aria-label="حالة ملفات الدورة الحالية">
           <div className="fco-upload-evidence__heading">
@@ -513,7 +500,7 @@ export default function FigmaCommandCenter({
           <section className="fco-panel fco-routine">
             <div className="fco-card-heading"><span><Workflow size={18}/> مهام التشغيل الروتينية</span><small>لا تعتمد على الذاكرة</small></div>
             <div className="fco-task-list">
-              <TaskRow icon={UploadCloud} title="ملفات إثراء Lamha" note="Excel للحقول غير المتاحة في API · المرحلة 4" status={merchantNeedsUpdate ? 'مطلوب' : 'محدّث'} tone={merchantNeedsUpdate ? 'amber' : 'green'} onClick={() => navigate(`/accounting-cycle?period=${period}&stage=lamha_sources`)}/>
+              <TaskRow icon={RefreshCw} title="مزامنة مصادر Lamha" note="دليل المتاجر وكشف الحساب · يوميًا 12 ص" status={merchantNeedsUpdate ? 'تحتاج مراجعة' : 'محدّثة'} tone={merchantNeedsUpdate ? 'amber' : 'green'} onClick={() => navigate('/operations')}/>
               <TaskRow icon={ReceiptText} title="إرسال الفواتير إلى زاتكا" note={`${zatcaCount} معلقة · ${invoiceOps.draftCount || 0} مسودة`} status={zatcaCount ? 'يحتاج إجراء' : 'سليم'} tone={zatcaCount ? 'red' : 'green'} onClick={() => navigate('/work-agents')}/>
               <TaskRow icon={Landmark} title="مطابقة البنوك" note="اقرأ زوهو وصدّر النواقص فقط" status={sourceLabel(states.banks)} tone={sourceTone(states.banks)} onClick={() => navigate('/bank')}/>
               <TaskRow icon={CheckCircle2} title="إقفال الفترة المحاسبية" note={closeReadiness.ready ? `${closeReadiness.required} من ${closeReadiness.required} مراحل حرجة مكتملة` : `${firstCloseBlocker?.source || 'مصدر حرج'} — ${operationalBlockerReason(firstCloseBlocker?.reason)}`} status={closeReadiness.ready ? 'جاهز' : 'متوقف'} tone={closeReadiness.ready ? 'green' : 'red'} onClick={() => navigate(`/accounting-cycle?period=${period}`)}/>

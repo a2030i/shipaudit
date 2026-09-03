@@ -125,16 +125,13 @@ test('lite adapter paints from two parallel safety summaries and reaches the com
   assert.equal(complete.lazyStatus, 'ready');
 });
 
-test('upload evidence never treats the Lamha API snapshot as an Excel upload', () => {
+test('manual upload evidence excludes automated Lamha directory and statement sources', () => {
   const evidence = summarizeOverviewUploadEvidence([
     { stage: 'lamha_sources', source_kind: 'merchants', status: 'success', file_name: null, created_at: '2026-08-29T00:01:00Z' },
     { stage: 'lamha_sources', source_kind: 'merchants', status: 'success', file_name: 'stores.xlsx', row_count: 1658, created_at: '2026-08-28T19:00:00Z' },
     { stage: 'lamha_sources', source_kind: 'internal_settlement', status: 'success', file_name: 'statement.xlsx', row_count: 236, created_at: '2026-08-25T13:01:00Z' },
   ]);
-  const merchants = evidence.items.find(item => item.key === 'lamha_merchants_excel');
-  const balance = evidence.items.find(item => item.key === 'lamha_balance');
-  assert.equal(merchants.fileName, 'stores.xlsx');
-  assert.equal(merchants.uploadedAt, '2026-08-28T19:00:00Z');
-  assert.equal(balance.fileName, 'statement.xlsx');
+  assert.equal(evidence.items.some(item => item.key === 'lamha_merchants_excel'), false);
+  assert.equal(evidence.items.some(item => item.key === 'lamha_balance'), false);
   assert.equal(evidence.items.find(item => item.key === 'lamha_shipments').uploaded, false);
 });

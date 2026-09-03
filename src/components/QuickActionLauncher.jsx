@@ -3,10 +3,10 @@ import { Building2, FileSpreadsheet, HandCoins, Landmark, Lock, Target, Upload, 
 const ACTIONS = [
   {
     id: 'lamha',
-    title: 'رفع ملفات لمحة',
-    description: 'افتح المرحلة الرابعة مباشرة لرفع دليل المتاجر أو كشف الحساب.',
+    title: 'مراقبة مزامنة لمحة',
+    description: 'راجع آخر مزامنة آلية لدليل المتاجر وكشف الحساب.',
     icon: FileSpreadsheet,
-    path: '/accounting-cycle?stage=lamha_sources',
+    path: '/operations',
     featured: true,
   },
   {

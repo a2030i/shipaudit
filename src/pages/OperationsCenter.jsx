@@ -248,10 +248,10 @@ export default function OperationsCenter({ isActive = true }) {
 
     if (allowed('uploads.view')) {
       gateways.push({
-        key: 'lamha-gateway', title: 'ملفات منصة لمحة', icon: UploadCloud, tone: 'green', mode: 'رفع وتشغيل',
-        description: 'حدّث دليل المتاجر، ثم ارفع أرقام وشحنات لمحة داخل دورة الشهر نفسها.',
+        key: 'lamha-gateway', title: 'منصة لمحة', icon: UploadCloud, tone: 'green', mode: 'مزامنة آلية',
+        description: 'دليل المتاجر وكشف الحساب يتزامنان يوميًا؛ ملفات الشحنات فقط تبقى ضمن دورة الشهر.',
         actions: [
-          { label: 'رفع ملفات لمحة', path: `/accounting-cycle?period=${period}&stage=lamha_sources` },
+          { label: 'حالة مزامنة لمحة', path: `/accounting-cycle?period=${period}&stage=lamha_sources` },
           { label: 'رفع شحنات لمحة', path: `/accounting-cycle?period=${period}&stage=lamha_shipments` },
         ],
         note: `الفترة التشغيلية الحالية ${period}، ويمكن تغييرها من رأس دورة المحاسب.`,

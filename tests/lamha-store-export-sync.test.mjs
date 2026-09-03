@@ -73,7 +73,8 @@ test('automatic Lamha export replaces the manual store upload path in primary UX
   assert.doesNotMatch(uploads, /id:\s*'merchants'/);
   assert.match(merchants, /مزامنة من لمحة/);
   assert.doesNotMatch(merchants, /UploadModal|رفع كشف/);
-  assert.match(accounting, /دليل متاجر لمحة — مصدر آلي/);
+  assert.match(accounting, /مصادر Lamha — مزامنة API آلية/);
+  assert.match(accounting, /لا يلزم رفع ملف Excel يدوي/);
   assert.doesNotMatch(accounting, /sourceId="merchants"/);
   assert.match(migration, /lamha_export/);
   assert.match(migration, /excel_legacy/);

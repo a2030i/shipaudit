@@ -984,8 +984,9 @@ export function adaptOverviewLite(payload) {
       lamhaSourceNeedsUpdate: Number(actions.refreshLamhaSources?.count) > 0,
       lamhaUploads: {
         merchants: {
-          // The newest merchant snapshot is the Lamha API mirror timestamp.
-          // It is not proof that the optional Excel enrichment was uploaded.
+          // The newest merchant snapshot is produced by the authenticated
+          // Lamha directory + export sync. It is an API-backed source, not a
+          // manual monthly upload requirement.
           apiSyncedAt: payload.sources.merchants?.dataAsOf || null,
           uploadedAt: payload.sources.merchants?.dataAsOf || null,
           rowCount: payload.sources.merchants?.recordCount ?? null,
@@ -1003,8 +1004,6 @@ export function adaptOverviewLite(payload) {
 const OVERVIEW_UPLOAD_EVIDENCE = [
   { key: 'carrier_audits', stage: 'carrier_audits', label: 'فواتير شركات الشحن', action: 'فتح مراجعات الناقلين' },
   { key: 'lamha_shipments', stage: 'lamha_shipments', label: 'Admin Order Export من لمحة', action: 'فتح استيراد الشحنات' },
-  { key: 'lamha_merchants_excel', stage: 'lamha_sources', sourceKind: 'merchants', label: 'إثراء متاجر لمحة من Excel', action: 'فتح رفع ملف المتاجر' },
-  { key: 'lamha_balance', stage: 'lamha_sources', sourceKind: 'internal_settlement', label: 'كشف حساب لمحة', action: 'فتح رفع كشف الحساب' },
   { key: 'lamha_collections', stage: 'lamha_collections', label: 'ملف تحصيل لمحة', action: 'فتح رفع التحصيل' },
 ];
 
@@ -1044,8 +1043,6 @@ export function mergeOverviewLiteLazy(overview, merchantPayload, cashPayload, up
   const bankBalance = bank.bankBalance == null ? null : Number(bank.bankBalance);
   const checkedAt = cashPayload.generatedAt || overview.loadedAt || new Date().toISOString();
   const merchantUploads = merchantPayload.lamhaUploads || overview.lamhaUploads || {};
-  const merchantExcel = uploadEvidence?.items?.find(item => item.key === 'lamha_merchants_excel');
-  const balanceExcel = uploadEvidence?.items?.find(item => item.key === 'lamha_balance');
   return {
     ...overview,
     lazyStatus: 'ready',
@@ -1066,13 +1063,11 @@ export function mergeOverviewLiteLazy(overview, merchantPayload, cashPayload, up
           || merchantUploads.merchants?.apiSyncedAt
           || merchantUploads.merchants?.uploadedAt
           || null,
-        excelUploadedAt: merchantExcel?.uploadedAt || null,
-        excelFileName: merchantExcel?.fileName || null,
       },
       balance: {
         ...(merchantUploads.balance || {}),
-        uploadedAt: balanceExcel?.uploadedAt || merchantUploads.balance?.uploadedAt || null,
-        fileName: balanceExcel?.fileName || merchantUploads.balance?.fileName || null,
+        uploadedAt: merchantUploads.balance?.uploadedAt || null,
+        fileName: merchantUploads.balance?.fileName || null,
       },
     },
     operationalUploads: uploadEvidence,

@@ -4,30 +4,27 @@ import { readFile } from 'node:fs/promises';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('home separates the Lamha API mirror from optional Excel uploads', async () => {
+test('home presents Lamha directory and statement as automated API sources', async () => {
   const [view, service] = await Promise.all([
     read('src/components/operations/FigmaCommandCenter.jsx'),
     read('src/lib/overviewService.js'),
   ]);
   assert.match(view, /دليل المتاجر من Lamha API/);
-  assert.match(view, /إثراء المتاجر من Excel/);
-  assert.match(view, /كشف حساب Lamha/);
+  assert.match(view, /كشف الحساب من Lamha API/);
   assert.match(view, /syncDateLabel\(data\?\.lamhaUploads\?\.merchants\?\.apiSyncedAt/);
-  assert.match(view, /excelUploadedAt/);
-  assert.match(view, /excelFileName/);
-  assert.match(view, /uploadDateLabel\(data\?\.lamhaUploads\?\.balance\?\.uploadedAt\)/);
-  assert.match(view, /accounting-cycle\?period=\$\{period\}&stage=lamha_sources/);
-  assert.match(view, /Excel للحقول غير المتاحة في API · المرحلة 4/);
+  assert.match(view, /syncDateLabel\(data\?\.lamhaUploads\?\.balance\?\.uploadedAt\)/);
+  assert.doesNotMatch(view, /إثراء المتاجر من Excel غير مرفوع/);
+  assert.doesNotMatch(view, /merchantExcelMissing/);
   assert.match(service, /from\('accounting_cycle_events'\)/);
-  assert.match(service, /lamha_merchants_excel/);
   assert.match(service, /apiSyncedAt/);
   assert.match(service, /from\('store_balance_snapshots'\)/);
   assert.match(service, /order\('uploaded_at', \{ ascending: false \}\)/);
 });
 
-test('global Lamha action opens the real stage-four upload workspace', async () => {
+test('global Lamha action opens integration monitoring instead of a manual upload', async () => {
   const launcher = await read('src/components/QuickActionLauncher.jsx');
-  assert.match(launcher, /path: '\/accounting-cycle\?stage=lamha_sources'/);
+  assert.match(launcher, /title: 'مراقبة مزامنة لمحة'/);
+  assert.match(launcher, /path: '\/operations'/);
   assert.doesNotMatch(launcher, /path: '\/accounting-cycle\?action=lamha'/);
 });
 
