@@ -17,7 +17,7 @@ test('Lamha performance migration history matches the three production receipts'
   assert.match(migrations[2], /order keeps recent operational activity first/);
 });
 
-test('Lamha daily performance uses one canonical Riyadh midnight snapshot per day', async () => {
+test('Lamha daily performance uses one canonical scheduled Riyadh snapshot per day', async () => {
   const sql = await readFile(migrationUrl, 'utf8');
   assert.match(sql, /at time zone 'Asia\/Riyadh'/);
   assert.match(sql, /partition by source\.local_date/);

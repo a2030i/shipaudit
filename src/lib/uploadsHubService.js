@@ -11,7 +11,7 @@
 // Manual / fallback snapshot sources covered:
 //   internal_settlement   — استحقاق المتاجر (الداخلي)
 // Lamha's store directory is no longer manual: it is synchronized from the
-// authenticated /stores/export endpoint at midnight Riyadh.
+// authenticated /stores/export endpoint at 09:00 and 18:00 Riyadh.
 //
 // Each source declares its "expected cadence" (in days) so the
 // hub can flag stale data without hard-coding thresholds in the UI.
@@ -23,9 +23,10 @@ import {
 } from './reconciliationService.js';
 
 const DAY_MS = 86_400_000;
+const LAMHA_SYNC_STALE_MS = 18 * 60 * 60 * 1000;
 
 // لقطة دليل لمحة الآلية ليست ملف رفع يدوي، لكنها يجب أن تبقى مرئية
-// إداريًا حتى يعرف المدير متى اكتملت مزامنة منتصف الليل فعلًا.
+// إداريًا حتى يعرف المدير متى اكتملت آخر مزامنة مجدولة فعلًا.
 export async function loadLamhaDirectorySyncState() {
   const { data, error } = await supabase
     .from('merchants')
@@ -40,8 +41,8 @@ export async function loadLamhaDirectorySyncState() {
     snapshotId: latest?.snapshot_id || null,
     snapshotDate: latest?.snapshot_date || null,
     lastAt,
-    stale: ageMs == null || !Number.isFinite(ageMs) || ageMs > DAY_MS,
-    scheduleLabel: 'يوميًا 12:00 ص بتوقيت السعودية',
+    stale: ageMs == null || !Number.isFinite(ageMs) || ageMs > LAMHA_SYNC_STALE_MS,
+    scheduleLabel: 'يوميًا 9:00 ص و6:00 م بتوقيت السعودية',
   };
 }
 

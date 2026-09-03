@@ -161,10 +161,10 @@ export default function LamhaStorePerformance() {
   const maxTrend = useMemo(() => Math.max(1, ...(data?.trend || []).map(point => point.shipments)), [data?.trend]);
   const totalPages = Math.max(1, Math.ceil((data?.count || 0) / PAGE_SIZE));
   const sourceLabel = data?.metric?.source === 'lamha_employee_api_export_scheduled'
-    ? 'مزامنة منتصف الليل'
+    ? 'مزامنة لمحة المجدولة'
     : data?.metric?.source === 'lamha_employee_api_export_manual'
       ? 'تحديث يدوي'
-      : 'لقطة API الأقرب لمنتصف الليل';
+      : 'لقطة API المرجعية';
   const canAssignQueue = (isAdmin || can('crm.assign')) && ['never_shipped', 'dormant_30'].includes(filter);
   const assignmentPhones = useMemo(() => [...new Set(assignmentRows.map(row => String(row.phone || '').trim()).filter(Boolean))], [assignmentRows]);
   const eligibleEmployees = useMemo(() => employees.filter(employee => (
@@ -230,11 +230,11 @@ export default function LamhaStorePerformance() {
       {!data && loading ? <div className="lamha-pulse-loading"><Spinner/><span>جارٍ بناء مقارنة اليوم…</span></div> : null}
 
       {data ? <>
-        {!data.metric?.has_previous ? <div className="lamha-pulse-notice warning"><AlertTriangle size={16}/><span>لا توجد لقطة منتصف ليل سابقة؛ أرقام التغير اليومي تبقى صفرًا حتى تتوفر المقارنة، بينما حالة المتاجر الحالية متاحة.</span></div> : null}
+        {!data.metric?.has_previous ? <div className="lamha-pulse-notice warning"><AlertTriangle size={16}/><span>لا توجد لقطة مرجعية سابقة؛ أرقام التغير تبقى صفرًا حتى تتوفر المقارنة، بينما حالة المتاجر الحالية متاحة.</span></div> : null}
         {Number(summary.counter_exceptions) > 0 ? <button type="button" className="lamha-pulse-notice danger" onClick={() => chooseFilter('counter_exception')}><AlertTriangle size={16}/><span>{INT.format(summary.counter_exceptions)} عدادات شحن تراجعت. عُزلت ولم تُخصم من شحنات اليوم.</span><ArrowLeft size={14}/></button> : null}
 
         <div className="lamha-pulse-signals">
-          <Signal icon={<Truck size={18}/>} label="شحنة منذ منتصف الليل" value={summary.shipments_today} hint={`${INT.format(summary.shipping_stores || 0)} متجرًا شحن`} active={filter === 'shipped_today'} tone="brand" onClick={() => chooseFilter('shipped_today')}/>
+          <Signal icon={<Truck size={18}/>} label="شحنات منذ المرجع السابق" value={summary.shipments_today} hint={`${INT.format(summary.shipping_stores || 0)} متجرًا شحن`} active={filter === 'shipped_today'} tone="brand" onClick={() => chooseFilter('shipped_today')}/>
           <Signal icon={<UserPlus size={18}/>} label="سجلوا في لمحة اليوم" value={summary.registered_today} hint={`${INT.format(summary.observed_today || 0)} ظهروا أول مرة لدينا`} active={filter === 'registered_today'} onClick={() => chooseFilter('registered_today')}/>
           <Signal icon={<PackageCheck size={18}/>} label="نفذوا أول شحنة" value={summary.first_shipment} active={filter === 'first_shipment'} tone="success" onClick={() => chooseFilter('first_shipment')}/>
           <Signal icon={<RefreshCw size={18}/>} label="عادوا للشحن" value={summary.resumed} hint="بعد انقطاع 60+ يومًا" active={filter === 'resumed'} tone="success" onClick={() => chooseFilter('resumed')}/>
@@ -260,7 +260,7 @@ export default function LamhaStorePerformance() {
           </Card>
 
           {data.trend?.length > 1 ? <Card className="lamha-daily-trend">
-            <div className="lamha-trend-heading"><div><b>الشحنات اليومية الموثقة</b><small>فرق عداد لمحة بين لقطتي منتصف الليل</small></div><span>آخر {data.trend.length} أيام</span></div>
+            <div className="lamha-trend-heading"><div><b>الشحنات اليومية الموثقة</b><small>فرق عداد لمحة بين اللقطات اليومية المرجعية</small></div><span>آخر {data.trend.length} أيام</span></div>
             <div className="lamha-trend-bars" aria-label="اتجاه الشحنات اليومية">
               {data.trend.map(point => <div key={point.date} title={`${metricDate(point.date)}: ${INT.format(point.shipments)} شحنة من ${INT.format(point.shippingStores)} متجر`}>
                 <b>{INT.format(point.shipments)}</b>

@@ -125,9 +125,10 @@ test('automatic activation is allowed only for a hold owned by this guard', () =
   assert.equal(helper.financialGuardDecision({ ...clearInactive, financeValid: false }, true).action, 'exclude');
 });
 
-test('cron template maps midnight Riyadh to 21:00 UTC and never embeds a secret', async () => {
+test('cron template maps 09:00 and 18:00 Riyadh to UTC and never embeds a secret', async () => {
   const cron = await readFile(new URL('../supabase/cron/lamha-financial-guard.sql.template', import.meta.url), 'utf8');
-  assert.match(cron, /'0 21 \* \* \*'/);
+  assert.match(cron, /'0 6,15 \* \* \*'/);
+  assert.match(cron, /lamha-directory-twice-daily-0900-1800-riyadh/);
   assert.match(cron, /lamha_financial_guard_cron_secret/);
   assert.match(cron, /"action":"sync-directory"/);
   assert.match(cron, /"action":"sync-profile-details"/);
@@ -183,4 +184,10 @@ test('daily Lamha migration schedules read-only sync and removes the policy work
   assert.match(timeoutMigration, /timeout_milliseconds := 300000/);
   assert.match(timeoutMigration, /"action":"sync-directory"/);
   assert.doesNotMatch(timeoutMigration, /"action":"policy"|PATCH|activate|deactivate/i);
+  const twiceDailyMigration = await readFile(new URL('../supabase/migrations/20260903191410_lamha_directory_twice_daily_riyadh.sql', import.meta.url), 'utf8');
+  assert.match(twiceDailyMigration, /'0 6,15 \* \* \*'/);
+  assert.match(twiceDailyMigration, /lamha-directory-twice-daily-0900-1800-riyadh/);
+  assert.match(twiceDailyMigration, /lamha-directory-daily-0000-riyadh/);
+  assert.match(twiceDailyMigration, /"action":"sync-directory"/);
+  assert.doesNotMatch(twiceDailyMigration, /"action":"policy"|PATCH|activate|deactivate/i);
 });

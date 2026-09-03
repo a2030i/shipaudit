@@ -186,7 +186,7 @@ export default function UploadsHub({ isActive = true }) {
           <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>مزامنة دليل متاجر لمحة</div>
           <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3, lineHeight: 1.6 }}>
             آخر مزامنة: <strong style={{ color: 'var(--text2)' }}>{fmtDateTime(lamhaSync?.lastAt)}</strong>
-            {' · '}{lamhaSync?.scheduleLabel || 'يوميًا 12:00 ص بتوقيت السعودية'}
+            {' · '}{lamhaSync?.scheduleLabel || 'يوميًا 9:00 ص و6:00 م بتوقيت السعودية'}
           </div>
         </div>
         <span style={{

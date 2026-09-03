@@ -1,12 +1,12 @@
 -- Deployment template only. Do not commit secret values.
--- Supabase Cron uses UTC: 21:00 UTC = 00:00 Asia/Riyadh.
+-- Supabase Cron uses UTC: 06:00/15:00 UTC = 09:00/18:00 Asia/Riyadh.
 -- Required Vault secrets:
 --   project_url                         e.g. https://<project-ref>.supabase.co
 --   lamha_financial_guard_cron_secret  independent sandbox/production value
 
 select cron.schedule(
-  'lamha-directory-daily-0000-riyadh',
-  '0 21 * * *',
+  'lamha-directory-twice-daily-0900-1800-riyadh',
+  '0 6,15 * * *',
   $job$
     select net.http_post(
       url := (select decrypted_secret from vault.decrypted_secrets where name = 'project_url')
@@ -22,7 +22,7 @@ select cron.schedule(
 );
 
 -- Finish missing store-detail hydration quickly without competing with the
--- midnight directory run. Once every profile is hydrated the Edge Function
+-- scheduled directory runs. Once every profile is hydrated the Edge Function
 -- performs no Lamha request until the oldest detail becomes seven days old.
 select cron.schedule(
   'lamha-profile-details-catchup-readonly',

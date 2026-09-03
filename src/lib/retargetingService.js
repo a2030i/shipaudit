@@ -62,7 +62,7 @@ export async function loadCustomerActivationCommandCenter(days = 5, target = 500
   };
 }
 
-// نبض المتاجر اليومي: مقارنة لقطة منتصف الليل المرجعية باليوم السابق.
+// نبض المتاجر: مقارنة أحدث لقطة مجدولة بالمرجع اليومي السابق.
 // لا يشتق حالة الحساب من النشاط؛ inactive/غير نشط فقط يعني موقوفًا.
 export async function loadLamhaStorePerformance({
   filter = 'all', search = null, page = 0, limit = 25,

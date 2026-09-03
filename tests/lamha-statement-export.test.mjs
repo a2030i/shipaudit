@@ -56,13 +56,13 @@ test('statement probe is read-only, uses the employee secret, and never returns 
   assert.doesNotMatch(probeSource, /rows:\s*parsed\.rows/);
 });
 
-test('midnight directory sync also persists the Lamha statement atomically', async () => {
+test('scheduled directory sync also persists the Lamha statement atomically', async () => {
   const [source, migration, cron] = await Promise.all([
     readFile(new URL('../supabase/functions/lamha-financial-guard/index.ts', import.meta.url), 'utf8'),
     readFile(new URL('../supabase/migrations/20260829213000_lamha_statement_midnight_sync.sql', import.meta.url), 'utf8'),
-    readFile(new URL('../supabase/migrations/20260828082515_lamha_daily_read_sync.sql', import.meta.url), 'utf8'),
+    readFile(new URL('../supabase/migrations/20260903191410_lamha_directory_twice_daily_riyadh.sql', import.meta.url), 'utf8'),
   ]);
-  assert.match(cron, /'0 21 \* \* \*'/);
+  assert.match(cron, /'0 6,15 \* \* \*'/);
   assert.match(source, /const directory = await syncDirectory/);
   assert.match(source, /const statement = await syncStatementExport/);
   assert.match(source, /ingest_lamha_statement_snapshot/);

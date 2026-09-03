@@ -317,7 +317,7 @@ export default function OperationsCenter({ isActive = true }) {
         path: '/uploads', action: 'فتح المصادر',
         facts: [
           { label: 'آخر مزامنة للدليل', value: relativeTime(directory?.lastAt), tone: directoryNeedsAttention ? 'gold' : 'green' },
-          { label: 'الجدولة', value: '12:00 ص يوميًا' },
+          { label: 'الجدولة', value: '9:00 ص و6:00 م يوميًا' },
           { label: 'مصادر يدوية متأخرة', value: stale.length, tone: stale.length ? 'gold' : 'green' },
         ],
         note: 'دليل المتاجر يُسحب آليًا من لمحة؛ الملفات الإضافية تبقى منفصلة ولا تستبدل حالة الحساب.',
