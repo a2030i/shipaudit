@@ -3,6 +3,7 @@ import { Bot, CalendarClock, CheckCircle2, Clock3, Database, PlayCircle, Refresh
 import { Btn, Card, Spinner } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { configureIntegrationHealthAgent, configureManagementReportAgent, configureOverdueSadadAgent, configureZatcaWorkAgent, loadRecentAgentRuns, loadWorkAgents, previewIntegrationHealthAgent, previewManagementReportAgent, previewOverdueSadadAgent, previewZatcaWorkAgent, runIntegrationHealthAgent, runManagementReportAgent, runOverdueSadadAgent, runZatcaWorkAgent } from '../lib/workAgentService.js';
+import AutomationControlCenter from '../components/automation/AutomationControlCenter.jsx';
 
 const SAFETY = {
   monitor: { label: 'مراقبة فقط', color: 'var(--accent)', text: 'يقرأ وينبه دون تعديل البيانات.' },
@@ -83,7 +84,7 @@ function AgentCard({ agent, latestRun, onStart }) {
   );
 }
 
-export default function WorkAgents({ isActive = true }) {
+export function LegacySystemAgents({ isActive = true }) {
   const { can } = useAuth();
   const [agents, setAgents] = useState([]);
   const [runs, setRuns] = useState([]);
@@ -227,4 +228,8 @@ export default function WorkAgents({ isActive = true }) {
       <style>{`.work-agent-dialog-backdrop{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.58);display:grid;place-items:center;padding:16px;overscroll-behavior:contain}.work-agent-dialog-card{width:min(560px,100%);max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:24px!important}.agent-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}.agent-form-grid label{display:grid;gap:6px;font-size:12px;font-weight:800;color:var(--text2)}.agent-form-grid input,.agent-form-grid select{min-height:44px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);padding:8px 10px;font:inherit}.agent-toggle{display:flex;align-items:center;gap:10px;margin-top:14px;padding:12px;border:1px solid var(--border2);border-radius:12px}.agent-toggle span{display:grid;gap:3px}.agent-toggle small{color:var(--muted)}.agent-preview-toggle{display:block;width:100%;margin-top:10px;padding:9px;border:1px solid var(--green);border-radius:9px;background:var(--card);color:var(--green);font:inherit;font-size:12px;font-weight:800}.agent-preview-toggle.zatca{border-color:var(--gold);color:var(--gold-ink)}.agent-preview-sections{display:grid;gap:14px;margin-top:12px}.agent-preview-sections section{display:grid;gap:4px}.agent-preview-sections h4{margin:0;color:var(--green);font-size:12px}.agent-preview-sections .excluded h4{color:var(--gold-ink)}.agent-preview-rows,.integration-health-list{display:grid;gap:8px;margin-top:10px}.agent-preview-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;padding:11px;border:1px solid var(--border2);border-radius:11px;background:var(--surface)}.agent-preview-row>div{display:grid;gap:3px;min-width:0}.agent-preview-row>div:last-child{text-align:end}.agent-preview-row b,.agent-preview-row strong{font-size:12px;color:var(--text)}.agent-preview-row small{font-size:10px;color:var(--muted);overflow-wrap:anywhere}.integration-health-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center;padding:10px;border:1px solid var(--border2);border-radius:10px;background:var(--surface)}.integration-health-row>div{display:grid;gap:3px}.integration-health-row b{font-size:12px;color:var(--text)}.integration-health-row small{font-size:10.5px;color:var(--muted)}.integration-health-row>span{min-width:74px;text-align:center;padding:5px 7px;border-radius:999px;font-size:10px;font-weight:900}.integration-health-row .healthy{color:var(--green);background:var(--green-soft)}.integration-health-row .attention{color:var(--gold-ink);background:var(--gold-soft)}@media(max-width:1000px){.work-agents-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}} @media(max-width:680px){.work-agents-grid,.work-agents-stats,.agent-form-grid{grid-template-columns:1fr!important}.work-agent-dialog-backdrop{place-items:end center;padding:10px 10px calc(10px + env(safe-area-inset-bottom))}.work-agent-dialog-card{width:100%;max-height:calc(100dvh - 86px);padding:18px 16px calc(24px + env(safe-area-inset-bottom))!important;border-radius:18px 18px 14px 14px!important}.agent-preview-row{grid-template-columns:1fr}.agent-preview-row>div:last-child{text-align:start}.integration-health-row{grid-template-columns:1fr}.integration-health-row>span{justify-self:start}}`}</style>
     </div>
   );
+}
+
+export default function WorkAgents({ isActive = true }) {
+  return <AutomationControlCenter LegacyPanel={LegacySystemAgents} isActive={isActive}/>;
 }

@@ -85,3 +85,38 @@ export async function loadRecentAgentRuns(limit = 12) {
   if (error) throw error;
   return data || [];
 }
+
+export async function loadAutomationRules() {
+  const { data, error } = await supabase
+    .from('automation_rules')
+    .select('id, rule_key, name, objective, category, status, execution_mode, event_type, trigger_source, trigger_config, conditions, exclusions, template_name, template_language, template_variables, schedule_config, safeguards, version, last_preview_at, last_preview_count, last_run_at, next_run_at, created_at, updated_at')
+    .neq('status', 'archived')
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function loadAutomationRuns(limit = 60) {
+  const { data, error } = await supabase
+    .from('automation_runs')
+    .select('id, rule_id, rule_version, status, trigger_type, source_snapshot, checked_count, eligible_count, review_count, excluded_count, action_count, failed_count, summary, started_at, finished_at')
+    .order('started_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data || [];
+}
+
+export async function saveAutomationRule(rule, changeNote = '') {
+  const { data, error } = await supabase.rpc('save_automation_rule', {
+    p_rule: rule,
+    p_change_note: changeNote || null,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function previewAutomationRule(ruleId) {
+  const { data, error } = await supabase.rpc('preview_automation_rule', { p_rule_id: ruleId });
+  if (error) throw error;
+  return data || { total: 0, eligible: 0, review: 0, ineligible: 0, items: [] };
+}

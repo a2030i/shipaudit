@@ -113,7 +113,7 @@ export const CENTER_WORKSPACES = {
       description: 'شاهد آخر مزامنة لمحة وصحة بقية المصادر وWebhooks من مكان واحد.',
     },
     {
-      id: 'automation', label: 'الأتمتة ووكلاء العمل', entryId: 'work-agents', memberIds: ['work-agents'], path: '/work-agents',
+      id: 'automation', label: 'مركز الأتمتة', entryId: 'work-agents', memberIds: ['work-agents'], path: '/work-agents',
       description: 'حالة الوكلاء وتشغيلاتهم وآخر نتائج الأتمتة.',
     },
     {
@@ -212,7 +212,7 @@ export const NAV_ITEM_IA = {
   operations:          { label: 'مركز التكاملات', section: 'settings', group: 'integration_settings', order: 40, visible: true },
   uploads:             { label: 'رفع ومزامنة ملفات لمحة', section: 'settings', group: 'integration_settings', order: 50, visible: true },
   webhook:             { label: 'وارد التكاملات', section: 'settings', group: 'integration_settings', order: 60, visible: true },
-  'work-agents':       { label: 'وكلاء العمل', section: 'settings', group: 'integration_settings', order: 70, visible: true },
+  'work-agents':       { label: 'مركز الأتمتة', section: 'settings', group: 'integration_settings', order: 70, visible: true },
   'hatif-settings':    { label: 'إعدادات هاتف وIVR', section: 'settings', group: 'integration_settings', order: 80, visible: true },
   'app-settings':      { label: 'إعدادات النظام', section: 'settings', group: 'system_settings', order: 100, visible: true },
 };

@@ -515,7 +515,7 @@ test('phase two groups operations reports and admin into approved workspaces', a
   assert.match(navigation, /shipping:\s*\[[\s\S]*label: 'شركات الشحن'[\s\S]*label: 'المهام والاستثناءات'[\s\S]*label: 'دورة الشهر'[\s\S]*label: 'فوترة الخدمات والأوزان'/);
   assert.match(navigation, /reports:\s*\[[\s\S]*label: 'مكتبة التقارير'[\s\S]*label: 'أداء شركات الشحن'[\s\S]*label: 'التواصل والحملات'[\s\S]*label: 'الملفات المصدّرة'/);
   assert.doesNotMatch(navigation, /label: 'أداء التحصيل'/);
-  assert.match(navigation, /settings:\s*\[[\s\S]*label: 'الفريق والصلاحيات'[\s\S]*label: 'شركات الشحن والعقود'[\s\S]*label: 'مزامنة لمحة والتكاملات'[\s\S]*label: 'الأتمتة ووكلاء العمل'[\s\S]*label: 'القنوات والاتصال'[\s\S]*label: 'إعدادات النظام'/);
+  assert.match(navigation, /settings:\s*\[[\s\S]*label: 'الفريق والصلاحيات'[\s\S]*label: 'شركات الشحن والعقود'[\s\S]*label: 'مزامنة لمحة والتكاملات'[\s\S]*label: 'مركز الأتمتة'[\s\S]*label: 'القنوات والاتصال'[\s\S]*label: 'إعدادات النظام'/);
   assert.match(navigation, /'work-agents':\s*\{[^}]*section: 'settings'/);
   assert.match(navigation, /integrity:\s*\{[^}]*section: 'settings'/);
   assert.match(navigation, /'activity-log':\s*\{[^}]*section: 'settings'/);
@@ -540,7 +540,7 @@ test('center view menus stay task-oriented and never exceed six entries', async 
     finance: ['مركز العملاء المالي', 'النقد والتسويات', 'الحسابات والمطابقة', 'الربحية والسيولة'],
     shipping: ['شركات الشحن', 'المهام والاستثناءات', 'دورة الشهر', 'فوترة الخدمات والأوزان'],
     reports: ['مكتبة التقارير', 'أداء شركات الشحن', 'التواصل والحملات', 'الملفات المصدّرة'],
-    settings: ['الفريق والصلاحيات', 'شركات الشحن والعقود', 'مزامنة لمحة والتكاملات', 'الأتمتة ووكلاء العمل', 'القنوات والاتصال', 'إعدادات النظام'],
+    settings: ['الفريق والصلاحيات', 'شركات الشحن والعقود', 'مزامنة لمحة والتكاملات', 'مركز الأتمتة', 'القنوات والاتصال', 'إعدادات النظام'],
   };
   for (const [center, labels] of Object.entries(expected)) {
     assert.deepEqual(CENTER_WORKSPACES[center].map(item => item.label), labels);

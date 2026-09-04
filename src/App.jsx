@@ -252,7 +252,7 @@ const ROUTE_ITEMS = [
   { id: 'uploads',      path: '/uploads',      label: 'حالة مصادر البيانات', icon: Layers,       section: 'outreach', navOrder: 40, permKey: 'uploads.view' },
   { id: 'integrity',    path: '/integrity',    label: 'سلامة البيانات',     icon: FileCheck,     section: 'outreach', navOrder: 50, permKey: 'system.view_audit_log' },
   { id: 'activity-log', path: '/activity-log', label: 'سجل النظام',         icon: Activity,      section: 'outreach', navOrder: 60, permKey: 'system.view_audit_log' },
-  { id: 'work-agents', path: '/work-agents', label: 'وكلاء العمل', icon: Bot, section: 'outreach', navOrder: 70, permKey: 'agents.view' },
+  { id: 'work-agents', path: '/work-agents', label: 'مركز الأتمتة', icon: Bot, section: 'outreach', navOrder: 70, permKey: 'agents.view' },
   { id: 'operations', path: '/operations', label: 'التكاملات', icon: Activity, section: 'outreach', navOrder: 15,
     permAny: ['agents.view', 'system.view_audit_log', 'system.view_settings', 'uploads.view', 'zoho.view', 'whatsapp.view_log', 'whatsapp.configure', 'campaigns.ivr', 'webhook.view'],
     subTabs: [
@@ -260,7 +260,7 @@ const ROUTE_ITEMS = [
       { tabId: 'sources', label: 'مزامنة مصادر البيانات', icon: Layers, legacy: '/uploads', perm: 'uploads.view' },
       { tabId: 'integrity', label: 'سلامة البيانات', icon: FileCheck, legacy: '/integrity', perm: 'system.view_audit_log' },
       { tabId: 'activity', label: 'سجل النظام', icon: Activity, legacy: '/activity-log', perm: 'system.view_audit_log' },
-      { tabId: 'agents', label: 'وكلاء العمل', icon: Bot, legacy: '/work-agents', perm: 'agents.view' },
+      { tabId: 'agents', label: 'مركز الأتمتة', icon: Bot, legacy: '/work-agents', perm: 'agents.view' },
       { tabId: 'webhook', label: 'وارد التكاملات', icon: Inbox, legacy: '/webhook', perm: 'webhook.view' },
     ] },
 ];
@@ -1169,7 +1169,7 @@ function AppInner({ theme, toggleTheme }) {
                     render: () => <WebhookEvents carriers={carriers} isActive={pathname==='/webhook'}/>,
                   }] : []),
                   ...(isAdmin || can('agents.view') ? [{
-                    id: 'agents', path: '/work-agents', label: 'وكلاء العمل', icon: Bot,
+                    id: 'agents', path: '/work-agents', label: 'مركز الأتمتة', icon: Bot,
                     eyebrow: 'أتمتة مراقبة', purpose: 'راجع الوكلاء وتشغيلاتهم وآخر نتائجهم',
                     description: 'العرض يحافظ على صلاحيات التشغيل وسجل النتائج الحالي.',
                     outcome: 'وكيل وحالة وتشغيل قابل للتتبع', tone: 'var(--accent3)',
