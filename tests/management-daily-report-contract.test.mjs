@@ -22,8 +22,10 @@ test('management report separates raw cold inventory from actionable unassigned 
   assert.match(migration, /as cold_lead_pool/);
 });
 
-test('management worker advances its next run after a successful report', () => {
-  assert.match(worker, /nextRun\.setUTCHours\(7,0,0,0\)/);
+test('management worker advances to the next 12-hour slot after a successful report', () => {
+  assert.match(worker, /utcHour<6/);
+  assert.match(worker, /nextRun\.setUTCHours\(6,0,0,0\)/);
+  assert.match(worker, /nextRun\.setUTCHours\(18,0,0,0\)/);
   assert.match(worker, /next_run_at:nextRun\.toISOString\(\)/);
 });
 

@@ -89,10 +89,38 @@ export async function loadRecentAgentRuns(limit = 12) {
 export async function loadAutomationRules() {
   const { data, error } = await supabase
     .from('automation_rules')
-    .select('id, rule_key, name, objective, category, status, execution_mode, event_type, trigger_source, trigger_config, conditions, exclusions, template_name, template_language, template_variables, schedule_config, safeguards, version, last_preview_at, last_preview_count, last_run_at, next_run_at, created_at, updated_at')
+    .select('id, rule_key, name, objective, category, status, execution_mode, event_type, trigger_source, trigger_config, conditions, exclusions, template_name, template_language, template_variables, schedule_config, safeguards, audience_type, action_type, action_config, risk_level, approval_policy, version, last_preview_at, last_preview_count, last_run_at, next_run_at, created_at, updated_at')
     .neq('status', 'archived')
     .order('created_at', { ascending: true });
   if (error) throw error;
+  return data || [];
+}
+
+export async function loadAutomationCapabilities() {
+  const { data, error } = await supabase
+    .from('automation_capabilities')
+    .select('capability_key, kind, label, description, source, risk_level, supports_automatic, handler_key, configuration_schema, enabled, updated_at')
+    .eq('enabled', true)
+    .order('kind', { ascending: true })
+    .order('capability_key', { ascending: true });
+  if (error) {
+    if (error.code === '42P01' || error.code === 'PGRST205') return [];
+    throw error;
+  }
+  return data || [];
+}
+
+export async function loadAutomationTemplateContracts() {
+  const { data, error } = await supabase
+    .from('automation_template_contracts')
+    .select('template_name, language, category, purpose, approved, variable_contract, notes, updated_at')
+    .order('template_name', { ascending: true });
+  if (error) {
+    // Keeps the control center readable during a rolling deploy where the UI
+    // can arrive before the schema migration. Saving remains protected by DB validation.
+    if (error.code === '42P01' || error.code === 'PGRST205') return [];
+    throw error;
+  }
   return data || [];
 }
 

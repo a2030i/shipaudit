@@ -20,7 +20,7 @@ test('automation center keeps one route and preserves specialized system agents'
 test('rule builder exposes the complete decision path without a send button', async () => {
   const center = await read('src/components/automation/AutomationControlCenter.jsx');
   for (const label of [
-    'التعريف', 'المحفز والشروط', 'الجمهور والاستثناءات', 'القالب والمتغيرات',
+    'التعريف', 'المحفز والشروط', 'الجمهور والاستثناءات', 'الإجراء والمخرجات',
     'التوقيت والحماية', 'المعاينة والتفعيل', 'معاينة بدون إرسال',
   ]) assert.match(center, new RegExp(label));
   assert.doesNotMatch(center, />إرسال الآن</);
@@ -40,12 +40,24 @@ test('rule builder exposes the complete decision path without a send button', as
   assert.match(center, /وقت الإرسال المؤجل يجب أن يكون بعد فترة الصباح وداخل نافذة الإرسال/);
 });
 
+test('automation control center exposes action governance without enabling account writes', async () => {
+  const center = await read('src/components/automation/AutomationControlCenter.jsx');
+  assert.match(center, /const ACTION =/);
+  assert.match(center, /const APPROVAL =/);
+  assert.match(center, /value === 'account_action'/);
+  assert.match(center, /مستوى المخاطر/);
+  assert.match(center, /سياسة الاعتماد/);
+});
+
 test('template variables are manager-entered fixed values', async () => {
   const center = await read('src/components/automation/AutomationControlCenter.jsx');
   assert.match(center, /template_variables/);
   assert.match(center, /mode:\s*'fixed'/);
   assert.match(center, /تُرسل القيم المكتوبة كما هي لكل مستلم/);
   assert.match(center, /لا يستنتج النظام اسم موظف أو متجر/);
+  assert.match(center, /مصادر البيانات مقفلة حسب عقد القالب/);
+  assert.match(center, /financial_suspension_review_31d/);
+  assert.match(center, /قاعدة الإيقاف المالي مقفلة على المراجعة/);
 });
 
 test('automation migration is preview-only and applies the current business contracts', async () => {
