@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  AlertTriangle, ArrowRight, BadgeDollarSign, Building2, CalendarClock, CheckCircle2, ChevronLeft, CircleDollarSign,
+  AlertTriangle, BadgeDollarSign, CalendarClock, CheckCircle2, ChevronLeft, CircleDollarSign,
   ExternalLink, HandCoins, ListChecks, MessageCircle, PackageSearch, PhoneCall,
   Power, PowerOff, ReceiptText, Send, ShieldAlert, ShoppingBag, Target, Truck, WalletCards,
 } from 'lucide-react';
-import { Btn, Card, Empty, Modal, Spinner, toast } from '../components/UI.jsx';
+import { toast } from '../lib/toast.js';
 import IvrCallButton from '../components/IvrCallButton.jsx';
-import { MobileActionSheet } from '../components/MobileUX.jsx';
 import { ActionResult } from '../components/operations/BulkPreflightDialog.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { recordPlatformSalesActivity } from '../lib/retargetingService.js';
@@ -26,16 +25,24 @@ import { saveAudienceHandoff } from '../lib/agingOperations.js';
 import { createSubmissionGuard, summarizeActionResults } from '../lib/operationalWorkflows.js';
 import { moneyToMinorUnits } from '../lib/customerFinancialPosition.js';
 import {
+  Button as DsButton, DataTable, DateTime, Dialog as Modal, EmptyState as Empty,
+  EntityPageHeader, ErrorState, Identifier, LoadingState, Money as DsMoney, PhoneNumber,
+  Page, PageHeader, Spinner, StatusBadge, Surface as Card, Tabs as EnterpriseTabs,
+} from '../design-system/EnterpriseUI.jsx';
+import {
   CUSTOMER_CONTACT_OUTCOMES,
   CUSTOMER_OUTCOME_GROUPS,
   shippingLifecycle,
 } from '../lib/customerGrowthTaxonomy.js';
 import './store-360.css';
 
+const Btn = DsButton;
+
 const VIEWS = [
-  ['overview', 'نظرة عامة'], ['finance', 'المالية والفواتير'],
-  ['work', 'المبيعات والتحصيل'], ['shipments', 'الشحنات والناقلون'],
-  ['communications', 'التواصل'], ['timeline', 'النشاط الكامل'],
+  ['overview', 'نظرة عامة'], ['finance', 'المالية'],
+  ['shipments', 'الشحن'], ['work', 'التحصيل'],
+  ['communications', 'التواصل'], ['timeline', 'النشاط'],
+  ['alerts', 'المشاكل والتنبيهات'],
 ];
 const VIEW_IDS = new Set(VIEWS.map(([id]) => id));
 const OPEN_TASK_STAGES = new Set(['todo', 'contacted', 'promised', 'snoozed']);
@@ -58,7 +65,7 @@ const communicationTitle = row => {
     ? (COMMUNICATION_KIND_LABELS[row?.kind] || COMMUNICATION_KIND_LABELS[raw] || raw || 'تواصل')
     : raw;
 };
-const MONEY = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const MONEY = (value) => `\u2066${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\u2069`;
 const DATE = (value, withTime = false) => {
   if (!value) return '—';
   const date = new Date(value);
@@ -404,6 +411,9 @@ function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onRelo
     { icon: CircleDollarSign, label: 'التفاصيل المالية', onClick: () => changeView('finance') },
     { icon: Send, label: 'إنشاء حملة للمتجر', reason: !store.phone ? 'لا يوجد رقم تواصل' : !campaignAllowed ? 'تحتاج صلاحية الحملات' : null, onClick: store.phone && campaignAllowed ? onOpenCampaign : null },
   ];
+  const primaryAction = Number(core.financial?.operationalCollectible || 0) > 0 ? actions[3] : actions[0];
+  const secondaryActions = [actions[1], actions[5]].filter(item => item.label !== primaryAction.label);
+  const overflowActions = actions.filter(item => item.label !== primaryAction.label && !secondaryActions.some(secondary => secondary.label === item.label));
   return <>
     <Card className="s360-action-center">
       <div className="s360-action-title"><div><ListChecks size={18}/><span><b>مركز الإجراءات</b><small>الإجراءات الحالية للمتجر من مكان واحد</small></span></div>
@@ -445,17 +455,23 @@ function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onRelo
           >{lamhaStatus.state === 'loading' ? 'جارٍ الفحص…' : 'فحص مباشر'}</button> : null}
         </span>
       </div>
-      <div className="s360-actions-desktop">{actions.map(item => <ActionButton key={item.label} {...item}/>)}</div>
-      <div className="s360-ivr-slot">{store.phone && ivrAllowed
-        ? <IvrCallButton phone={store.phone} name={store.storeName} fields={{ name: store.storeName, amount: core.financial?.operationalCollectible || 0 }} label labelText="تشغيل IVR"/>
-        : <ActionButton icon={PhoneCall} label="تشغيل IVR" reason={!store.phone ? 'لا يوجد رقم تواصل' : 'تحتاج صلاحية تشغيل IVR'}/>}</div>
+      <div className="s360-actions-desktop">
+        <div className="s360-primary-action"><ActionButton {...primaryAction}/></div>
+        {secondaryActions.map(item => <ActionButton key={item.label} {...item}/>)}
+        <details className="s360-more-actions">
+          <summary>إجراءات إضافية</summary>
+          <div>{overflowActions.map(item => <ActionButton key={item.label} {...item}/>)}{store.phone && ivrAllowed
+            ? <IvrCallButton phone={store.phone} name={store.storeName} fields={{ name: store.storeName, amount: core.financial?.operationalCollectible || 0 }} label labelText="تشغيل IVR"/>
+            : <ActionButton icon={PhoneCall} label="تشغيل IVR" reason={!store.phone ? 'لا يوجد رقم تواصل' : 'تحتاج صلاحية تشغيل IVR'}/>}</div>
+        </details>
+      </div>
     </Card>
-    <MobileActionSheet open={mobileOpen} title="إجراءات المتجر" eyebrow={store.storeName} onClose={closeMobileActions}>
+    <Modal open={mobileOpen} title="إجراءات المتجر" description={store.storeName} onClose={closeMobileActions}>
       {actions.map(item => <ActionButton key={item.label} {...item} onClick={item.onClick ? () => { closeMobileActions(); item.onClick(); } : null}/>)}
       {store.phone && ivrAllowed
         ? <IvrCallButton phone={store.phone} name={store.storeName} fields={{ name: store.storeName, amount: core.financial?.operationalCollectible || 0 }} label labelText="تشغيل IVR" style={{ width: '100%', justifyContent: 'center', minHeight: 46 }}/>
         : <ActionButton icon={PhoneCall} label="تشغيل IVR" reason={!store.phone ? 'لا يوجد رقم تواصل' : 'تحتاج صلاحية تشغيل IVR'}/>}
-    </MobileActionSheet>
+    </Modal>
     {modal === 'sales' || modal === 'followup' ? <SalesActionModal store={store} mode={modal} onClose={() => setModal(null)} onSaved={onReloadWork}/> : null}
     {modal === 'promise' && task ? <PromiseModal task={task} contextAmount={agingAmount || null} contextLabel={agingLabel} currentBalance={core.financial?.operationalCollectible} onClose={() => setModal(null)} onSaved={onReloadWork}/> : null}
     {modal === 'store-activate' || modal === 'store-deactivate' ? <StoreStatusConfirmModal store={store} finance={core.financial} task={task} canCreateShipments={lamhaStatus.canCreateShipments} activate={modal === 'store-activate'} busy={statusBusy} result={statusResult} onClose={closeStatusModal} onConfirm={runStoreStatusAction}/> : null}
@@ -753,6 +769,49 @@ function TimelineView({ data }) {
   </section>;
 }
 
+function AlertsView({ core, work, lamhaStatus, changeView, onOpenReconciliation }) {
+  const finance = core?.financial;
+  const rows = [
+    ...Object.entries(core?.sources || {})
+      .filter(([, source]) => source?.status === 'unavailable')
+      .map(([key, source]) => ({ id: `source-${key}`, tone: 'danger', type: 'مصدر بيانات', title: `${source.label || key} غير متاح`, detail: source.error || 'تعذر تحديث المصدر، لذلك لم تُستخدم قيمة افتراضية.', action: 'overview' })),
+    lamhaStatus?.canCreateShipments === false
+      ? { id: 'lamha-account', tone: 'warning', type: 'حالة الحساب', title: 'حساب لمحة غير نشط', detail: 'الحالة معروضة وفق آخر فحص أو مزامنة متاحة؛ التشغيل يبقى إجراءً مستقلاً.', action: 'overview' }
+      : null,
+    Number(core?.store?.walletBalance || 0) < 0
+      ? { id: 'wallet', tone: 'danger', type: 'محفظة', title: 'رصيد محفظة سالب', detail: `الرصيد المسجل ${MONEY(core.store.walletBalance)} ر.س ويحتاج تحققًا تشغيليًا.`, amount: core.store.walletBalance, action: 'finance' }
+      : null,
+    Number(finance?.overdue || 0) > 0
+      ? { id: 'overdue', tone: Number(finance?.oldestDays || 0) > 60 ? 'danger' : 'warning', type: 'تحصيل', title: 'مبلغ متأخر مفتوح', detail: `أقدم استحقاق منذ ${Number(finance?.oldestDays || 0).toLocaleString('en-US')} يوم.`, amount: finance.overdue, action: 'finance' }
+      : null,
+    finance?.lamhaZohoReconciliation?.isExact === false || core?.lamhaZohoReconciliation?.isExact === false
+      ? { id: 'reconciliation', tone: 'warning', type: 'مطابقة', title: 'فرق بين لمحة وزوهو', detail: 'المطابقة الحالية ليست متطابقة بدقة وتحتاج مراجعة النتيجة المقيدة بهذا المتجر.', external: true }
+      : null,
+    !work?.owner
+      ? { id: 'owner', tone: 'neutral', type: 'مسؤولية', title: 'لا يوجد مسؤول مسند', detail: 'لا يمنع القراءة، لكنه يترك الإجراء التالي بلا مالك واضح.', action: 'work' }
+      : null,
+  ].filter(Boolean);
+
+  return <section className="s360-alerts-view">
+    <SectionHeader title="المشاكل والتنبيهات" subtitle="قائمة موحدة للاستثناءات؛ لا تُنفذ أي معالجة تلقائيًا"/>
+    <DataTable
+      caption="مشاكل وتنبيهات العميل"
+      rows={rows}
+      getRowKey={row => row.id}
+      getRowLabel={row => `فتح تنبيه ${row.title}`}
+      onRowClick={row => row.external ? onOpenReconciliation() : changeView(row.action || 'overview')}
+      empty="لا توجد مشاكل ظاهرة في المصادر المتاحة"
+      columns={[
+        { key: 'tone', label: 'الأولوية', render: row => <StatusBadge tone={row.tone}>{row.tone === 'danger' ? 'عالية' : row.tone === 'warning' ? 'متوسطة' : 'معلومة'}</StatusBadge> },
+        { key: 'type', label: 'الفئة' },
+        { key: 'title', label: 'التنبيه', render: row => <><strong>{row.title}</strong><small>{row.detail}</small></> },
+        { key: 'amount', label: 'الأثر المالي', render: row => row.amount == null ? '—' : <DsMoney value={row.amount}/> },
+        { key: 'next', label: 'الإجراء التالي', render: row => <span className="enterprise-link">{row.external ? 'فتح المطابقة' : row.action === 'finance' ? 'فتح المالية' : row.action === 'work' ? 'فتح التحصيل' : 'فتح النظرة العامة'}</span> },
+      ]}
+    />
+  </section>;
+}
+
 export default function Store360Page({ identity }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -806,7 +865,7 @@ export default function Store360Page({ identity }) {
   }, [core, loadWork, view]);
 
   const loadView = useCallback(async (target, { force = false, page = shipmentPage } = {}) => {
-    if (!core || target === 'overview' || (viewData[target] && !force && target !== 'shipments')) return;
+    if (!core || target === 'overview' || target === 'alerts' || (viewData[target] && !force && target !== 'shipments')) return;
     setViewLoading(current => ({ ...current, [target]: true }));
     try {
       let result;
@@ -828,8 +887,8 @@ export default function Store360Page({ identity }) {
   }, [location.pathname, location.search, navigate]);
   const goBack = () => navigate(safeReturnTo(params.get('returnTo')));
 
-  if (loading) return <div className="s360-page"><LoadingBlock label="جارٍ تجهيز ملف المتجر…"/></div>;
-  if (coreError) return <div className="s360-page"><button className="s360-back" onClick={goBack}><ArrowRight size={16}/> رجوع</button><Card className="s360-not-found"><Building2 size={36}/><h1>تعذر فتح ملف المتجر</h1><p>لم تصل بيانات الهوية الأساسية بصورة تسمح بعرض ملف موثوق. لم نعرض سجلًا ناقصًا على أنه Customer 360 مكتمل.</p>{coreError.message ? <details className="s360-technical-details"><summary>التفاصيل التقنية</summary><code dir="ltr">{coreError.message}</code></details> : null}<Btn variant="accent" onClick={loadCore}>إعادة المحاولة</Btn></Card></div>;
+  if (loading) return <Page className="s360-page"><PageHeader title="ملف العميل" description="جارٍ تجهيز الهوية والمصادر المرتبطة"/><LoadingState title="جارٍ تجهيز ملف المتجر…" description="دليل لمحة · المالية · الشحن · التواصل"/></Page>;
+  if (coreError) return <Page className="s360-page"><PageHeader title="ملف العميل" actions={<DsButton size="sm" onClick={goBack}>رجوع</DsButton>}/><ErrorState title="تعذر فتح ملف المتجر" description="لم تصل بيانات الهوية الأساسية بصورة تسمح بعرض ملف موثوق. لم نعرض سجلًا ناقصًا على أنه Customer 360 مكتمل." onRetry={loadCore}/></Page>;
 
   const store = core.store;
   const finance = core.financial;
@@ -874,19 +933,25 @@ export default function Store360Page({ identity }) {
   const communicationRows = viewData.communications?.communications || [];
   const latestCommunication = communicationRows[0] || null;
   const latestCampaign = communicationRows.find(row => row.kind === 'campaign') || null;
-  return <div className="s360-page">
-    <header className="s360-header">
-      <button type="button" className="s360-back" onClick={goBack}><ArrowRight size={16}/> رجوع</button>
-      <div className="s360-identity">
-        <div className="s360-avatar">{(store.storeName || '?').trim().slice(0, 1)}</div>
-        <div className="s360-identity-copy"><div className="s360-eyebrow">STORE 360</div><h1>{store.storeName}</h1><div className="s360-identifiers"><span><ShoppingBag size={13}/>{store.storeId || 'Store ID غير متاح'}</span><span dir="ltr"><PhoneCall size={13}/>{store.phone || 'الهاتف غير متاح'}</span></div></div>
-      </div>
-      <div className="s360-header-status">
-        <span className={`s360-health ${hasUnavailable ? 'is-warning' : ''}`}>{hasUnavailable ? 'بعض المصادر غير متاحة' : 'المصادر الأساسية متاحة'}</span>
-        <small>آخر تحديث: {DATE(latestUpdate, true)}</small>
-      </div>
-      <div className="s360-meta-chips"><span className={`s360-account-chip ${lamhaStatus.canCreateShipments === true ? 'is-active' : lamhaStatus.canCreateShipments === false ? 'is-inactive' : 'is-unknown'}`}>{lamhaAccountLabel(lamhaStatus)}</span><span>{store.billingType || 'نوع الفوترة غير متاح'}</span><span>{store.integrationType || 'التكامل غير متاح'}</span><span>{workLoading ? 'المسؤول…' : work?.owner || 'بلا مسؤول'}</span></div>
-    </header>
+  return <Page className="s360-page">
+    <EntityPageHeader
+      eyebrow="STORE 360"
+      title={store.storeName}
+      avatar={(store.storeName || '?').trim().slice(0, 1)}
+      onBack={goBack}
+      status={<StatusBadge tone={hasUnavailable ? 'warning' : 'success'}>{hasUnavailable ? 'بعض المصادر غير متاحة' : 'المصادر الأساسية متاحة'}</StatusBadge>}
+      meta={<>آخر تحديث: <DateTime value={latestUpdate}/></>}
+      identifiers={[
+        { key: 'store', icon: <ShoppingBag size={13}/>, value: <Identifier value={store.storeId || 'Store ID غير متاح'}/> },
+        { key: 'phone', icon: <PhoneCall size={13}/>, value: <PhoneNumber value={store.phone || 'الهاتف غير متاح'}/> },
+      ]}
+      badges={[
+        { key: 'account', label: lamhaAccountLabel(lamhaStatus), tone: lamhaStatus.canCreateShipments === true ? 'success' : lamhaStatus.canCreateShipments === false ? 'danger' : 'neutral' },
+        { key: 'billing', label: store.billingType || 'نوع الفوترة غير متاح' },
+        { key: 'integration', label: store.integrationType || 'التكامل غير متاح' },
+        { key: 'owner', label: workLoading ? 'المسؤول…' : work?.owner || 'بلا مسؤول' },
+      ]}
+    />
 
     {core.sharedContactStores.length ? <details className="s360-shared-contact-context">
       <summary><ShoppingBag size={16}/><span><b>يوجد {core.sharedContactStores.length} متجر آخر بنفس رقم التواصل</b><small>سياق من دليل لمحة؛ لا تُجمع المديونيات ولا يُفترض أنها ملكية واحدة</small></span><ChevronLeft size={14}/></summary>
@@ -895,19 +960,23 @@ export default function Store360Page({ identity }) {
 
     <ActionCenter core={core} work={work} can={can} isAdmin={isAdmin} changeView={changeView} currentUrl={currentUrl} onReloadWork={loadWork} onOpenCampaign={openCampaignReview} lamhaStatus={lamhaStatus} setLamhaStatus={setLamhaStatus} refreshLamhaStatus={refreshLamhaStatus}/>
 
+    <nav className="s360-view-navigation" aria-label="أقسام ملف العميل">
+      <EnterpriseTabs label="عرض الملف" active={view} onChange={changeView} items={VIEWS.map(([id, label]) => ({ id, label }))}/>
+    </nav>
+
     {latestCommunication ? <button type="button" className="s360-communication-summary" onClick={() => changeView('communications')}>
       <div><PhoneCall size={16}/><span><b>آخر تواصل</b><small>{communicationTitle(latestCommunication)} · {DATE(latestCommunication.occurred_at, true)}</small></span></div>
       <div><span><b>آخر حملة</b><small>{latestCampaign ? `${latestCampaign.title || 'حملة'} · ${DATE(latestCampaign.occurred_at, true)}` : 'لا توجد حملة سابقة'}</small></span><ChevronLeft size={14}/></div>
     </button> : null}
 
     <div className="s360-kpi-row">
-      <KpiCard label="القابل للتحصيل" value={finance ? `${MONEY(finance.operationalCollectible)} ر.س` : financeMissingLabel} detail={financeDocumentDetail} source={core.sources.finance} tone="danger" onClick={() => changeView('finance')}/>
-      <KpiCard label="المتأخر" value={finance ? `${MONEY(finance.overdue)} ر.س` : financeMissingLabel} detail={openingOnly ? 'رصيد افتتاحي غير مدفوع' : finance ? AGE_LABEL(finance.oldestDays) : 'لا يوجد حساب مالي مرتبط'} source={core.sources.finance} tone="warning" onClick={() => changeView('finance')}/>
-      {moneyToMinorUnits(store.walletBalance) !== 0 ? <KpiCard label="محفظة لمحة" value={`${MONEY(store.walletBalance)} ر.س`} detail={store.walletBalance < 0 ? 'رصيد سالب يحتاج قرارًا تشغيليًا' : 'رصيد متاح في محفظة المتجر'} source={core.sources.identity} tone={store.walletBalance < 0 ? 'danger' : 'success'} onClick={() => changeView('finance')}/> : null}
+      <KpiCard label="القابل للتحصيل" value={finance ? <DsMoney value={finance.operationalCollectible}/> : financeMissingLabel} detail={financeDocumentDetail} source={core.sources.finance} tone="danger" onClick={() => changeView('finance')}/>
+      <KpiCard label="المتأخر" value={finance ? <DsMoney value={finance.overdue}/> : financeMissingLabel} detail={openingOnly ? 'رصيد افتتاحي غير مدفوع' : finance ? AGE_LABEL(finance.oldestDays) : 'لا يوجد حساب مالي مرتبط'} source={core.sources.finance} tone="warning" onClick={() => changeView('finance')}/>
+      {moneyToMinorUnits(store.walletBalance) !== 0 ? <KpiCard label="محفظة لمحة" value={<DsMoney value={store.walletBalance}/>} detail={store.walletBalance < 0 ? 'رصيد سالب يحتاج قرارًا تشغيليًا' : 'رصيد متاح في محفظة المتجر'} source={core.sources.identity} tone={store.walletBalance < 0 ? 'danger' : 'success'} onClick={() => changeView('finance')}/> : null}
       <KpiCard label="الإجراء التالي" value={workLoading ? 'جارٍ التحميل…' : work?.nextAction?.label || 'لا يوجد إجراء'} detail={work?.nextAction ? DATE(work.nextAction.at, true) : 'لا يوجد موعد حالي'} source={work?.nextAction?.source === 'التحصيل' ? work?.sources?.collections : work?.sources?.sales} loading={workLoading} onClick={() => changeView('work')}/>
       <KpiCard priority="secondary" label="أقدم استحقاق / Aging" value={agingValue} detail={agingDetail} source={core.sources.finance} onClick={() => changeView('finance')}/>
-      <KpiCard priority="secondary" label="آخر دفعة" value={finance?.lastPaymentDate ? `${MONEY(finance.lastPaymentAmount)} ر.س` : finance ? 'لا توجد دفعة' : financeMissingLabel} detail={finance ? DATE(finance.lastPaymentDate) : 'لا يوجد حساب مالي مرتبط'} source={core.sources.payments} tone="success" onClick={() => changeView('finance')}/>
-      {finance && moneyToMinorUnits(finance.residualBalance) !== 0 ? <KpiCard priority="secondary" label="الرصيد غير التشغيلي" value={`${MONEY(finance.residualBalance)} ر.س`} detail={moneyToMinorUnits(finance.creditOffset) !== 0 ? `يشمل ${MONEY(finance.creditOffset)} ر.س رصيدًا دائنًا` : 'رصيد هامشي لا يدخل التحصيل'} source={core.sources.finance} onClick={() => changeView('finance')}/> : null}
+      <KpiCard priority="secondary" label="آخر دفعة" value={finance?.lastPaymentDate ? <DsMoney value={finance.lastPaymentAmount}/> : finance ? 'لا توجد دفعة' : financeMissingLabel} detail={finance ? DATE(finance.lastPaymentDate) : 'لا يوجد حساب مالي مرتبط'} source={core.sources.payments} tone="success" onClick={() => changeView('finance')}/>
+      {finance && moneyToMinorUnits(finance.residualBalance) !== 0 ? <KpiCard priority="secondary" label="الرصيد غير التشغيلي" value={<DsMoney value={finance.residualBalance}/>} detail={moneyToMinorUnits(finance.creditOffset) !== 0 ? `يشمل ${MONEY(finance.creditOffset)} ر.س رصيدًا دائنًا` : 'رصيد هامشي لا يدخل التحصيل'} source={core.sources.finance} onClick={() => changeView('finance')}/> : null}
       <KpiCard priority="secondary" label="آخر شحنة · دليل المتاجر" value={store.lastShipmentAt ? DATE(store.lastShipmentAt) : 'لا توجد شحنة'} detail={`${store.shipmentCount} شحنة في دليل متاجر لمحة`} source={core.sources.identity} onClick={() => changeView('shipments')}/>
     </div>
 
@@ -931,6 +1000,7 @@ export default function Store360Page({ identity }) {
       {!viewLoading[view] && view === 'shipments' ? <ShipmentsView data={viewData.shipments} page={shipmentPage} onPage={setShipmentPage} onOpenCarrierCenter={openCarrierCenter}/> : null}
       {!viewLoading[view] && view === 'communications' ? <CommunicationView data={viewData.communications} canCreateCampaign={Boolean(store.phone && can('campaigns.send'))} onOpenCampaign={openCampaignReview}/> : null}
       {!viewLoading[view] && view === 'timeline' ? <TimelineView data={viewData.timeline}/> : null}
+      {view === 'alerts' ? <AlertsView core={core} work={work} lamhaStatus={lamhaStatus} changeView={changeView} onOpenReconciliation={openReconciliation}/> : null}
     </main>
-  </div>;
+  </Page>;
 }

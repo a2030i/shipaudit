@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Search, CornerDownLeft, Truck, FileText, ShoppingBag,
   ReceiptText, PackageSearch, Loader2,
+  X,
 } from 'lucide-react';
 import { searchGlobalEntities } from '../lib/globalSearchService.js';
 
@@ -41,6 +42,7 @@ export default function CommandPalette({ open, onClose, navItems = [], carriers 
   const [remoteLoading, setRemoteLoading] = useState(false);
   const inputRef = useRef(null);
   const listRef = useRef(null);
+  const restoreFocusRef = useRef(null);
 
   // Build the full item list once per nav/carriers change.
   const allItems = useMemo(() => {
@@ -116,10 +118,14 @@ export default function CommandPalette({ open, onClose, navItems = [], carriers 
 
   useEffect(() => {
     if (open) {
+      if (document.activeElement instanceof HTMLElement) restoreFocusRef.current = document.activeElement;
       setQ('');
       setSel(0);
       setRemoteItems([]);
       setTimeout(() => inputRef.current?.focus(), 30);
+    } else if (restoreFocusRef.current?.isConnected) {
+      const target = restoreFocusRef.current;
+      requestAnimationFrame(() => target.focus());
     }
   }, [open]);
   useEffect(() => { setSel(0); }, [q, remoteItems]);
@@ -180,6 +186,7 @@ export default function CommandPalette({ open, onClose, navItems = [], carriers 
             }}
           />
           <kbd style={{ fontSize: 10, color: 'var(--muted)', border: '1px solid var(--border2)', borderRadius: 5, padding: '2px 6px' }}>Esc</kbd>
+          <button type="button" aria-label="إغلاق لوحة الأوامر" onClick={onClose} style={{ display: 'grid', placeItems: 'center', width: 32, height: 32, border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: 'var(--surface)', color: 'var(--text2)', cursor: 'pointer' }}><X size={15}/></button>
         </div>
 
         <div ref={listRef} style={{ maxHeight: 460, overflowY: 'auto', padding: 6 }}>

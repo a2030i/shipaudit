@@ -23,9 +23,8 @@ import {
   Wallet, Activity, ShoppingBag,
   Bookmark, Save, Pencil, Check, SlidersHorizontal, Type,
 } from 'lucide-react';
-import {
-  Card, Btn, Spinner, Empty, Modal, toast, PageHeader, Select,
-} from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, toast, Select } from '../components/UI.jsx';
+import { DataTable, Dialog as Modal, PageHeader } from '../design-system/EnterpriseUI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import { loadLatestMerchants } from '../lib/merchantsService.js';
@@ -988,7 +987,7 @@ export default function Segments({ isActive = true }) {
       ) : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <DataTable caption="نتائج شريحة العملاء">
               <thead>
                 <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
                   {COLUMNS.map(col => (
@@ -1039,7 +1038,7 @@ export default function Segments({ isActive = true }) {
                   );
                 })}
               </tbody>
-            </table>
+            </DataTable>
           </div>
           {sortedFiltered.length > 500 && (
             <div style={{ padding: 12, textAlign: 'center', fontSize: 11.5, color: 'var(--muted)', background: 'var(--surface2)' }}>

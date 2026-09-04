@@ -15,7 +15,8 @@ import { Banknote, CreditCard, ListFilter, Wallet } from 'lucide-react';
 import CodSettlements   from './CodSettlements.jsx';
 import Payments         from './Payments.jsx';
 import BankStatement    from './BankStatement.jsx';
-import { Empty } from '../components/UI.jsx';
+import { Alert, Breadcrumbs, EmptyState, Page, PageHeader, Tabs } from '../design-system/EnterpriseUI.jsx';
+import FinanceWorkspaceNav from '../components/enterprise/FinanceWorkspaceNav.jsx';
 import { useAuth } from '../lib/auth.jsx';
 
 const TABS = [
@@ -87,12 +88,31 @@ export default function MoneyHub({ isActive = true }) {
   }, [location.pathname, location.search, visibleTabs, isActive]);
 
   if (visibleTabs.length === 0) {
-    return <Empty icon="🔒" title="لا تملك صلاحية حركة الأموال" sub="اطلب من المدير منح صلاحية التحصيل أو الدفعات أو الحسابات البنكية."/>;
+    return <Page><EmptyState icon="🔒" title="لا تملك صلاحية حركة الأموال" description="اطلب من المدير منح صلاحية التحصيل أو الدفعات أو الحسابات البنكية."/></Page>;
   }
 
+  const changeTab = nextTab => {
+    if (!visibleTabs.some(item => item.id === nextTab)) return;
+    const params = new URLSearchParams(location.search);
+    params.set('tab', nextTab);
+    navigate(`/money?${params.toString()}`);
+    setTab(nextTab);
+  };
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+    <Page className="money-workspace">
+      <Breadcrumbs items={[{ label: 'المالية' }, { label: 'النقد والبنوك' }]}/>
+      <PageHeader
+        eyebrow="مساحة عمل"
+        title="النقد والبنوك"
+        description="الحركة البنكية، الأرصدة الفعلية، وتسويات النقد الخارجة في عروض منفصلة قابلة للتتبع."
+      />
+      <FinanceWorkspaceNav active={['cod', 'payments'].includes(tab) ? 'payables' : 'cash'}/>
+      <Alert title="فصل مصادر الرصيد">
+        الرصيد البنكي الفعلي، الرصيد الدفتري، والفروقات لا تُدمج في رقم واحد. كل عرض يحتفظ بمصدره وبمنطق المطابقة الحالي.
+      </Alert>
+      <Tabs items={visibleTabs} active={tab} onChange={changeTab} label="عروض النقد والبنوك"/>
+      <div className="money-workspace__body">
         {visibleTabs.map(t => {
           const Cmp = t.component;
           const active = tab === t.id;
@@ -101,14 +121,14 @@ export default function MoneyHub({ isActive = true }) {
               key={t.id}
               aria-label={t.label}
               role="tabpanel"
-              className="ws-tab-panel"
-              style={{ display: active ? 'block' : 'none', height: '100%' }}
+              className="money-workspace__panel"
+              hidden={!active}
             >
-              <Cmp isActive={isActive && active} {...(t.componentProps || {})}/>
+              <Cmp isActive={isActive && active} embedded {...(t.componentProps || {})}/>
             </div>
           );
         })}
       </div>
-    </div>
+    </Page>
   );
 }

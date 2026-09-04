@@ -13,7 +13,11 @@ import {
   ShieldCheck, Eye, EyeOff, MessageSquare, Filter, X,
   Phone, Hash, ShoppingBag, ArrowLeft,
 } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, Modal, toast, PageHero, PageHeader } from '../components/UI.jsx';
+import { toast } from '../lib/toast.js';
+import {
+  Button as Btn, DataTable, Dialog as Modal, Drawer, EmptyState as Empty, ErrorState, Identifier, LoadingState, Money,
+  NumberValue, PageHeader, Spinner, StatStrip, StatusBadge, Surface as Card, Tabs,
+} from '../design-system/EnterpriseUI.jsx';
 import IvrCallButton from '../components/IvrCallButton.jsx';
 import DataConfidenceBar from '../components/DataConfidenceBar.jsx';
 import InteractionsLog from '../components/InteractionsLog.jsx';
@@ -30,14 +34,14 @@ import { syncZohoDocs } from '../lib/pnlService.js';
 
 const fmt = (n) =>
   (n == null || Number.isNaN(n)) ? '—'
-  : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  : `\u2066${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\u2069`;
 
 const fmtCompact = (n) => {
   if (n == null || Number.isNaN(n)) return '—';
   const a = Math.abs(n);
-  if (a >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'م';
-  if (a >= 1_000)     return (n / 1_000).toFixed(1) + 'ك';
-  return n.toFixed(0);
+  if (a >= 1_000_000) return `\u2066${(n / 1_000_000).toFixed(1)}\u2069م`;
+  if (a >= 1_000)     return `\u2066${(n / 1_000).toFixed(1)}\u2069ك`;
+  return `\u2066${n.toFixed(0)}\u2069`;
 };
 
 const fmtDate = (iso) => {
@@ -55,101 +59,33 @@ const receivablesMeta = (snapshot) => {
     (snapshot.periodFrom ? ` · الفترة ${fmtDate(snapshot.periodFrom)} → ${fmtDate(snapshot.periodTo)}` : '');
 };
 
-// ── Tab pill ────────────────────────────────────────────────────
-function Tab({ id, label, count, amount, active, accent, onClick }) {
-  const isActive = active;
-  const accentColor = accent || (isActive ? 'var(--accent)' : null);
-  return (
-    <button onClick={() => onClick(id)} style={{
-      flex: 1,
-      background: isActive ? 'var(--card)' : 'transparent',
-      border: 'none',
-      padding: '10px 14px',
-      cursor: 'pointer',
-      borderRadius: 8,
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-      fontFamily: 'var(--font-sans)',
-      boxShadow: isActive ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
-    }}>
-      <span style={{ fontSize: 13, fontWeight: 700, color: isActive ? 'var(--text)' : accent || 'var(--muted)' }}>
-        {label}
-      </span>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {amount != null && amount > 0 && (
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: accentColor || 'var(--muted)', fontWeight: 700 }}>
-            {Number(amount).toLocaleString('en-US', { maximumFractionDigits: 0 })} ر.س
-          </span>
-        )}
-        <span style={{
-          background: accent && count > 0 ? accent + '20' : 'var(--surface)',
-          color: accent && count > 0 ? accent : (isActive ? 'var(--text)' : 'var(--muted)'),
-          padding: '2px 9px', borderRadius: 9,
-          fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700,
-          border: `1px solid ${accent && count > 0 ? accent + '60' : 'var(--border)'}`,
-        }}>{count}</span>
-      </span>
-    </button>
-  );
-}
-
 // ── Hero ────────────────────────────────────────────────────────
 function Hero({ total, overdueTotal, customerCount, snapshot, oldestDays }) {
   return (
-    <PageHero
-      variant="dark"
-      icon={<Users size={22}/>}
-      tag="LAMHA · CUSTOMER RECEIVABLES"
-      title="مديونيات العملاء"
-      meta={receivablesMeta(snapshot)}
-      stats={[
-        { label: 'إجمالي المستحقّات', value: `${fmt(total)} ر.س`, big: true },
-        { label: 'المتجاوز 30 يوم',   value: `${fmt(overdueTotal)} ر.س`, color: 'var(--gold)' },
-        { label: 'عدد العملاء',       value: customerCount },
-        {
-          label: 'أقدم فاتورة',
-          value: oldestDays != null ? `قبل ${oldestDays} يوم` : '—',
-          color: oldestDays != null && oldestDays > 90 ? '#FCA5A5' : undefined,
-        },
-      ]}
-    />
+    <StatStrip items={[
+      { key: 'total', label: 'إجمالي المستحقات', value: <Money value={total}/>, note: receivablesMeta(snapshot) },
+      { key: 'overdue', label: 'المتجاوز 30 يومًا', value: <Money value={overdueTotal}/>, tone: overdueTotal > 0 ? 'warning' : undefined },
+      { key: 'customers', label: 'عدد العملاء', value: <NumberValue value={customerCount}/> },
+      { key: 'oldest', label: 'أقدم فاتورة', value: oldestDays != null ? <><NumberValue value={oldestDays}/> يومًا</> : '—', tone: oldestDays > 90 ? 'danger' : undefined },
+    ]}/>
   );
 }
 
 // ── Aging cards ────────────────────────────────────────────────
 function AgingGrid({ aging, total }) {
   const cells = [
-    { key: 'd0_30',    label: '0–30 يوم',  amount: aging.d0_30,    color: 'var(--green)' },
-    { key: 'd31_60',   label: '31–60 يوم', amount: aging.d31_60,   color: 'var(--gold)' },
-    { key: 'd61_90',   label: '61–90 يوم', amount: aging.d61_90,   color: 'color-mix(in srgb, var(--gold) 50%, var(--red))' },
-    { key: 'd90_plus', label: '+90 يوم',   amount: aging.d90_plus, color: 'var(--red)' },
+    { key: 'd0_30',    label: '0–30 يوم',  amount: aging.d0_30, tone: 'success' },
+    { key: 'd31_60',   label: '31–60 يوم', amount: aging.d31_60, tone: 'warning' },
+    { key: 'd61_90',   label: '61–90 يوم', amount: aging.d61_90, tone: 'warning' },
+    { key: 'd90_plus', label: '+90 يوم',   amount: aging.d90_plus, tone: 'danger' },
   ];
-  return (
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-      gap: 10, marginBottom: 14,
-    }}>
-      {cells.map(c => {
-        const pct = total > 0 ? Math.round((c.amount / total) * 100) : 0;
-        return (
-          <Card key={c.key} style={{ padding: '14px 18px', borderTop: `2px solid ${c.color}` }}>
-            <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: 2, textTransform: 'uppercase' }}>
-              {c.label}
-            </div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: c.color, fontFamily: 'var(--font-mono)', marginTop: 4 }}>
-              {fmt(c.amount)} <span style={{ fontSize: 10, opacity: .55 }}>ر.س</span>
-            </div>
-            <div style={{ marginTop: 6, height: 6, background: 'var(--surface)', borderRadius: 3, overflow: 'hidden' }}>
-              <div style={{ width: `${pct}%`, height: '100%', background: c.color }}/>
-            </div>
-            <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>
-              {pct}% من الإجمالي
-            </div>
-          </Card>
-        );
-      })}
-    </div>
-  );
+  return <StatStrip items={cells.map(cell => ({
+    key: cell.key,
+    label: cell.label,
+    value: <Money value={cell.amount}/>,
+    note: `${total > 0 ? Math.round((cell.amount / total) * 100) : 0}% من الإجمالي`,
+    tone: cell.tone,
+  }))}/>;
 }
 
 // ── Customer invoices drawer ───────────────────────────────────
@@ -202,7 +138,7 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
   if (!customer) return null;
 
   return (
-    <Modal title={customer.name} onClose={onClose} width={780}>
+    <Drawer title={customer.name} onClose={onClose} width={780} className="receivables-customer-drawer">
       {/* Identity strip — store info + phone + call CTA */}
       {m && (
         <div style={{
@@ -262,7 +198,7 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
       )}
 
       <div style={{ display: 'flex', gap: 14, marginBottom: 14, flexWrap: 'wrap' }}>
-        <StatPill label="إجمالي مديونيته" value={`${fmt(customer.total)} ر.س`}/>
+        <StatPill label="إجمالي مديونيته" value={<Money value={customer.total}/>}/>
         <StatPill label="عدد الفواتير" value={customer.invoiceCount}/>
         {customer.oldestInvoiceDate && (
           <StatPill
@@ -357,7 +293,7 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
 
       {/* Invoices table */}
       <div className="m-flow" style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 9, marginBottom: 20 }}>
-        <table style={{ fontSize: 12, width: '100%' }}>
+        <DataTable caption={`فواتير ${customer.name}`} className="receivables-invoice-table">
           <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)' }}>
             <tr>
               <th style={{ textAlign: 'right' }}>تاريخ الفاتورة</th>
@@ -385,7 +321,7 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
                       <div>{fmtDate(inv.date)}</div>
                       {inv.invoiceNumber && <div style={{ color: 'var(--muted)', marginTop: 2 }}>{inv.invoiceNumber}</div>}
                     </td>
-                    <td style={{ fontFamily: 'var(--font-mono)', textAlign: 'left' }}>{fmt(inv.amount)} ر.س</td>
+                    <td style={{ textAlign: 'left' }}><Money value={inv.amount}/></td>
                     <td style={{ fontFamily: 'var(--font-mono)', textAlign: 'center', color }}>
                       {days != null ? `${days} يوم` : '—'}
                     </td>
@@ -393,7 +329,7 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
                 );
               })}
           </tbody>
-        </table>
+        </DataTable>
       </div>
 
       {/* SOA export — single-button handoff for the accountant. */}
@@ -419,7 +355,7 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
         customerName={customer.name}
         storeId={customer.merchant?.storeId || null}
       />
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -459,7 +395,7 @@ function TagCustomerModal({ customer, mode, onClose, onSubmit }) {
           {customer.name}
         </div>
         <div style={{ color: 'var(--muted)', fontSize: 11.5 }}>
-          مديونيته الحالية: <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{fmt(customer.total)} ر.س</strong>
+          مديونيته الحالية: <strong style={{ color: 'var(--text)' }}><Money value={customer.total}/></strong>
           {customer.invoiceCount > 0 && ` · ${customer.invoiceCount} فاتورة`}
         </div>
       </div>
@@ -522,7 +458,7 @@ function TagCustomerModal({ customer, mode, onClose, onSubmit }) {
 }
 
 // ── Main ───────────────────────────────────────────────────────
-export default function CustomerReceivables({ isActive = true }) {
+export default function CustomerReceivables({ isActive = true, embedded = false }) {
   const { user, can } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -530,6 +466,7 @@ export default function CustomerReceivables({ isActive = true }) {
   const [data,    setData]    = useState(null);
   const [merchants, setMerchants] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [openCustomer, setOpenCustomer] = useState(null);
   const [search,  setSearch]  = useState('');
   const [sortBy,  setSortBy]  = useState('total');     // total | oldest | invoices | name
@@ -557,6 +494,7 @@ export default function CustomerReceivables({ isActive = true }) {
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
       // Pull receivables + merchants in parallel — the anomalies tab
       // needs both (negative-wallet merchants surface even when they
@@ -569,6 +507,7 @@ export default function CustomerReceivables({ isActive = true }) {
       setMerchants(mResult?.merchants || []);
     } catch (e) {
       toast(`فشل التحميل: ${e.message}`, 'error');
+      setLoadError(e?.message || 'تعذر تحميل الأرصدة من المصدر الحالي.');
       setData(null);
     }
     setLoading(false);
@@ -1050,8 +989,8 @@ export default function CustomerReceivables({ isActive = true }) {
   };
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
-      <PageHeader
+    <div className="receivables-workspace-view" style={embedded ? undefined : { padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
+      {!embedded ? <PageHeader
         icon={<Users size={22}/>}
         title="مديونيات العملاء"
         subtitle={loading
@@ -1074,7 +1013,7 @@ export default function CustomerReceivables({ isActive = true }) {
             </Btn>
           </>
         }
-      />
+      /> : null}
       <DataConfidenceBar
         active={isActive}
         sourceLabel={receivablesSourceLabel(data?.snapshot)}
@@ -1086,16 +1025,18 @@ export default function CustomerReceivables({ isActive = true }) {
         onRefresh={refresh}
         sourcePath="/zoho-data?type=invoices"
       />
-      <Hero
+      {data ? <Hero
         total={data?.total || 0}
         overdueTotal={data ? (data.aging.d31_60 + data.aging.d61_90 + data.aging.d90_plus) : 0}
         customerCount={data?.customerCount || 0}
         snapshot={data?.snapshot}
         oldestDays={oldestDays}
-      />
+      /> : null}
 
-      {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><Spinner size={28}/></div>
+      {!can('receivables.view') ? <Empty title="لا توجد صلاحية لعرض الأرصدة" sub="تحتاج صلاحية عرض مديونيات العملاء." icon="🔒"/> : loading ? (
+        <LoadingState title="جارٍ تحميل أرصدة العملاء…" description="Zoho Books ودليل متاجر لمحة"/>
+      ) : loadError ? (
+        <ErrorState title="تعذر تحميل أرصدة العملاء" description={loadError} onRetry={refresh}/>
       ) : !data?.customerCount ? (
         <Card>
           <Empty
@@ -1163,29 +1104,16 @@ export default function CustomerReceivables({ isActive = true }) {
           <AgingGrid aging={data.aging} total={data.total}/>
 
           {/* Tabs */}
-          <Card style={{ padding: 0, marginBottom: 12, overflow: 'hidden' }}>
-            <div style={{ display: 'flex', gap: 0, padding: 6, background: 'var(--surface)', flexWrap: 'wrap' }}>
-              <Tab
-                id="active" label="كل العملاء"
-                count={data.activeCustomers?.length || 0}
-                amount={data.total}
-                active={tab === 'active'} onClick={setTab}
-              />
-              <Tab
-                id="anomalies" label="🚨 تنبيهات"
-                count={anomalies.length}
-                amount={anomalies.reduce((s, c) => s + (c.total || 0), 0)}
-                active={tab === 'anomalies'} onClick={setTab}
-                accent={anomalies.length > 0 ? '#EF4444' : null}
-              />
-              <Tab
-                id="excluded" label="🛡 مخفيون من الإجماليات"
-                count={data.excludedCustomers?.length || 0}
-                amount={data.excludedTotal}
-                active={tab === 'excluded'} onClick={setTab}
-              />
-            </div>
-          </Card>
+          <Tabs
+            label="عروض أرصدة العملاء"
+            active={tab}
+            onChange={setTab}
+            items={[
+              { id: 'active', label: 'كل العملاء', count: data.activeCustomers?.length || 0 },
+              { id: 'anomalies', label: 'التنبيهات', count: anomalies.length },
+              { id: 'excluded', label: 'متابعة خاصة', count: data.excludedCustomers?.length || 0 },
+            ]}
+          />
 
           {/* Anomalies breakdown — visible only when on the alerts tab.
               Shows 5 type-tiles in a row, each clickable to filter the
@@ -1375,23 +1303,21 @@ export default function CustomerReceivables({ isActive = true }) {
           </Card>
 
           {/* Table */}
-          <Card style={{ padding: 0, overflow: 'hidden' }}>
-            <div className="m-flow" style={{ maxHeight: 600, overflowY: 'auto' }}>
-              <table className="m-compact" style={{ fontSize: 12, width: '100%' }}>
+          <DataTable className="receivables-customer-table" caption="أرصدة العملاء المفتوحة">
                 <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
                   <tr>
-                    <th onClick={() => handleSort('name')} style={thStyle}>
-                      العميل {sortBy === 'name' && (sortDir === 'asc' ? '↑' : '↓')}
+                    <th style={thStyle} aria-sort={sortBy === 'name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+                      <button type="button" className="ds-table__sort" onClick={() => handleSort('name')}>العميل {sortBy === 'name' ? <ChevronDown size={12} style={{ transform: sortDir === 'asc' ? 'rotate(180deg)' : undefined }}/> : null}</button>
                     </th>
-                    <th onClick={() => handleSort('total')} style={{ ...thStyle, textAlign: 'left' }}>
-                      الإجمالي (ر.س) {sortBy === 'total' && (sortDir === 'asc' ? '↑' : '↓')}
+                    <th style={{ ...thStyle, textAlign: 'left' }} aria-sort={sortBy === 'total' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+                      <button type="button" className="ds-table__sort" onClick={() => handleSort('total')}>الإجمالي {sortBy === 'total' ? <ChevronDown size={12} style={{ transform: sortDir === 'asc' ? 'rotate(180deg)' : undefined }}/> : null}</button>
                     </th>
-                    <th onClick={() => handleSort('invoices')} style={{ ...thStyle, textAlign: 'center' }}>
-                      الفواتير {sortBy === 'invoices' && (sortDir === 'asc' ? '↑' : '↓')}
+                    <th style={{ ...thStyle, textAlign: 'center' }} aria-sort={sortBy === 'invoices' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+                      <button type="button" className="ds-table__sort" onClick={() => handleSort('invoices')}>الفواتير {sortBy === 'invoices' ? <ChevronDown size={12} style={{ transform: sortDir === 'asc' ? 'rotate(180deg)' : undefined }}/> : null}</button>
                     </th>
                     <th style={thStyle}>أقدم فاتورة</th>
-                    <th onClick={() => handleSort('oldest')} style={{ ...thStyle, textAlign: 'center' }}>
-                      الأيام {sortBy === 'oldest' && (sortDir === 'asc' ? '↑' : '↓')}
+                    <th style={{ ...thStyle, textAlign: 'center' }} aria-sort={sortBy === 'oldest' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+                      <button type="button" className="ds-table__sort" onClick={() => handleSort('oldest')}>الأيام {sortBy === 'oldest' ? <ChevronDown size={12} style={{ transform: sortDir === 'asc' ? 'rotate(180deg)' : undefined }}/> : null}</button>
                     </th>
                     <th style={{ ...thStyle, width: 80, textAlign: 'center', cursor: 'default' }}>الإجراء</th>
                   </tr>
@@ -1417,7 +1343,12 @@ export default function CustomerReceivables({ isActive = true }) {
                     return (
                       <tr
                         key={c.name}
+                        tabIndex={0}
+                        aria-label={`فتح رصيد ${m?.storeName || c.name}`}
                         onClick={() => setOpenCustomer(c)}
+                        onKeyDown={event => {
+                          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setOpenCustomer(c); }
+                        }}
                         style={{ cursor: 'pointer', background: baseBg }}
                         onMouseEnter={e => e.currentTarget.style.background = anomalyTint ? anomalyTint.replace('.06','.12').replace(' 6%,',' 12%,') : isExcluded ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'var(--surface)'}
                         onMouseLeave={e => e.currentTarget.style.background = baseBg || ''}
@@ -1454,9 +1385,7 @@ export default function CustomerReceivables({ isActive = true }) {
                                   <span style={miniChip('var(--muted)')} title="حالة المتجر">○ غير نشط</span>
                                 )}
                                 {m.phone && (
-                                  <span style={{
-                                    fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--muted)', direction: 'ltr',
-                                  }} title="هاتف">{m.phone}</span>
+                                  <Identifier value={m.phone} className="receivables-phone"/>
                                 )}
                               </>
                             )}
@@ -1489,23 +1418,23 @@ export default function CustomerReceivables({ isActive = true }) {
                         <td style={{ fontFamily: 'var(--font-mono)', textAlign: 'left', fontWeight: 700 }}>
                           {bucketFilters.size > 0 ? (
                             <>
-                              <div>{fmt(c.filteredTotal)}</div>
+                              <div><Money value={c.filteredTotal}/></div>
                               <div style={{ fontSize: 9.5, color: 'var(--muted)', fontWeight: 500, marginTop: 1 }}>
-                                من {fmt(c.total)}
+                                من <Money value={c.total}/>
                               </div>
                             </>
                           ) : (
-                            fmt(c.total)
+                            <Money value={c.total}/>
                           )}
                         </td>
                         <td style={{ textAlign: 'center', fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>
-                          {c.invoiceCount}
+                          <NumberValue value={c.invoiceCount}/>
                         </td>
                         <td style={{ fontSize: 11, color: 'var(--muted)' }}>
                           {fmtDate(c.oldestInvoiceDate)}
                         </td>
                         <td style={{ textAlign: 'center', fontFamily: 'var(--font-mono)', color: ageColor, fontWeight: 700 }}>
-                          {c.daysOutstanding != null ? `${c.daysOutstanding} يوم` : '—'}
+                          {c.daysOutstanding != null ? <StatusBadge dot={false} tone={c.daysOutstanding > 90 ? 'danger' : c.daysOutstanding > 30 ? 'warning' : 'success'}><NumberValue value={c.daysOutstanding}/> يومًا</StatusBadge> : '—'}
                         </td>
                         <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                           {isExcluded ? (
@@ -1532,9 +1461,7 @@ export default function CustomerReceivables({ isActive = true }) {
                     );
                   })}
                 </tbody>
-              </table>
-            </div>
-          </Card>
+          </DataTable>
         </>
       )}
 

@@ -1,135 +1,101 @@
-// «مركز المبيعات» — دمج المرحلة 3 من خطة الموديولات (§1.32):
-// كل «فرص النمو» في مكان واحد بدل 4 صفحات متفرّقة:
-//   /retargeting  → إعادة الاستهداف (متاجرنا الخاملة — الافتراضي)
-//   /hatif-leads  → مرجع طلبات التواصل في هاتف (لا يفتح Lead من مجرد رد)
-//   (من /crm)     → عملاء خارج المنصّة (قوائم خارجية — LeadsTab المُصدَّر من CRM)
-//   /segments     → شرائح العملاء (كان داخل ملف العملاء)
-//   /merchants    → متاجر المنصّة (الدليل — كان داخل ملف العملاء)
-// نفس نمط CollectionsHub: الأبناء mounted، كلٌّ يجلب عند تفعيله فقط،
-// والمسارات القديمة تهبط على تبويبها. الرابط القانوني /retargeting?view=<id>
-// مع قبول tab للروابط التاريخية.
-import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
-import { Target, UserPlus, Store, Layers, ShoppingBag, Sunrise, TrendingUp, Workflow } from 'lucide-react';
+// مساحة المبيعات الموحدة. الصفحات التاريخية تبقى مصادر الوظائف، بينما هذا
+// الغلاف هو مصدر IA والعناوين والتنقل. لا توجد هوية عميل خاصة بالمبيعات؛
+// كل انتقال تفصيلي ينتهي في Customer 360 أو في Drawer إجراء سياقي.
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Megaphone, Users } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
+import { Alert, Button, LoadingState, Page, PageHeader, Tabs } from '../design-system/EnterpriseUI.jsx';
+import SalesWorkspaceNav, { VIEW_TO_AREA } from '../components/enterprise/SalesWorkspaceNav.jsx';
+import '../components/enterprise/batch4-workspaces.css';
 
-import PlatformSalesCrm from './PlatformSalesCrm.jsx';
-import NextActions from './NextActions.jsx';
-import StoreActivation from './StoreActivation.jsx';
-import Retargeting from './Retargeting.jsx';
-import HatifLeads  from './HatifLeads.jsx';
-import { LeadsTab } from './CrmWorkspace.jsx';
-import Segments    from './Segments.jsx';
-import Merchants   from './Merchants.jsx';
+const PlatformSalesCrm = lazy(() => import('./PlatformSalesCrm.jsx'));
+const NextActions = lazy(() => import('./NextActions.jsx'));
+const StoreActivation = lazy(() => import('./StoreActivation.jsx'));
+const Retargeting = lazy(() => import('./Retargeting.jsx'));
+const HatifLeads = lazy(() => import('./HatifLeads.jsx'));
+const LeadsTab = lazy(() => import('./CrmWorkspace.jsx').then(module => ({ default: module.LeadsTab })));
+const Segments = lazy(() => import('./Segments.jsx'));
 
-// تفصيص الصلاحيات (قرار المستخدم 2026-07-16): مفتاح مستقل لكل تبويب —
-// sales.view لم يعد يفتح إلا إعادة الاستهداف.
-const TABS = [
-  {
-    id: 'pipeline', label: 'قائمة عملاء لمحة', icon: Workflow, component: PlatformSalesCrm, perm: 'sales.view', secondary: true,
-    eyebrow: 'قائمة تشغيلية', purpose: 'افتح العميل وسجّل المتابعة التالية',
-    description: 'قائمة تفصيلية للعملاء والمسؤول والمتابعة، وليست مراحل بيع مستقلة عن نشاط المنصة.',
-    outcome: 'عميل واضح وخطوة تالية محددة', tone: 'var(--brand)',
-  },
-  // «خطة اليوم» (§1.37): بوصلة الموظف — بلا perm خاص (يظهر لكل من دخل المركز)
-  {
-    id: 'today', label: 'قائمة العمل اليوم', icon: Sunrise, component: NextActions,
-    eyebrow: 'بوصلة الموظف', purpose: 'ابدأ بأعلى الفرص قيمة اليوم',
-    description: 'تلخّص ما يستحق الاتصال الآن وتمنع تشتيت الفريق بين القوائم. هذه هي نقطة البداية اليومية وليست قاعدة بيانات جديدة.',
-    outcome: 'أولوية واتصال ونتيجة', tone: 'var(--brand)',
-  },
-  {
-    id: 'activation', label: 'نمو عملاء لمحة', icon: TrendingUp, component: StoreActivation,
-    eyebrow: 'نبض العملاء', purpose: 'راقب من دخل النشاط ومن خرج وما يحتاج تدخلاً',
-    description: 'النشطون وصافي الزيادة والنقص والشرائح، مع انتقال مباشر إلى قائمة العمل والمتابعة.',
-    outcome: 'نمو صافٍ وخطوة واضحة', tone: 'var(--green)',
-  },
-  {
-    id: 'retargeting', label: 'حملات الاستعادة', icon: Target, component: Retargeting, perm: 'sales.view',
-    secondary: true,
-    eyebrow: 'استعادة الإيراد', purpose: 'أعد العملاء الذين شحنوا ثم توقفوا',
-    description: 'مساحة تقسيم وتنفيذ حملات عودة جماعية. متابعة العميل الفردية ومواعيده تبقى في مسار العملاء.',
-    outcome: 'عودة عميل ذي قيمة', tone: 'var(--gold)',
-  },
-  {
-    id: 'hatif', label: 'مرجع طلبات هاتف', icon: UserPlus, component: HatifLeads, perm: 'sales.hatif_leads',
-    secondary: true,
-    eyebrow: 'مرجع قناة التواصل', purpose: 'راجع الطلبات الواردة عند الحاجة',
-    description: 'مرجع لما ظهر في هاتف، وليس مولّد Leads تلقائياً. رد العميل يبقى لدى فريق هاتف ولا يفتح فرصة بيع في نظامنا.',
-    outcome: 'سياق إضافي بلا ازدواج متابعة', tone: 'var(--accent3)',
-  },
-  {
-    id: 'external', label: 'العملاء خارج المنصة', icon: Store, component: LeadsTab, perm: 'sales.external_leads', activeProp: true,
-    eyebrow: 'استحواذ جديد', purpose: 'أدر القوائم الخارجية قبل دخول العميل للمنصة',
-    description: 'للعملاء الذين لم يسجلوا ولم يطلبوا التواصل بعد. تبقى منفصلة عن العملاء المهتمين حتى لا تختلط حرارة الفرص.',
-    outcome: 'عميل مؤهل وجاهز للتواصل', tone: 'var(--red)',
-  },
-  {
-    id: 'segments', label: 'شرائح الجمهور', icon: Layers, component: Segments, perm: 'sales.segments',
-    secondary: true,
-    eyebrow: 'رسائل أدق', purpose: 'قسّم العملاء حسب القيمة والسلوك',
-    description: 'أداة تخطيط للحملات وليست قائمة اتصال مستقلة. استخدم الشريحة لاختيار الرسالة، ثم نفّذ من مسار الحملة المناسب.',
-    outcome: 'جمهور واضح ورسالة مناسبة', tone: 'var(--accent)',
-  },
-  {
-    id: 'merchants', label: 'دليل المتاجر', icon: ShoppingBag, component: Merchants, perm: 'merchants.view',
-    secondary: true,
-    eyebrow: 'مرجع العملاء', purpose: 'ابحث في بيانات المتاجر وحالتها التشغيلية',
-    description: 'مرجع معلومات المتجر وربطه، وليس مسار متابعة مبيعات. لا تسجّل نشاطاً بيعياً هنا حتى تبقى المسؤوليات واضحة.',
-    outcome: 'بيانات متجر موثوقة', tone: 'var(--muted)',
-  },
+const VIEWS = [
+  { id: 'overview', label: 'نظرة المبيعات', component: StoreActivation },
+  { id: 'activation', label: 'نمو عملاء لمحة', component: StoreActivation },
+  { id: 'pipeline', label: 'مسار المبيعات', component: PlatformSalesCrm, perm: 'sales.view' },
+  { id: 'today', label: 'المتابعة اليومية', component: NextActions },
+  { id: 'retargeting', label: 'مهام الاستعادة', component: Retargeting, perm: 'sales.view' },
+  { id: 'external', label: 'عملاء محتملون خارج المنصة', component: LeadsTab, perm: 'sales.external_leads', activeProp: true },
+  { id: 'hatif', label: 'مرجع طلبات هاتف', component: HatifLeads, perm: 'sales.hatif_leads' },
+  { id: 'segments', label: 'الشرائح والعروض المحفوظة', component: Segments, perm: 'sales.segments' },
 ];
 
-const LEGACY_PATH_TO_TAB = {
-  '/retargeting': 'pipeline',
-  '/hatif-leads': 'hatif',
-  '/segments':    'segments',
-  '/merchants':   'merchants',
+const LEGACY_PATH_TO_VIEW = {
+  '/retargeting': 'pipeline', '/hatif-leads': 'hatif', '/segments': 'segments', '/next-actions': 'today',
+};
+
+const AREA_META = {
+  overview: ['المبيعات', 'صورة تشغيلية موحدة للنمو والنشاط دون إنشاء تعريف جديد لحالة العميل.'],
+  pipeline: ['مسار المبيعات', 'الحالة والمسؤول والمتابعة من المصادر الحالية، مع فتح Customer 360 للتفاصيل.'],
+  prospects: ['العملاء والفرص', 'العملاء المحتملون قبل دخولهم المنصة، ومرجع هاتف كسياق لا كيان عميل مكرر.'],
+  followup: ['المتابعة', 'قائمة التنفيذ اليومية المرتبة حسب الإجراء التالي القائم.'],
+  tasks: ['مهام الاستعادة', 'نتائج قابلة للعمل للعملاء المتوقفين وفرص إعادة التنشيط.'],
+  segments: ['الشرائح والعروض المحفوظة', 'بناء شرائح من بيانات العميل نفسها ثم تسليمها لمساحة الحملات للمراجعة.'],
 };
 
 export default function SalesHub({ isActive = true }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { can } = useAuth();
-  const visibleTabs = TABS.filter(t => !t.perm || can(t.perm));
-
-  const getInitialTab = () => {
+  const visibleViews = useMemo(() => VIEWS.filter(item => !item.perm || can(item.perm)), [can]);
+  const requestedView = () => {
     const params = new URLSearchParams(location.search);
-    const fromQuery = params.get('view') || params.get('tab');
-    if (fromQuery && visibleTabs.some(t => t.id === fromQuery)) return fromQuery;
-    const fromPath = LEGACY_PATH_TO_TAB[location.pathname];
-    if (fromPath && visibleTabs.some(t => t.id === fromPath)) return fromPath;
-    return visibleTabs[0]?.id || 'retargeting';
+    const queryView = params.get('view') || params.get('tab');
+    if (queryView && visibleViews.some(item => item.id === queryView)) return queryView;
+    const legacy = LEGACY_PATH_TO_VIEW[location.pathname];
+    if (legacy && visibleViews.some(item => item.id === legacy)) return legacy;
+    return visibleViews.some(item => item.id === 'overview') ? 'overview' : visibleViews[0]?.id;
   };
-  const [tab, setTab] = useState(getInitialTab);
+  const [view, setView] = useState(requestedView);
 
   useEffect(() => {
     if (!isActive) return;
-    const expected = getInitialTab();
-    if (expected !== tab) setTab(expected);
+    const next = requestedView();
+    if (next && next !== view) setView(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname, location.search]);
+  }, [isActive, location.pathname, location.search, visibleViews]);
+
+  if (!isActive) return null;
+  const activeView = visibleViews.find(item => item.id === view) || visibleViews[0];
+  if (!activeView) return <Page><Alert tone="warning" title="لا توجد صلاحية">لا تملك صلاحية لعرض أي جزء من مركز المبيعات.</Alert></Page>;
+  const activeArea = VIEW_TO_AREA[activeView.id] || 'overview';
+  const [title, description] = AREA_META[activeArea] || AREA_META.overview;
+  const prospectItems = [
+    visibleViews.some(item => item.id === 'external') && { id: 'external', label: 'العملاء المحتملون' },
+    visibleViews.some(item => item.id === 'hatif') && { id: 'hatif', label: 'مرجع هاتف' },
+  ].filter(Boolean);
+  const Cmp = activeView.component;
+  const changeContext = nextView => {
+    const params = new URLSearchParams(location.search);
+    params.set('view', nextView);
+    navigate(`/workspace/sales?${params.toString()}`);
+  };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
-        {(() => {
-          const activeTab = visibleTabs.find(item => item.id === tab) || visibleTabs[0];
-          if (!activeTab) return null;
-          const Cmp = activeTab.component;
-          return (
-            <div
-              key={activeTab.id}
-              aria-label={activeTab.label}
-              role="tabpanel"
-              className="ws-tab-panel"
-              style={{ height: '100%' }}
-            >
-              {/* LeadsTab يستقبل prop باسم active (لا isActive) — إرث CRM */}
-              {activeTab.activeProp ? <Cmp active={isActive}/> : <Cmp isActive={isActive}/>}
-            </div>
-          );
-        })()}
-      </div>
-    </div>
+    <Page className="sales-workspace">
+      <PageHeader eyebrow="مركز عمل" title={title} description={description} actions={<>
+        <Button icon={<Users size={15}/>} onClick={() => navigate('/workspace/customers')}>دليل العملاء</Button>
+        <Button variant="primary" icon={<Megaphone size={15}/>} onClick={() => navigate('/workspace/campaigns?view=audiences')}>إنشاء حملة</Button>
+      </>}/>
+      <SalesWorkspaceNav active={activeArea}/>
+      {activeArea === 'prospects' && prospectItems.length > 1 ? <div className="sales-workspace__context">
+        <span>طريقة عرض العملاء المحتملين</span>
+        <Tabs items={prospectItems} active={activeView.id} onChange={changeContext} label="مصدر العملاء المحتملين"/>
+      </div> : null}
+      <section className="sales-workspace__panel" aria-label={activeView.label}>
+        <Suspense fallback={<LoadingState title="جارٍ تحميل عرض المبيعات…" compact/>}>
+          {activeView.activeProp ? <Cmp active={isActive}/> : <Cmp isActive={isActive}/>}
+        </Suspense>
+      </section>
+      <Alert tone="info" title="هوية عميل واحدة">تفاصيل أي عميل أو متجر تُفتح في Customer 360؛ هذه المساحة تضيف سياق المبيعات فقط ولا تنشئ ملف عميل موازيًا.</Alert>
+    </Page>
   );
 }

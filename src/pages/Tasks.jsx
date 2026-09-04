@@ -15,8 +15,11 @@ import {
   Clock, X, Trash2, ListTodo,
 } from 'lucide-react';
 import {
-  Card, Btn, Spinner, Empty, Modal, toast, PageHeader, Select,
-} from '../components/UI.jsx';
+  Button as Btn, DataTable, Dialog as Modal, EmptyState as Empty,
+  Page, PageHeader, Panel as Card, Select, Spinner,
+} from '../design-system/EnterpriseUI.jsx';
+import { toast } from '../lib/toast.js';
+import OperationsWorkspaceNav from '../components/enterprise/OperationsWorkspaceNav.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
   listSchedules, upsertSchedule, markTaskDone, deleteSchedule,
@@ -134,7 +137,7 @@ export default function Tasks({ carriers = [], isActive = true }) {
   };
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
+    <Page className="enterprise-workspace enterprise-operations-page">
       <PageHeader
         icon={<ListTodo size={22}/>}
         title="جداول استلام الناقلين"
@@ -151,6 +154,7 @@ export default function Tasks({ carriers = [], isActive = true }) {
           </>
         }
       />
+      <OperationsWorkspaceNav active="exceptions"/>
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><Spinner size={28}/></div>
@@ -236,7 +240,7 @@ export default function Tasks({ carriers = [], isActive = true }) {
                 كل المهام المُسجَّلة ({schedules.length})
               </h3>
             </div>
-            <table className="tasks-schedule-table" style={{ fontSize: 12.5, width: '100%' }}>
+            <DataTable className="tasks-schedule-table" caption="كل جداول استلام الناقلين">
               <thead>
                 <tr>
                   <th>الشركة</th>
@@ -287,7 +291,7 @@ export default function Tasks({ carriers = [], isActive = true }) {
                   );
                 })}
               </tbody>
-            </table>
+            </DataTable>
           </Card>
         </>
       )}
@@ -300,7 +304,7 @@ export default function Tasks({ carriers = [], isActive = true }) {
           onSaved={() => { setEditorOpen(false); setEditorRow(null); refresh(); }}
         />
       )}
-    </div>
+    </Page>
   );
 }
 

@@ -8,7 +8,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { RefreshCw, Search, Database, Download, Landmark, Link2, ShieldCheck, AlertTriangle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
-import { Card, Btn, Spinner, Empty, toast, PageHeader, Modal } from '../components/UI.jsx';
+import { toast } from '../lib/toast.js';
 import { useAuth } from '../lib/auth.jsx';
 import { ZOHO_MIRRORS, loadZohoMirror, syncZohoDocs, currentPnlPeriod,
   loadZohoInvoiceDashboard, zohoStatusAr, loadZohoOverdueCampaign, loadZohoWebhookHealth,
@@ -26,6 +26,8 @@ import './ZohoData.css';
 import useMobileLayout from '../lib/useMobileLayout.js';
 import { useWindowedRows } from '../hooks/useWindowedRows.js';
 import { ProgressiveListFooter } from '../components/MobileUX.jsx';
+import { Breadcrumbs, Button as Btn, DataTable, Dialog as Modal, EmptyState as Empty, PageHeader, Panel as Card, Spinner } from '../design-system/EnterpriseUI.jsx';
+import FinanceWorkspaceNav from '../components/enterprise/FinanceWorkspaceNav.jsx';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -674,6 +676,7 @@ export default function ZohoData({ isActive = true }) {
 
   return (
     <div className="zoho-data-page workspace-page">
+      <Breadcrumbs items={[{ label: 'المالية' }, { label: 'الرقابة المالية' }, { label: 'Zoho والحسابات' }]}/>
       <PageHeader icon={<Database size={22}/>} iconColor="#0EA5E9"
         title="زوهو والحسابات"
         subtitle="بيانات Zoho Books، حالة الربط، وتفعيل قراءة البنوك والخزائن"
@@ -689,6 +692,8 @@ export default function ZohoData({ isActive = true }) {
             </Btn>
           </div>
         }/>
+
+      <FinanceWorkspaceNav active={new URLSearchParams(location.search).get('tab') === 'vendors' ? 'payables' : 'control'}/>
 
       {/* ── مؤشر صحة المزامنة: نبضة webhook اللحظية + آخر مزامنة دورية ── */}
       {health && (() => {
@@ -885,7 +890,7 @@ export default function ZohoData({ isActive = true }) {
         ) : (
           <Card className="zoho-records-card" style={{ padding: 0, overflow: 'hidden' }}>
             <div className="m-flow" style={{ maxHeight: 640, overflowY: 'auto' }}>
-              <table className="m-cards" style={{ width: '100%', fontSize: 12.5 }}>
+              <DataTable className="m-cards" caption="سجلات Zoho">
                 <thead style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--surface)' }}>
                   <tr>{type === 'invoices' ? <th style={{ padding: '10px 12px' }}>تحديد</th> : null}{cols.map(c => {
                     const active = sort.col === c[1];
@@ -1009,7 +1014,7 @@ export default function ZohoData({ isActive = true }) {
                     </tr>
                   );})}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
             <ProgressiveListFooter hasMore={hasMoreDisplayed} shown={displayedCount} total={displayedTotal} onLoadMore={loadMoreDisplayed} sentinelRef={displayedSentinelRef}/>
           </Card>
@@ -1302,7 +1307,7 @@ function BankMissingExportModal({ state, onClose, onDownload, onVerify }) {
           </div>
         </div> : null}
         {p?.count ? <div className="m-flow" style={{ maxHeight: 330, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
-          <table className="m-cards" style={{ width: '100%', fontSize: 11.5 }}>
+          <DataTable className="m-cards" caption="العمليات البنكية غير المراجعة">
             <thead><tr><th style={{ padding: 8 }}>التاريخ</th><th style={{ padding: 8 }}>المرجع والوصف</th><th style={{ padding: 8 }}>الاتجاه</th><th style={{ padding: 8 }}>المبلغ</th></tr></thead>
             <tbody>{(p?.transactions || []).map(t => {
               const incoming = Number(t.credit) > 0;
@@ -1316,7 +1321,7 @@ function BankMissingExportModal({ state, onClose, onDownload, onVerify }) {
                 <td data-label="المبلغ" style={{ padding: 8, fontFamily: 'var(--font-mono)', fontWeight: 800, whiteSpace: 'nowrap' }}>{fmt(incoming ? t.credit : t.debit)} ر.س</td>
               </tr>;
             })}</tbody>
-          </table>
+          </DataTable>
         </div> : null}
         {!p?.count && !p?.anchor_required ? <div style={{ textAlign: 'center', color: 'var(--green)', fontWeight: 800, fontSize: 14, padding: '26px 14px' }}>كل العمليات المقروءة موجودة في Zoho — لا يوجد ملف للتنزيل ✓</div> : null}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
@@ -1461,7 +1466,7 @@ function FinancialControlPanel({ data, canManageConnection, onReauthorize, onOpe
 
       {positions.length ? (
         <div className="m-flow" style={{ marginTop: 11, maxHeight: 340, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
-          <table className="m-cards" style={{ width: '100%', fontSize: 11.5 }}>
+          <DataTable className="m-cards" caption="مرشحو المطابقة البنكية">
             <thead style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--surface)' }}><tr>
               <th style={{ padding: '8px 10px' }}>المورد</th>
               <th style={{ padding: '8px 10px' }}>ذمم علينا</th>
@@ -1479,7 +1484,7 @@ function FinancialControlPanel({ data, canManageConnection, onReauthorize, onOpe
                 <td data-label="القرار" style={{ padding: '8px 10px', color: vendorTone(net), fontWeight: 700 }}>{net > 0.5 ? 'مطلوب دفعه' : net < -0.5 ? 'رصيد لصالحنا' : 'مصفّى'}</td>
               </tr>;
             })}</tbody>
-          </table>
+          </DataTable>
         </div>
       ) : null}
       {positions.length > 5 ? (
@@ -1503,7 +1508,7 @@ function FinancialControlPanel({ data, canManageConnection, onReauthorize, onOpe
 
       {(data.banks || []).length ? (
         <div className="m-flow" style={{ marginTop: 11, overflowX: 'auto' }}>
-          <table className="m-cards" style={{ width: '100%', fontSize: 11.5 }}>
+          <DataTable className="m-cards" caption="أخطاء مزامنة Zoho">
             <thead><tr>
               <th style={{ padding: '8px 10px' }}>الحساب</th>
               <th style={{ padding: '8px 10px' }}>التصنيف</th>
@@ -1535,7 +1540,7 @@ function FinancialControlPanel({ data, canManageConnection, onReauthorize, onOpe
                 </td>
               </tr>;
             })}</tbody>
-          </table>
+          </DataTable>
         </div>
       ) : null}
 

@@ -10,7 +10,10 @@ import {
   RefreshCw, Download, CheckCircle2, XCircle, Clock, FileSpreadsheet,
   AlertCircle, Sparkles, ChevronDown,
 } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, Badge, toast, Modal, PageHeader } from '../components/UI.jsx';
+import { Badge } from '../components/UI.jsx';
+import { Button as Btn, DataTable, Dialog as Modal, EmptyState as Empty, PageHeader, Panel as Card, Spinner } from '../design-system/EnterpriseUI.jsx';
+import { toast } from '../lib/toast.js';
+import OperationsWorkspaceNav from '../components/enterprise/OperationsWorkspaceNav.jsx';
 import { Scale } from 'lucide-react';
 import {
   loadPendingAuditsForBilling, loadBlockedUnverifiedAuditsForBilling,
@@ -151,6 +154,7 @@ export default function WeightBilling({ carriers, isActive = true }) {
           </Btn>
         }
       />
+      <OperationsWorkspaceNav active="billing"/>
 
       {blocked.length > 0 && (
         <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 14, border: '1px solid rgba(239,68,68,.28)' }}>
@@ -273,7 +277,7 @@ export default function WeightBilling({ carriers, isActive = true }) {
           />
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table className="m-cards weight-billing-history">
+            <DataTable className="m-cards weight-billing-history" caption="سجل ملفات فوترة الأوزان">
               <thead>
                 <tr>
                   <th style={{ minWidth: 130 }}>التاريخ</th>
@@ -333,7 +337,7 @@ export default function WeightBilling({ carriers, isActive = true }) {
                   );
                 })}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         )}
       </Card>

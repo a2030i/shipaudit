@@ -2,7 +2,7 @@
 // يجمع حملات واتساب + مكالمات IVR (تسجيل + ملخّص + مشاعر) + مَن تولّى محادثته.
 // المصدر: RPC customer_comm_timeline (كل ما هو مربوط برقم العميل فعلاً).
 import { useState, useEffect, useMemo } from 'react';
-import { Spinner } from './UI.jsx';
+import { LoadingState, StatusBadge } from '../design-system/EnterpriseUI.jsx';
 import CallTranscript from './CallTranscript.jsx';
 import { loadCustomerCommTimeline, loadHatifUsers, hatifInboxUrl } from '../lib/whatsappService.js';
 
@@ -44,7 +44,7 @@ export default function CustomerCommTimeline({ phone, title = 'سجلّ تواص
   useEffect(() => { loadHatifUsers().then(setUsers).catch(() => {}); }, []);
   const nameById = useMemo(() => { const m = new Map(); users.forEach(u => { if (u.userId) m.set(String(u.userId), u.name || u.email); }); return m; }, [users]);
 
-  if (rows == null) return <div style={{ padding: 20, textAlign: 'center' }}><Spinner/></div>;
+  if (rows == null) return <LoadingState compact title="جارٍ تحميل سجل التواصل…"/>;
 
   // أحدث محادثة لها conversation_id → رابط فتحها في هاتف (rows مرتّبة تنازلياً).
   const convId = rows.find(r => r.conversation_id)?.conversation_id;
@@ -54,16 +54,17 @@ export default function CustomerCommTimeline({ phone, title = 'سجلّ تواص
 
   return (
     <div style={{ display: 'grid', gap: 8 }}>
-      <div onClick={() => setExpanded(v => !v)}
+      <div
         style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', cursor: 'pointer',
-          background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 9, padding: '8px 10px' }}>
-        <span style={{ color: 'var(--muted2)', fontSize: 11 }}>{expanded ? '▲' : '▼'}</span>
-        <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text)' }}>🕘 {title}</div>
-        {rows.length > 0 && (
-          <span style={{ padding: '1px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 800,
-            background: 'color-mix(in srgb, var(--accent) 15%, transparent)', color: 'var(--accent)' }}>{rows.length}</span>
-        )}
-        {!expanded && last && <span style={{ fontSize: 11, color: 'var(--muted)' }}>آخر تواصل: {fmtWhen(last)}</span>}
+          width: '100%', textAlign: 'right', color: 'inherit', fontFamily: 'inherit',
+          background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 10px' }}>
+        <button type="button" aria-expanded={expanded} onClick={() => setExpanded(v => !v)}
+          style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', cursor: 'pointer', textAlign: 'right', color: 'inherit', fontFamily: 'inherit', background: 'transparent', border: 0, padding: 0 }}>
+          <span style={{ color: 'var(--muted2)', fontSize: 11 }}>{expanded ? '▲' : '▼'}</span>
+          <span style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text)' }}>🕘 {title}</span>
+          {rows.length > 0 ? <StatusBadge dot={false} tone="neutral">{rows.length}</StatusBadge> : null}
+          {!expanded && last ? <span style={{ fontSize: 11, color: 'var(--muted)' }}>آخر تواصل: {fmtWhen(last)}</span> : null}
+        </button>
         {inboxUrl && (
           <a href={inboxUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
             style={{ marginInlineStart: 'auto', fontSize: 11.5, fontWeight: 700, color: '#fff', background: '#25D366',

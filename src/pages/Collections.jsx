@@ -25,9 +25,11 @@ import {
   RefreshCw, Phone, CheckCircle2, Clock, X, AlertTriangle, Download,
   Inbox, MessageSquare, Calendar, Sparkles, Edit3, Plus, ChevronLeft, Trash2, UserPlus, Megaphone, PhoneCall,
 } from 'lucide-react';
+import { toast } from '../lib/toast.js';
 import {
-  Card, Btn, Spinner, Empty, Modal, toast, PageHeader,
-} from '../components/UI.jsx';
+  Button as Btn, DataTable, Dialog as Modal, Drawer, EmptyState as Empty, Identifier, LoadingState, Money,
+  NumberValue, OverflowMenu, PageHeader, Spinner, StatusBadge, Surface as Card, Tabs,
+} from '../design-system/EnterpriseUI.jsx';
 import OperationalResultSet from '../components/operations/OperationalResultSet.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
@@ -48,12 +50,12 @@ import { loadWhatsAppCampaignStatus, normalizeSaudiPhone, waStatusBadge } from '
 
 const fmt = (n) =>
   n == null || Number.isNaN(n) ? '—'
-  : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  : `\u2066${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\u2069`;
 const fmtCompact = (n) => {
   if (n == null || Number.isNaN(n)) return '—';
   const a = Math.abs(n);
-  if (a >= 1_000) return (n / 1_000).toFixed(1) + 'ك';
-  return n.toFixed(0);
+  if (a >= 1_000) return `\u2066${(n / 1_000).toFixed(1)}\u2069ك`;
+  return `\u2066${n.toFixed(0)}\u2069`;
 };
 const fmtDate = (iso) => {
   if (!iso) return '—';
@@ -70,22 +72,7 @@ const fmtRel = (iso) => {
   return `قبل ${Math.floor(days / 30)} شهور`;
 };
 
-const STAGE_COLORS = {
-  todo:      'var(--accent3)',
-  contacted: 'var(--accent)',
-  promised:  'var(--gold)',
-  done:      'var(--green)',
-  snoozed:   '#6B7280',
-  cancelled: '#9CA3AF',
-};
-const TRIGGER_COLORS = {
-  over_credit_limit:  '#B91C1C',
-  aged_90:            'var(--red)',
-  aged_60:            'color-mix(in srgb, var(--gold) 50%, var(--red))',
-  aged_30:            'var(--gold)',
-  prepaid_with_debt:  '#EF4444',
-  manual:             'var(--accent3)',
-};
+const STAGE_TONES = { todo: 'info', contacted: 'info', promised: 'warning', done: 'success', snoozed: 'neutral', cancelled: 'danger' };
 const OPEN_STAGES = ['todo', 'contacted', 'promised', 'snoozed'];
 const PROMISE_STATUS_LABELS = {
   pending: 'بانتظار السداد',
@@ -98,7 +85,7 @@ const RIYADH_TODAY = () => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(new Date());
 
-export default function Collections({ isActive = true }) {
+export default function Collections({ isActive = true, embedded = false }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -120,6 +107,7 @@ export default function Collections({ isActive = true }) {
   const [drawer, setDrawer]     = useState(null);
   const [ptpOpen, setPtpOpen]   = useState(null);
   const [snoozeOpen, setSnoozeOpen] = useState(null);
+  const [cancelTarget, setCancelTarget] = useState(null);
   const [writeoffOpen, setWriteoffOpen] = useState(null);   // task being written off
   const [pendingWriteoffs, setPendingWriteoffs] = useState([]);
   const [reviewQueueOpen, setReviewQueueOpen]   = useState(false);
@@ -425,18 +413,12 @@ export default function Collections({ isActive = true }) {
   };
 
   if (loading) {
-    return (
-      <div style={{ padding: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
-          <Spinner size={28}/>
-        </div>
-      </div>
-    );
+    return <LoadingState title="جارٍ تجهيز قائمة التحصيل…" description="مهام الفريق ووعود السداد الحالية"/>;
   }
 
   return (
-    <div className="collections-page" style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
-      <PageHeader
+    <div className="collections-page" style={embedded ? undefined : { padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
+      {!embedded ? <PageHeader
         icon={<Phone size={22}/>}
         iconColor="var(--red)"
         title="قائمة التحصيل"
@@ -457,7 +439,7 @@ export default function Collections({ isActive = true }) {
             </Btn>
           </div>
         }
-      />
+      /> : null}
 
       {batchContext && (
         <Card style={{ marginBottom: 14, padding: 12, borderColor: 'color-mix(in srgb,var(--accent) 32%,var(--border))' }}>
@@ -677,13 +659,15 @@ export default function Collections({ isActive = true }) {
         onRetry={refresh}
         empty={!visibleTasks.length}
         toolbar={<>
-          <div className="collections-work-queue__filters" aria-label="فلترة مراحل التحصيل">
-            {['open', 'todo', 'contacted', 'promised', 'snoozed', 'done', 'cancelled', 'all'].map(s => (
-              <button key={s} onClick={() => updateQueueFilters({ status: s === 'open' ? null : s })} className={stageFilter === s ? 'is-active' : ''}>
-                {s === 'open' ? (workScope === 'today' ? 'عمل اليوم' : 'مخزون مفتوح') : s === 'all' ? 'الكل' : STAGE_LABELS[s] || s}
-              </button>
-            ))}
-          </div>
+          <Tabs
+            label="فلترة مراحل التحصيل"
+            active={stageFilter}
+            onChange={s => updateQueueFilters({ status: s === 'open' ? null : s })}
+            items={['open', 'todo', 'contacted', 'promised', 'snoozed', 'done', 'cancelled', 'all'].map(s => ({
+              id: s,
+              label: s === 'open' ? (workScope === 'today' ? 'عمل اليوم' : 'مخزون مفتوح') : s === 'all' ? 'الكل' : STAGE_LABELS[s] || s,
+            }))}
+          />
           {canAssign ? <select
             value={bulkAssignee}
             onChange={(event) => setBulkAssignee(event.target.value)}
@@ -713,8 +697,7 @@ export default function Collections({ isActive = true }) {
           ],
         } : null}
       >
-        <Card style={{ padding: 0, overflowX: 'auto', overflowY: 'hidden' }}>
-          <table className="m-cards collections-work-queue-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+        <DataTable className="collections-work-queue-table" caption="قائمة مهام تحصيل العملاء">
             <thead>
               <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
                 {canSelect && (
@@ -733,11 +716,13 @@ export default function Collections({ isActive = true }) {
                 const campaignStatus = campaignStatusByPhone.get(normalizeSaudiPhone(c?.merchant?.phone || c?.phone || '')) || null;
                 const campaignBadge = waStatusBadge(campaignStatus);
                 return (
-                  <tr key={t.id} style={{
+                  <tr key={t.id} tabIndex={0} aria-label={`فتح مهمة ${t.customer_name}`} style={{
                     borderBottom: '1px solid var(--border)',
                     background: isOverdueSnooze || isPromiseOverdue ? 'color-mix(in srgb, var(--red) 4%, transparent)' : 'transparent',
                     cursor: 'pointer',
-                  }} onClick={() => setDrawer(t)}>
+                  }} onClick={() => setDrawer(t)} onKeyDown={event => {
+                    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setDrawer(t); }
+                  }}>
                     {canSelect && (
                       <td data-label="تحديد" style={{ padding: '10px 8px' }} onClick={(event) => event.stopPropagation()}>
                         <input
@@ -757,17 +742,13 @@ export default function Collections({ isActive = true }) {
                       )}
                     </td>
                     <td data-label="السبب" style={{ padding: '10px 12px' }}>
-                      <span style={pill(TRIGGER_COLORS[t.trigger])}>
-                        {TRIGGER_LABELS[t.trigger] || t.trigger}
-                      </span>
+                      <StatusBadge dot={false} tone={['aged_90', 'over_credit_limit', 'prepaid_with_debt'].includes(t.trigger) ? 'danger' : t.trigger === 'aged_60' || t.trigger === 'aged_30' ? 'warning' : 'neutral'}>{TRIGGER_LABELS[t.trigger] || t.trigger}</StatusBadge>
                     </td>
                     <td data-label="المرحلة" style={{ padding: '10px 12px' }}>
-                      <span style={pill(STAGE_COLORS[t.stage])}>
-                        {STAGE_LABELS[t.stage] || t.stage}
-                      </span>
+                      <StatusBadge tone={STAGE_TONES[t.stage] || 'neutral'}>{STAGE_LABELS[t.stage] || t.stage}</StatusBadge>
                     </td>
                     <td data-label="الدين" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', fontWeight: 750, color: 'var(--text)' }}>
-                      {fmtCompact(taskDebt(t))}
+                      <Money value={taskDebt(t)}/>
                     </td>
                     <td data-label="عمر الدين" style={{ padding: '10px 12px', fontSize: 11, color: 'var(--muted)' }}>
                       {(() => {
@@ -795,10 +776,10 @@ export default function Collections({ isActive = true }) {
                     <td data-label="الوعد" style={{ padding: '10px 12px', fontSize: 11 }}>
                       {t.stage === 'promised' ? (
                         <span style={{ color: isPromiseOverdue ? 'var(--red)' : 'var(--gold)', fontWeight: 600 }}>
-                          {fmtCompact(t.promise_amount)} يوم {fmtDate(t.promise_date)}
+                          <Money value={t.promise_amount}/> · {fmtDate(t.promise_date)}
                           {Number(t.promise_paid_amount) > 0.5 && (
                             <small style={{ display: 'block', marginTop: 2, color: 'var(--green)' }}>
-                              رُصد {fmtCompact(Number(t.promise_paid_amount))}
+                              رُصد <Money value={Number(t.promise_paid_amount)}/>
                             </small>
                           )}
                           {isPromiseOverdue && ' ⚠'}
@@ -821,12 +802,7 @@ export default function Collections({ isActive = true }) {
                           onPromise={() => setPtpOpen(t)}
                           onDone={async () => { await updateTaskStage(t.id, 'done', { userId: profile?.id }); refresh(); }}
                           onSnooze={() => setSnoozeOpen(t)}
-                          onCancel={async () => {
-                            if (confirm('إلغاء هذه المهمة؟')) {
-                              await cancelTask(t.id, 'ملغاة من العامل');
-                              refresh();
-                            }
-                          }}
+                          onCancel={() => setCancelTarget(t)}
                         />
                       ) : <span style={{ fontSize: 10.5, color: 'var(--muted)' }}>عرض فقط</span>}
                     </td>
@@ -834,8 +810,7 @@ export default function Collections({ isActive = true }) {
                 );
               })}
             </tbody>
-          </table>
-        </Card>
+        </DataTable>
       </OperationalResultSet>
 
       {/* Drawer / dialogs */}
@@ -918,16 +893,20 @@ export default function Collections({ isActive = true }) {
           }}
         />
       )}
+      {cancelTarget ? <Modal
+        title="تأكيد إلغاء مهمة التحصيل"
+        description={`سيتم إلغاء مهمة ${cancelTarget.customer_name} مع بقاء سجلها قابلًا للتدقيق.`}
+        onClose={() => setCancelTarget(null)}
+        width={440}
+        footer={<><Btn onClick={() => setCancelTarget(null)}>تراجع</Btn><Btn variant="danger" onClick={async () => {
+          await cancelTask(cancelTarget.id, 'ملغاة من العامل');
+          setCancelTarget(null);
+          refresh();
+        }}>إلغاء المهمة</Btn></>}
+      ><p>هذا الإجراء لا يحذف الدين أو بيانات العميل، لكنه يوقف متابعة هذه المهمة المفتوحة.</p></Modal> : null}
     </div>
   );
 }
-
-const pill = (color) => ({
-  display: 'inline-flex', alignItems: 'center',
-  padding: '2px 8px', borderRadius: 999,
-  background: `color-mix(in srgb, ${color} 14%, transparent)`,
-  color, fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap',
-});
 
 function SummaryStat({ label, value, color }) {
   return (
@@ -947,19 +926,13 @@ function SummaryStat({ label, value, color }) {
 }
 
 function QuickActions({ task, canPromise, onContact, onPromise, onDone, onSnooze, onCancel }) {
-  return (
-    <div style={{ display: 'flex', gap: 4 }}>
-      {task.stage === 'todo' && (
-        <Btn size="sm" variant="ghost" title="تواصلت" icon={<MessageSquare size={11}/>} onClick={onContact}/>
-      )}
-      {canPromise && (task.stage === 'todo' || task.stage === 'contacted') && (
-        <Btn size="sm" variant="ghost" title="وعد دفع" icon={<Calendar size={11}/>} onClick={onPromise}/>
-      )}
-      <Btn size="sm" variant="ghost" title="مكتملة" icon={<CheckCircle2 size={11}/>} onClick={onDone}/>
-      <Btn size="sm" variant="ghost" title="أجّل" icon={<Clock size={11}/>} onClick={onSnooze}/>
-      <Btn size="sm" variant="danger" title="ألغ" icon={<X size={11}/>} onClick={onCancel}/>
-    </div>
-  );
+  return <OverflowMenu label={`إجراءات مهمة ${task.customer_name}`} items={[
+    ...(task.stage === 'todo' ? [{ key: 'contacted', label: 'تواصلت', icon: <MessageSquare size={13}/>, onClick: onContact }] : []),
+    ...(canPromise && (task.stage === 'todo' || task.stage === 'contacted') ? [{ key: 'promise', label: 'وعد دفع', icon: <Calendar size={13}/>, onClick: onPromise }] : []),
+    { key: 'done', label: 'مكتملة', icon: <CheckCircle2 size={13}/>, onClick: onDone },
+    { key: 'snooze', label: 'أجّل', icon: <Clock size={13}/>, onClick: onSnooze },
+    { key: 'cancel', label: 'ألغِ المهمة', variant: 'danger', icon: <X size={13}/>, onClick: onCancel },
+  ]}/>;
 }
 
 function TaskDrawer({ task, customer, onClose, onRefresh, onPromise, onWriteoff, canUpdate }) {
@@ -978,33 +951,31 @@ function TaskDrawer({ task, customer, onClose, onRefresh, onPromise, onWriteoff,
     }));
   };
   return (
-    <Modal title={`مهمة تحصيل — ${task.customer_name}`} onClose={onClose} width={560}>
+    <Drawer title={`مهمة تحصيل — ${task.customer_name}`} onClose={onClose} width={560}>
       <div style={{ padding: '4px 4px 0' }}>
         <div style={{ display: 'grid', gap: 10, marginBottom: 14 }}>
           <KV label="السبب" value={
-            <span style={pill(TRIGGER_COLORS[task.trigger])}>{TRIGGER_LABELS[task.trigger]}</span>
+            <StatusBadge dot={false} tone={['aged_90', 'over_credit_limit', 'prepaid_with_debt'].includes(task.trigger) ? 'danger' : task.trigger === 'aged_60' || task.trigger === 'aged_30' ? 'warning' : 'neutral'}>{TRIGGER_LABELS[task.trigger]}</StatusBadge>
           }/>
           <KV label="المرحلة" value={
-            <span style={pill(STAGE_COLORS[task.stage])}>{STAGE_LABELS[task.stage]}</span>
+            <StatusBadge tone={STAGE_TONES[task.stage] || 'neutral'}>{STAGE_LABELS[task.stage]}</StatusBadge>
           }/>
-          <KV label="الدين عند الإنشاء" value={`${fmt(task.debt_at_creation)} ر.س`}/>
-          {customer ? <KV label="القابل للتحصيل الآن" value={<strong style={{ fontFamily: 'var(--font-mono)' }}>{fmt(customer.total)} ر.س</strong>}/> : null}
-          {customer?.merchant ? <KV label="حساب لمحة" value={`${customer.merchant.platformStatus || 'غير متاح'} · محفظة ${fmt(customer.merchant.walletBalance)} ر.س`}/> : null}
-          {task.credit_limit != null && <KV label="السقف الائتماني" value={`${fmt(task.credit_limit)} ر.س`}/>}
+          <KV label="الدين عند الإنشاء" value={<Money value={task.debt_at_creation}/>}/>
+          {customer ? <KV label="القابل للتحصيل الآن" value={<strong><Money value={customer.total}/></strong>}/> : null}
+          {customer?.merchant ? <KV label="حساب لمحة" value={<>{customer.merchant.platformStatus || 'غير متاح'} · محفظة <Money value={customer.merchant.walletBalance}/></>}/> : null}
+          {task.credit_limit != null && <KV label="السقف الائتماني" value={<Money value={task.credit_limit}/>}/>}
           {task.days_outstanding != null && <KV label="عمر الدين" value={`${task.days_outstanding} يوم`}/>}
           {customer?.merchant?.phone && (
             <KV label="الهاتف" value={
-              <span style={{ fontFamily: 'var(--font-mono)', direction: 'ltr', textAlign: 'right' }}>
-                {customer.merchant.phone}
-              </span>
+              <Identifier value={customer.merchant.phone}/>
             }/>
           )}
           {task.promise_amount && (
-            <KV label="الوعد الحالي" value={`${fmt(task.promise_amount)} ر.س يوم ${fmtDate(task.promise_date)}`}/>
+            <KV label="الوعد الحالي" value={<><Money value={task.promise_amount}/> · {fmtDate(task.promise_date)}</>}/>
           )}
           {task.promise_status && (
             <KV label="تحقق الوعد" value={
-              `${PROMISE_STATUS_LABELS[task.promise_status] || task.promise_status} · رُصد ${fmt(Number(task.promise_paid_amount) || 0)} ر.س`
+              <>{PROMISE_STATUS_LABELS[task.promise_status] || task.promise_status} · رُصد <Money value={Number(task.promise_paid_amount) || 0}/></>
             }/>
           )}
           {task.notes && <KV label="ملاحظات" value={task.notes}/>}
@@ -1045,7 +1016,7 @@ function TaskDrawer({ task, customer, onClose, onRefresh, onPromise, onWriteoff,
           <Btn size="md" variant="ghost" onClick={onClose}>إغلاق</Btn>
         </div>
       </div>
-    </Modal>
+    </Drawer>
   );
 }
 

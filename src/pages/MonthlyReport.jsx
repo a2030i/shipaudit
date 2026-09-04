@@ -9,13 +9,18 @@ import { useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { RefreshCw, CalendarRange, Download, TrendingUp, Printer } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
+import { toast } from '../components/UI.jsx';
+import {
+  Button as Btn, DataTable, EmptyState as Empty, Money, PageHeader,
+  Select, Spinner, StatStrip,
+} from '../design-system/EnterpriseUI.jsx';
 import { loadMonthlyReport } from '../lib/monthlyReportService.js';
 
 const fmt = (n) => {
   if (n == null || Number.isNaN(n) || n === 0) return '—';
   return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
+const fmtExact = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const monthLabel = (m) => {
   if (!m) return '';
   const [y, mo] = m.split('-');
@@ -101,8 +106,6 @@ export default function MonthlyReport({ isActive }) {
     for (const r of (data?.rows || [])) m.set(r.month, (m.get(r.month) || 0) + r.net);
     return m;
   }, [data]);
-  const fmtCompact = (n) => Math.abs(n) >= 1e6 ? `${(n/1e6).toFixed(1)}م` : Math.abs(n) >= 1e3 ? `${(n/1e3).toFixed(0)}ك` : `${Math.round(n)}`;
-
   const exportXlsx = useCallback(() => {
     if (!rows.length) return;
     const aoa = [
@@ -122,17 +125,17 @@ export default function MonthlyReport({ isActive }) {
   if (loading && !data) return <div style={{ padding: 48, textAlign: 'center' }}><Spinner/></div>;
 
   return (
-    <div style={{ padding: '28px 32px 80px', maxWidth: 1200, margin: '0 auto' }}>
+    <div className="monthly-report-view">
       <PageHeader
         icon={<CalendarRange size={24}/>}
         title="التقرير الشهري للناقلين"
         subtitle="مفوتر · تحصيل · إشعارات · صافي · جودة التدقيق — لكل ناقل شهرياً"
         actions={
-          <div className="no-print" style={{ display: 'flex', gap: 8 }}>
+          <div className="no-print monthly-report-toolbar">
             <Btn variant="ghost" size="sm" onClick={refresh} disabled={loading}>
               <RefreshCw size={14} className={loading ? 'spin' : ''}/> تحديث التقرير الشهري
             </Btn>
-            <Btn variant="ghost" size="sm" onClick={exportXlsx} disabled={!rows.length}>
+            <Btn variant="primary" size="sm" onClick={exportXlsx} disabled={!rows.length}>
               <Download size={14}/> تصدير Excel
             </Btn>
             {/* ورقة الإدارة/الشريك — @media print يخفي كل ما عدا التقرير */}
@@ -150,33 +153,24 @@ export default function MonthlyReport({ isActive }) {
 
       {/* Month selector */}
       {data?.months?.length > 0 && (
-        <div className="no-print" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
-          {data.months.map(m => (
-            <button key={m} onClick={() => changeMonth(m)}
-              style={{
-                padding: '6px 14px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 600,
-                border: '1px solid', borderColor: m === month ? 'var(--green)' : 'var(--border)',
-                background: m === month ? 'color-mix(in srgb,var(--green) 14%,transparent)' : 'var(--card)',
-                color: m === month ? 'var(--green)' : 'var(--text)',
-                textAlign: 'center',
-              }}>
-              {monthLabel(m)}
-              {/* صافي الشهر مصغّراً — يعطي شكل الاتجاه قبل النقر */}
-              <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 500, marginTop: 1,
-                color: m === month ? 'var(--green)' : 'var(--muted)' }}>
-                {monthNets.has(m) ? `${fmtCompact(monthNets.get(m))} صافي` : ''}
-              </div>
-            </button>
-          ))}
+        <div className="no-print monthly-report-toolbar">
+          <Select label="فترة التقرير" value={month || ''} onChange={event => changeMonth(event.target.value)}>
+            {data.months.map(m => <option key={m} value={m}>{monthLabel(m)} — {fmtExact(monthNets.get(m))} ر.س صافي</option>)}
+          </Select>
         </div>
       )}
+
+      {rows.length ? <StatStrip items={[
+        { key: 'billed', label: 'إجمالي المفوتر', value: <Money value={totals.billed}/> },
+        { key: 'net', label: 'صافي الحركة', value: <Money value={totals.net}/> },
+        { key: 'audits', label: 'المراجعات', value: totals.auditCount.toLocaleString('en-US') },
+        { key: 'audit-diff', label: 'فرق التدقيق', value: <Money value={totals.auditDiff}/>, tone: Math.abs(totals.auditDiff) > 0.5 ? 'danger' : undefined },
+      ]}/> : null}
 
       {!rows.length ? (
         <Empty icon={<TrendingUp size={32}/>} title="لا توجد بيانات لهذا الشهر" />
       ) : (
-        <Card style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 820 }}>
+        <DataTable className="monthly-report-table" caption="التقرير الشهري للناقلين">
               <thead>
                 <tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
                   {['الناقل','مفوتر','التغيّر','تحصيل COD','مبالغ مُرجَعة/خصومات','مدفوعات','COD ناقص الفواتير','المراجعات','فرق التدقيق'].map(h => (
@@ -200,18 +194,18 @@ export default function MonthlyReport({ isActive }) {
                         </span>
                       )}
                     </td>
-                    <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums' }}>{fmt(r.billed)}</td>
+                    <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums' }}><bdi dir="ltr">{fmt(r.billed)}</bdi></td>
                     <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums', fontSize: 12,
                       color: delta == null ? 'var(--muted2)' : delta > 20 ? 'var(--red)' : delta < 0 ? 'var(--green2)' : 'var(--muted)' }}>
-                      {delta == null ? '—' : `${delta > 0 ? '▲' : '▼'} ${Math.abs(delta)}%`}
+                      <bdi dir="ltr">{delta == null ? '—' : `${delta > 0 ? '▲' : '▼'} ${Math.abs(delta)}%`}</bdi>
                     </td>
-                    <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums', color: r.cod ? 'var(--green2)' : 'inherit' }}>{fmt(r.cod)}</td>
-                    <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums', color: r.creditNotes ? 'var(--green2)' : 'inherit' }}>{fmt(r.creditNotes)}</td>
-                    <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums' }}>{fmt(r.payments)}</td>
-                    <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: r.net > 0 ? 'var(--text)' : 'var(--green2)' }}>{fmt(r.net)}</td>
-                    <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums' }}>{r.auditCount || '—'}</td>
+                    <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums', color: r.cod ? 'var(--green2)' : 'inherit' }}><bdi dir="ltr">{fmt(r.cod)}</bdi></td>
+                    <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums', color: r.creditNotes ? 'var(--green2)' : 'inherit' }}><bdi dir="ltr">{fmt(r.creditNotes)}</bdi></td>
+                    <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums' }}><bdi dir="ltr">{fmt(r.payments)}</bdi></td>
+                    <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: r.net > 0 ? 'var(--text)' : 'var(--green2)' }}><bdi dir="ltr">{fmt(r.net)}</bdi></td>
+                    <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums' }}><bdi dir="ltr">{r.auditCount || '—'}</bdi></td>
                     <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums', color: Math.abs(r.auditDiff) > 0.5 ? '#dc2626' : 'inherit' }}>
-                      {fmt(r.auditDiff)}{r.mismatch ? <span style={{ fontSize: 11, color: '#dc2626' }}> · {r.mismatch} فرق</span> : ''}
+                      <bdi dir="ltr">{fmt(r.auditDiff)}</bdi>{r.mismatch ? <span style={{ fontSize: 11, color: '#dc2626' }}> · <bdi dir="ltr">{r.mismatch}</bdi> فرق</span> : ''}
                     </td>
                   </tr>
                   );
@@ -220,19 +214,17 @@ export default function MonthlyReport({ isActive }) {
               <tfoot>
                 <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--surface2)', fontWeight: 700 }}>
                   <td style={{ padding: '12px 14px' }}>الإجمالي ({rows.length})</td>
-                  <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums' }}>{fmt(totals.billed)}</td>
+                  <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums' }}><bdi dir="ltr">{fmt(totals.billed)}</bdi></td>
                   <td style={{ padding: '12px 14px' }}></td>
-                  <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums', color: 'var(--green2)' }}>{fmt(totals.cod)}</td>
-                  <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums', color: 'var(--green2)' }}>{fmt(totals.creditNotes)}</td>
-                  <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums' }}>{fmt(totals.payments)}</td>
-                  <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums' }}>{fmt(totals.net)}</td>
-                  <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums' }}>{totals.auditCount || '—'}</td>
-                  <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums' }}>{fmt(totals.auditDiff)}</td>
+                  <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums', color: 'var(--green2)' }}><bdi dir="ltr">{fmt(totals.cod)}</bdi></td>
+                  <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums', color: 'var(--green2)' }}><bdi dir="ltr">{fmt(totals.creditNotes)}</bdi></td>
+                  <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums' }}><bdi dir="ltr">{fmt(totals.payments)}</bdi></td>
+                  <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums' }}><bdi dir="ltr">{fmt(totals.net)}</bdi></td>
+                  <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums' }}><bdi dir="ltr">{totals.auditCount || '—'}</bdi></td>
+                  <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums' }}><bdi dir="ltr">{fmt(totals.auditDiff)}</bdi></td>
                 </tr>
               </tfoot>
-            </table>
-          </div>
-        </Card>
+        </DataTable>
       )}
 
       <p style={{ marginTop: 16, fontSize: 12, color: 'var(--muted)', lineHeight: 1.7 }}>

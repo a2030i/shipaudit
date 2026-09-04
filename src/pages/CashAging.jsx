@@ -3,8 +3,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, HandCoins, Hourglass } from 'lucide-react';
-import { Card, StatCard, Btn, Empty, toast, PageHeader, WorkspaceLoadingState } from '../components/UI.jsx';
+import { toast } from '../lib/toast.js';
 import { loadCashAging } from '../lib/cashAgingService.js';
+import { Breadcrumbs, Button as Btn, DataTable, EmptyState as Empty, LoadingState as WorkspaceLoadingState, PageHeader, Panel as Card, StatStrip } from '../design-system/EnterpriseUI.jsx';
+import FinanceWorkspaceNav from '../components/enterprise/FinanceWorkspaceNav.jsx';
 
 const fmt = (v) => (v == null || Number.isNaN(v) || Math.abs(v) < 0.005) ? '—'
   : Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -19,11 +21,11 @@ function SectionTable({ title, icon, columns, children, footer }) {
         {icon} {title}
       </div>
       <div className="cash-aging-table-wrap">
-        <table className="m-cards cash-aging-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <DataTable className="m-cards cash-aging-table" caption={title}>
           <thead><tr style={{ background: 'var(--bg2)' }}>{columns.map(c => <th key={c} style={th}>{c}</th>)}</tr></thead>
           <tbody>{children}</tbody>
           {footer}
-        </table>
+        </DataTable>
       </div>
     </Card>
   );
@@ -53,6 +55,7 @@ export default function CashAging({ isActive }) {
 
   return (
     <div className="workspace-page cash-aging-page">
+      <Breadcrumbs items={[{ label: 'المالية' }, { label: 'الرقابة المالية' }, { label: 'أعمار النقد' }]}/>
       <PageHeader
         icon={<HandCoins size={22}/>}
         title="أعمار التحصيل والسداد"
@@ -60,25 +63,18 @@ export default function CashAging({ isActive }) {
         actions={<Btn size="sm" variant="ghost" onClick={refresh} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/> تحديث أعمار الأرصدة</Btn>}
       />
 
+      <FinanceWorkspaceNav active="control"/>
+
       {/* Headline KPIs */}
-      <div className="metric-ledger cash-aging-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 22 }}>
-        {[
-          { label: 'COD معلّق عند الناقلين', value: fmt(data?.codTotal), color: 'var(--gold)' },
-          { label: 'مستحق علينا للناقلين', value: fmt(data?.apTotal), color: 'var(--text)' },
-          { label: 'منه فات موعد سداده', value: fmt(data?.apOverdue), color: data?.apOverdue > 0.5 ? 'var(--red)' : 'var(--muted)' },
+      <StatStrip className="cash-aging-kpi-grid" items={[
+          { key: 'cod', label: 'COD معلّق عند الناقلين', value: <>{fmt(data?.codTotal)} <small>ر.س</small></>, tone: Number(data?.codTotal) > 0.5 ? 'warning' : 'neutral' },
+          { key: 'ap', label: 'مستحق علينا للناقلين', value: <>{fmt(data?.apTotal)} <small>ر.س</small></> },
+          { key: 'overdue', label: 'منه فات موعد سداده', value: <>{fmt(data?.apOverdue)} <small>ر.س</small></>, tone: data?.apOverdue > 0.5 ? 'danger' : 'neutral' },
           // أرصدة دائنة (COD محتجز لم يُورَّد) — منفصلة عن الذمم حتى لا تُطرَح مضلِّلةً
           ...(Math.abs(data?.apCreditTotal || 0) > 0.5
-            ? [{ label: 'أرصدة لصالحنا (COD محتجز)', value: fmt(Math.abs(data.apCreditTotal)), color: 'var(--accent3)' }]
+            ? [{ key: 'credits', label: 'أرصدة لصالحنا (COD محتجز)', value: <>{fmt(Math.abs(data.apCreditTotal))} <small>ر.س</small></>, tone: 'success' }]
             : []),
-        ].map(k => (
-          <StatCard
-            key={k.label}
-            label={k.label}
-            color={k.color}
-            value={<>{k.value} <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>ر.س</span></>}
-          />
-        ))}
-      </div>
+        ]}/>
 
       {/* 1 — COD cash cycle */}
       <SectionTable

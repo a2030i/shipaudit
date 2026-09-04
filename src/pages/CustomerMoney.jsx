@@ -7,11 +7,16 @@
 import { lazy, Suspense, useState, useEffect, useMemo, useRef, useDeferredValue } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { buildStore360Url } from '../lib/store360Navigation.js';
+import { reportReturnPath } from '../lib/workspaceJourneyNavigation.js';
 import { Search, Download, Phone, MessageCircle, ChevronDown, ChevronLeft, HandCoins,
   TrendingUp, PhoneCall, Scale, Megaphone, ListChecks } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
-import { Card, Btn, Spinner, Empty, toast, PageHeader, Modal, Input, WorkspaceLoadingState } from '../components/UI.jsx';
+import { toast } from '../lib/toast.js';
+import {
+  Button as Btn, DataTable, Dialog as Modal, EmptyState as Empty, LoadingState as WorkspaceLoadingState,
+  Input, PageHeader, Spinner, Surface as Card,
+} from '../design-system/EnterpriseUI.jsx';
 import DataConfidenceBar from '../components/DataConfidenceBar.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadCustomerMoneyDashboard, loadCustomerCollectibleLines, loadZohoOpenInvoices, zohoStatusAr, loadZohoUnusedCredits,
@@ -70,7 +75,7 @@ import {
 import { loadCustomerBalanceRecon, summarizeCustomerBalanceRecon } from '../lib/reconciliationService.js';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
-  : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  : `\u2066${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\u2069`;
 const fmtK = (n) => { const a = Math.abs(n); return a >= 1000 ? (n / 1000).toFixed(1) + 'ك' : String(Math.round(n)); };
 const fmtDate = (d) => { if (!d) return ''; try { return new Date(d).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short' }); } catch { return String(d).slice(0, 10); } };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -155,11 +160,15 @@ const merchantDecisionRow = merchant => ({
   },
 });
 
-export default function CustomerMoney({ isActive = true }) {
+export default function CustomerMoney({ isActive = true, embedded = false }) {
   const { can, user, isAdmin } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const reportReturnTo = reportReturnPath(searchParams.get('source'), searchParams.get('returnTo'));
+  const reportReturnAction = reportReturnTo
+    ? <Btn size="sm" onClick={() => navigate(reportReturnTo)}>العودة إلى التقرير</Btn>
+    : null;
   const isWorklistMode = searchParams.get('worklist') === '1';
   const [applyTarget, setApplyTarget] = useState(null);   // { zohoId, name } عند فتح مودال التطبيق
   const [d, setD] = useState(null);
@@ -1239,9 +1248,10 @@ export default function CustomerMoney({ isActive = true }) {
   if (!can('receivables.view')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «عرض المديونيات»"/></div>;
   if (d == null && loadError) return (
     <div className="customer-money-page workspace-page">
-      <PageHeader icon={<HandCoins size={22}/>} iconColor="var(--green)"
+      {!embedded ? <PageHeader
         title="تحصيل العملاء"
-        subtitle="تعذّر جلب مديونيات زوهو — لم نعرض قائمة فارغة حتى لا تُفهم أن الديون صفر"/>
+        subtitle="تعذّر جلب مديونيات زوهو — لم نعرض قائمة فارغة حتى لا تُفهم أن الديون صفر"
+        actions={reportReturnAction}/> : null}
       <div className="data-load-error" role="alert">
         <HandCoins size={22}/>
         <div>
@@ -1254,9 +1264,10 @@ export default function CustomerMoney({ isActive = true }) {
   );
   if (d == null) return (
     <div className="customer-money-page workspace-page">
-      <PageHeader icon={<HandCoins size={22}/>} iconColor="var(--green)"
+      {!embedded ? <PageHeader
         title="تحصيل العملاء"
-        subtitle="زوهو API هو المرجع — كم لك بالخارج وكيف تحصّله الآن"/>
+        subtitle="زوهو API هو المرجع — كم لك بالخارج وكيف تحصّله الآن"
+        actions={reportReturnAction}/> : null}
       <WorkspaceLoadingState title="جارٍ تحميل أرصدة العملاء" source="Zoho Books API" rows={2}/>
     </div>
   );
@@ -1366,9 +1377,10 @@ export default function CustomerMoney({ isActive = true }) {
 
   return (
     <div className={`customer-money-page workspace-page${isWorklistMode ? ' is-worklist-mode' : ''}`}>
-      <PageHeader icon={<HandCoins size={22}/>} iconColor="var(--green)"
+      {!embedded ? <PageHeader
         title={isWorklistMode ? 'قائمة التنفيذ' : 'مركز العملاء المالي'}
-        subtitle={isWorklistMode ? 'أضف شروطك، راجع النتائج، ثم حدّد ونفّذ من الشاشة نفسها' : 'ضع شروطك، افحص النتائج، ثم نفّذ الإجراء الفردي أو الجماعي من المساحة نفسها'}/>
+        subtitle={isWorklistMode ? 'أضف شروطك، راجع النتائج، ثم حدّد ونفّذ من الشاشة نفسها' : 'ضع شروطك، افحص النتائج، ثم نفّذ الإجراء الفردي أو الجماعي من المساحة نفسها'}
+        actions={reportReturnAction}/> : null}
 
       <AgingOperationsQueue
         rows={agingPageRows}
@@ -1657,7 +1669,7 @@ export default function CustomerMoney({ isActive = true }) {
               empty={!creditViewRows.length}
             >
               <div className="m-flow credit-operational-table" style={{ maxHeight: 340, overflowY: 'auto' }}>
-              <table className="m-cards" style={{ width: '100%', fontSize: 12.5 }}>
+              <DataTable caption="الأرصدة الدائنة القابلة للتطبيق" className="customer-credit-table">
                 <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
                   <tr>{['العميل', 'الدين', 'رصيد غير مستخدم', 'يُطبَّق', 'يبقى', ''].map(h => (
                     <th key={h} style={{ padding: '8px 12px', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>
@@ -1690,7 +1702,7 @@ export default function CustomerMoney({ isActive = true }) {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </DataTable>
               <div style={{ padding: '8px 14px', fontSize: 10.5, color: 'var(--muted2)', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                 <span style={{ flex: 1, minWidth: 180 }}>
                   «طبّق تلقائياً» يُطبّق الرصيد في زوهو (تطبيق فقط — لا إنشاء/حذف). أو افتح «زوهو ↗» وطبّق يدوياً.

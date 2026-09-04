@@ -8,7 +8,11 @@ import { useState, useEffect, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { Boxes, Upload, RefreshCw, Trash2, CheckCircle2, AlertTriangle, Download } from 'lucide-react';
-import { Card, Btn, Select, Empty, Spinner, toast, PageHeader, DropZone, Badge } from '../components/UI.jsx';
+import { Badge } from '../components/UI.jsx';
+import { DropZone } from '../design-system/EnterpriseUI.jsx';
+import { Button as Btn, DataTable, EmptyState as Empty, PageHeader, Panel as Card, Select, Spinner } from '../design-system/EnterpriseUI.jsx';
+import { toast } from '../lib/toast.js';
+import OperationsWorkspaceNav from '../components/enterprise/OperationsWorkspaceNav.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
   loadWarehouses, parseDispatchInvoice, auditFulfillmentInvoice,
@@ -108,6 +112,7 @@ export default function FulfillmentAudit({ isActive = true }) {
             </Btn>
           </>
         }/>
+      <OperationsWorkspaceNav active="billing"/>
 
       <Card style={{ marginBottom: 16, borderRight: '3px solid var(--accent)' }}>
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>📦 رفع فاتورة {warehouses.find((w) => w.id === warehouse)?.name || ''}</div>
@@ -124,7 +129,7 @@ export default function FulfillmentAudit({ isActive = true }) {
       <div style={{ fontSize: 13, fontWeight: 700, margin: '20px 0 10px' }}>الفواتير المحفوظة</div>
       {!invoices.length ? <Empty icon="🗂" title="لا فواتير بعد"/> : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
-          <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <DataTable className="m-cards" caption="فواتير خدمات التجهيز والتخزين">
             <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
               {['المتجر', 'الفترة', 'طلبات', 'المفوتر', 'الفرق', 'تكرار', ''].map((h) => <th key={h} style={{ padding: '9px 12px', fontSize: 11.5, color: 'var(--muted)' }}>{h}</th>)}
             </tr></thead>
@@ -144,7 +149,7 @@ export default function FulfillmentAudit({ isActive = true }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </Card>
       )}
     </Pad>

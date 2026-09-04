@@ -12,9 +12,11 @@ import {
   RefreshCw, Download, FileSpreadsheet, Receipt, Banknote,
   CheckCircle2, Sparkles,
 } from 'lucide-react';
+import { toast } from '../components/UI.jsx';
 import {
-  Card, Btn, Spinner, Empty, toast, PageHeader,
-} from '../components/UI.jsx';
+  Button as Btn, DataTable, PageHeader,
+  Spinner, Surface as Card,
+} from '../design-system/EnterpriseUI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
   loadPendingCodReceipts, pullCodReceipts,
@@ -255,7 +257,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
   const anyLoading    = codLoading || invLoading || weightLoading;
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
+    <div className="internal-exports-view">
       <PageHeader
         icon={<FileSpreadsheet size={22}/>}
         title="سحب للنظام الداخلي"
@@ -273,20 +275,19 @@ export default function InternalExports({ carriers = [], isActive = true }) {
       {!anyLoading && totalFiles > 0 && (
         <div className="pull-everything" style={{
           padding: '22px 26px', marginBottom: 22,
-          background: 'linear-gradient(135deg, var(--brand-navy), var(--brand-navy-2))',
-          color: '#fff', borderRadius: 'var(--r-xl)',
-          boxShadow: 'var(--shadow-lg)',
+          background: 'var(--ds-surface)', color: 'var(--ds-ink)',
+          borderRadius: 'var(--ds-radius-sm)', border: '1px solid var(--ds-border)',
           display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 22, alignItems: 'center',
         }}>
           <div style={{
             width: 56, height: 56, borderRadius: 16,
-            background: 'rgba(16,185,129,.18)',
+            background: 'var(--ds-subtle)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: 'var(--green)', flexShrink: 0,
           }}><Layers size={26}/></div>
           <div style={{ minWidth: 0 }}>
             <div style={{
-              fontSize: 11, color: 'rgba(255,255,255,.55)',
+              fontSize: 11, color: 'var(--ds-muted)',
               fontFamily: 'var(--font-mono)', letterSpacing: 1.5, textTransform: 'uppercase',
               fontWeight: 600, marginBottom: 4,
             }}>
@@ -295,7 +296,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
             <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: -0.4, marginBottom: 6 }}>
               {totalFiles} ملف جاهز للسحب
             </div>
-            <div style={{ fontSize: 13, color: 'rgba(255,255,255,.65)' }}>
+            <div style={{ fontSize: 13, color: 'var(--ds-muted)' }}>
               {[
                 codPending.length    && `تحصيلات COD (${codPending.length})`,
                 invPending.length    && `فواتير عملاء (${invShipments})`,
@@ -589,8 +590,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
             لا توجد ملفات محفوظة بعد — أول ملف تسحبه سيظهر هنا قابلاً لإعادة التحميل.
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+          <DataTable caption="الملفات المصدّرة سابقًا">
               <thead>
                 <tr style={{ color: 'var(--muted)', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>
                   <th style={{ padding: '8px 10px', fontWeight: 600 }}>التاريخ</th>
@@ -622,8 +622,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
                   );
                 })}
               </tbody>
-            </table>
-          </div>
+          </DataTable>
         )}
       </Card>
 
@@ -643,19 +642,14 @@ export default function InternalExports({ carriers = [], isActive = true }) {
   );
 }
 
-function BigStat({ label, value, color }) {
+function BigStat({ label, value }) {
   return (
-    <div className="stat-card" style={{
-      '--sc-tone': color,
-      padding: '12px 14px',
-      background: `color-mix(in srgb, ${color} 6%, transparent)`,
-      borderRadius: 12, textAlign: 'center',
-    }}>
+    <div className="stat-card" style={{ padding: '10px 12px', background: 'var(--ds-subtle)', borderRadius: 'var(--ds-radius-sm)', textAlign: 'center' }}>
       <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>
         {label}
       </div>
       <div style={{
-        fontSize: 22, fontWeight: 700, color, fontFamily: 'var(--font-mono)',
+        fontSize: 18, fontWeight: 700, color: 'var(--ds-ink)', fontFamily: 'var(--font-mono)',
         letterSpacing: -0.4, lineHeight: 1, whiteSpace: 'nowrap',
       }}>
         {value}

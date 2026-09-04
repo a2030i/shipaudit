@@ -12,7 +12,12 @@ import {
   Building2, ClipboardList, Link2, WalletCards, ReceiptText, CircleDollarSign,
   UploadCloud, PackageSearch, Scale, CreditCard, BarChart3, ChevronLeft,
 } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, toast, Modal } from '../components/UI.jsx';
+import {
+  Button as Btn, DataTable, Dialog as Modal, EmptyState as Empty,
+  EntityPageHeader, Panel as Card, Spinner, StatStrip,
+} from '../design-system/EnterpriseUI.jsx';
+import { toast } from '../lib/toast.js';
+import OperationsWorkspaceNav from '../components/enterprise/OperationsWorkspaceNav.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
   loadCarrierProfileRead, loadCarrierAuditsPage, updateCarrierFileSignature, FILE_KIND_OPTIONS, FILE_KIND_LABELS,
@@ -78,56 +83,22 @@ const fmtDate = (iso) => {
 function Hero({ carrier, summary, onBack, onUpload, canUpload }) {
   const [logoErr, setLogoErr] = useState(false);   // شعار مكسور → الحرف الأول
   return (
-    <div className="carrier360-hero" style={{
-      position: 'relative',
-      padding: '22px 28px',
-      marginBottom: 22,
-      borderRadius: 'var(--r-lg)',
-      background: 'linear-gradient(135deg, var(--brand-navy), var(--brand-navy-2))',
-      color: '#fff',
-      overflow: 'hidden',
-      boxShadow: '0 16px 40px rgba(0,0,0,.18), 0 4px 12px rgba(0,0,0,.06)',
-    }}>
-      <div className="carrier360-hero__main" style={{ display: 'flex', alignItems: 'center', gap: 16, position: 'relative' }}>
-        <Btn
-          variant="ghost"
-          size="sm"
-          icon={<ArrowRight size={14}/>}
-          onClick={onBack}
-          title="رجوع لكشف الشركات"
-          style={{ flexShrink: 0 }}
-        >
-          رجوع
-        </Btn>
-        {carrier.logo && !logoErr ? (
-          <img src={carrier.logo} alt="" onError={() => setLogoErr(true)} style={{
-            width: 56, height: 56, borderRadius: 12, objectFit: 'cover',
-            border: '2px solid rgba(255,255,255,.20)', flexShrink: 0,
-          }}/>
-        ) : (
-          <div style={{
-            width: 56, height: 56, borderRadius: 12,
-            background: 'rgba(255,255,255,.14)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 24, fontWeight: 800, color: '#fff',
-            flexShrink: 0,
-          }}>
-            {(carrier.name || '?').slice(0, 1)}
-          </div>
-        )}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="carrier360-identity-code" style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: 3, textTransform: 'uppercase', opacity: .7, marginBottom: 4 }}>
-            ملف شركة الشحن · {carrier.id}
-          </div>
-          <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 22, fontWeight: 800, color: '#fff', margin: 0 }}>
-            {carrier.name}
-          </h1>
-          <div className="carrier360-hero-meta">
-            <span>{carrier.contact_phone || 'الهاتف غير مسجل'}</span>
-            <span>{carrier.account_manager || 'لا يوجد مسؤول مسجل'}</span>
-            <span>آخر نشاط: {relTime(summary?.lastActivityAt)}</span>
-          </div>
-        </div>
+    <div className="carrier360-hero">
+      <EntityPageHeader
+        eyebrow={`ملف شركة الشحن · ${carrier.id}`}
+        title={carrier.name}
+        avatar={carrier.logo && !logoErr
+          ? <img src={carrier.logo} alt="" onError={() => setLogoErr(true)}/>
+          : (carrier.name || '?').slice(0, 1)}
+        identifiers={[
+          { key: 'phone', value: carrier.contact_phone || 'الهاتف غير مسجل' },
+          { key: 'manager', value: carrier.account_manager || 'لا يوجد مسؤول مسجل' },
+          { key: 'activity', value: `آخر نشاط: ${relTime(summary?.lastActivityAt)}` },
+        ]}
+        onBack={onBack}
+        backLabel="رجوع لشركات الشحن"
+      />
+      <div className="carrier360-command-bar">
         <Btn
           variant="primary"
           icon={<UploadCloud size={17}/>}
@@ -143,48 +114,16 @@ function Hero({ carrier, summary, onBack, onUpload, canUpload }) {
   );
 }
 
-function StatCard({ label, value, sub, color, icon: Icon, onClick, title }) {
-  return (
-    <div
-      className="stat-card"
-      role={onClick ? 'button' : undefined}
-      tabIndex={onClick ? 0 : undefined}
-      title={title}
-      onClick={onClick}
-      onKeyDown={onClick ? (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onClick();
-        }
-      } : undefined}
-      style={{
-      background: 'var(--card)', border: '1px solid var(--border)',
-      borderRadius: 'var(--r-lg)', padding: '14px 18px',
-      display: 'flex', flexDirection: 'column', gap: 4,
-      cursor: onClick ? 'pointer' : 'default',
-      '--sc-tone': color || 'var(--accent)',
-    }}>
-      <div style={{
-        fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)',
-        letterSpacing: 2, textTransform: 'uppercase',
-        display: 'flex', alignItems: 'center', gap: 6,
-      }}>
-        {Icon && <span className="stat-icon-tile"><Icon size={16}/></span>}
-        {label}
-      </div>
-      <div style={{
-        fontSize: 20, fontWeight: 800, color: color || 'var(--text)',
-        fontFamily: 'var(--font-mono)',
-      }}>
-        {value}
-      </div>
-      {sub && (
-        <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2 }}>
-          {sub}
-        </div>
-      )}
-    </div>
-  );
+function SummaryStat({ label, value, sub, color, onClick, title }) {
+  const tone = color?.includes('red') ? 'danger'
+    : color?.includes('gold') ? 'warning'
+      : color?.includes('green') ? 'success'
+        : undefined;
+  return <StatStrip
+    className="carrier-single-stat"
+    ariaLabel={title || label}
+    items={[{ key: label, label, value, note: sub, tone, onClick }]}
+  />;
 }
 
 function SectionCard({ title, action, children, accent }) {
@@ -319,12 +258,12 @@ function ZohoFinancialSection({ financial, canConfigure, onConfigure }) {
   return (
     <SectionCard title={`الملف المالي الموحّد${vendor?.name ? ` · ${vendor.name}` : ''}`} action={action} accent="var(--accent)">
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 9 }}>
-        <StatCard icon={CircleDollarSign} label={netPayable >= 0 ? 'له علينا في Zoho' : 'لنا عنده في Zoho'} value={`${fmt(Math.abs(netPayable))} ر.س`} sub={`إجمالي ${fmt(vendor?.gross_payable)} − أرصدة ${fmt(vendor?.credits)}`} color={Math.abs(netPayable) < .01 ? 'var(--muted)' : netPayable > 0 ? 'var(--red)' : 'var(--accent)'}/>
-        <StatCard icon={ReceiptText} label="فواتير مفتوحة" value={`${fmt(bills.open_balance)} ر.س`} sub={`${bills.open_count || 0} فاتورة · ${bills.overdue_count || 0} متأخرة`} color={Number(bills.open_balance) > 0 ? 'var(--gold)' : 'var(--muted)'}/>
-        <StatCard icon={Banknote} label="COD معلّق تشغيليًا" value={`${fmt(cod.outstanding)} ر.س`} sub={`${fmt(cod.expected)} متوقع − ${fmt(cod.received)} مستلم`} color={Number(cod.outstanding) > 0 ? 'var(--gold)' : 'var(--muted)'}/>
-        <StatCard icon={WalletCards} label="رصيد خزينة Zoho" value={`${fmt(cod.treasury_balance)} ر.س`} sub={`${financial.treasuries?.length || 0} حساب مربوط`} color="var(--accent)"/>
-        <StatCard icon={AlertTriangle} label="فرق COD عن الخزينة" value={`${fmt(Math.abs(gap))} ر.س`} sub={Math.abs(gap) <= .5 ? 'متطابق ضمن نصف ريال' : gap > 0 ? 'COD التشغيلي أعلى من الخزينة' : 'الخزينة أعلى من COD التشغيلي'} color={Math.abs(gap) <= .5 ? 'var(--green)' : 'var(--red)'}/>
-        <StatCard icon={CircleDollarSign} label="مدفوعات المورد" value={`${fmt(payments.total)} ر.س`} sub={`${payments.count || 0} دفعة · آخرها ${fmtDate(payments.last_date)}`} color="var(--text)"/>
+        <SummaryStat icon={CircleDollarSign} label={netPayable >= 0 ? 'له علينا في Zoho' : 'لنا عنده في Zoho'} value={`${fmt(Math.abs(netPayable))} ر.س`} sub={`إجمالي ${fmt(vendor?.gross_payable)} − أرصدة ${fmt(vendor?.credits)}`} color={Math.abs(netPayable) < .01 ? 'var(--muted)' : netPayable > 0 ? 'var(--red)' : 'var(--accent)'}/>
+        <SummaryStat icon={ReceiptText} label="فواتير مفتوحة" value={`${fmt(bills.open_balance)} ر.س`} sub={`${bills.open_count || 0} فاتورة · ${bills.overdue_count || 0} متأخرة`} color={Number(bills.open_balance) > 0 ? 'var(--gold)' : 'var(--muted)'}/>
+        <SummaryStat icon={Banknote} label="COD معلّق تشغيليًا" value={`${fmt(cod.outstanding)} ر.س`} sub={`${fmt(cod.expected)} متوقع − ${fmt(cod.received)} مستلم`} color={Number(cod.outstanding) > 0 ? 'var(--gold)' : 'var(--muted)'}/>
+        <SummaryStat icon={WalletCards} label="رصيد خزينة Zoho" value={`${fmt(cod.treasury_balance)} ر.س`} sub={`${financial.treasuries?.length || 0} حساب مربوط`} color="var(--accent)"/>
+        <SummaryStat icon={AlertTriangle} label="فرق COD عن الخزينة" value={`${fmt(Math.abs(gap))} ر.س`} sub={Math.abs(gap) <= .5 ? 'متطابق ضمن نصف ريال' : gap > 0 ? 'COD التشغيلي أعلى من الخزينة' : 'الخزينة أعلى من COD التشغيلي'} color={Math.abs(gap) <= .5 ? 'var(--green)' : 'var(--red)'}/>
+        <SummaryStat icon={CircleDollarSign} label="مدفوعات المورد" value={`${fmt(payments.total)} ر.س`} sub={`${payments.count || 0} دفعة · آخرها ${fmtDate(payments.last_date)}`} color="var(--text)"/>
       </div>
 
       {financial.treasuries?.length > 0 && (
@@ -339,7 +278,7 @@ function ZohoFinancialSection({ financial, canConfigure, onConfigure }) {
 
       {financial.recent_activity?.length > 0 && (
         <div style={{ marginTop: 14, overflowX: 'auto' }}>
-          <table className="m-compact">
+          <DataTable className="m-compact" caption="آخر الحركات المالية للناقل">
             <thead><tr><th>الحركة</th><th>المرجع</th><th>التاريخ</th><th>القيمة</th><th>المتبقي</th><th>الحالة</th></tr></thead>
             <tbody>
               {financial.recent_activity.slice(0, 10).map(item => (
@@ -353,7 +292,7 @@ function ZohoFinancialSection({ financial, canConfigure, onConfigure }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       )}
       <div style={{ marginTop: 10, fontSize: 10.5, color: 'var(--muted)' }}>
@@ -631,7 +570,7 @@ function AuditsList({ audits, onOpen }) {
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       {audits.slice(0, 8).map(a => {
-        const result = auditPresentation(a);
+        const result = auditListPresentation(a);
         const drift = Math.abs(result.variance);
         const driftColor = drift < 0.50 ? 'var(--accent)' : drift < 5 ? 'var(--gold)' : 'var(--red)';
         const [statusLabel, statusColor] = REVIEW_STATUS[result.reviewStatus] || REVIEW_STATUS.pending;
@@ -792,6 +731,30 @@ function LazyPanel({ children }) {
 
 const REVIEW_STATUS = AUDIT_REVIEW_LABELS;
 
+// Carrier list reads are intentionally compact and may omit the contractual
+// proof object used by the approval gate. A compact row is display-only: mark
+// it as legacy/unverified instead of invoking an approval evaluator with an
+// incomplete payload. The full invoice read still uses auditPresentation and
+// the original eligibility/preflight path unchanged.
+function auditListPresentation(audit) {
+  const control = audit?.control ?? audit?.summary?.control ?? audit?.colMap?.__control ?? audit?.col_map?.__control;
+  // Some persisted compact rows contain only a partial control marker. The
+  // approval evaluator expects either a valid proof or an explicit errors
+  // array for an invalid proof, so incomplete markers stay presentation-only.
+  if (control && (control.valid === true || Array.isArray(control.errors))) {
+    try {
+      return auditPresentation(audit);
+    } catch {
+      // The list read model is intentionally not an approval payload. Its
+      // persisted figures remain visible, while eligibility is evaluated only
+      // after the full invoice is opened through the existing preflight path.
+    }
+  }
+  const variance = Number(audit?.diff ?? audit?.summary?.totalDiff ?? 0) || 0;
+  const issueCount = Number(audit?.issueCount ?? audit?.issue_count ?? audit?.mismatchCount ?? audit?.mismatch_count ?? audit?.summary?.mismatch ?? 0) || 0;
+  return { variance, issueCount, claimAmount: Math.max(0, variance), reviewStatus: 'legacy_unverified' };
+}
+
 function CarrierInvoiceResultSummary({ audit }) {
   const result = auditPresentation(audit);
   const [statusLabel, statusColor] = REVIEW_STATUS[result.reviewStatus] || REVIEW_STATUS.pending;
@@ -924,9 +887,9 @@ function CarrierInvoicesView({ carrier, summary, carriers, mode, invoiceId, page
         <Btn variant="primary" icon={<UploadCloud size={15}/>} onClick={startUpload}>+ رفع فاتورة للمراجعة</Btn>
       </div>
       <div className="carrier360-mini-kpis">
-        <StatCard label="الفواتير" value={summary.audits || 0} sub="كل الفواتير المسجلة" icon={ReceiptText}/>
-        <StatCard label="تحتاج مراجعة" value={needsReview} sub="لم تعتمد أو ترفض بعد" color={needsReview ? 'var(--gold)' : 'var(--green)'} icon={AlertTriangle}/>
-        <StatCard label="إجمالي الفروقات" value={`${fmt(totalVariance)} ر.س`} sub="من نفس نتائج التدقيق" color={totalVariance > 0 ? 'var(--red)' : 'var(--green)'} icon={Scale}/>
+        <SummaryStat label="الفواتير" value={summary.audits || 0} sub="كل الفواتير المسجلة" icon={ReceiptText}/>
+        <SummaryStat label="تحتاج مراجعة" value={needsReview} sub="لم تعتمد أو ترفض بعد" color={needsReview ? 'var(--gold)' : 'var(--green)'} icon={AlertTriangle}/>
+        <SummaryStat label="إجمالي الفروقات" value={`${fmt(totalVariance)} ر.س`} sub="من نفس نتائج التدقيق" color={totalVariance > 0 ? 'var(--red)' : 'var(--green)'} icon={Scale}/>
       </div>
       <div className="carrier360-filter-pills" aria-label="تصفية الفواتير">
         {[["all","الكل"],["needs_action","تحتاج مراجعة"],["approved","معتمدة"],["rejected","مرفوضة"]].map(([id,label]) => (
@@ -940,7 +903,7 @@ function CarrierInvoicesView({ carrier, summary, carriers, mode, invoiceId, page
       ) : (
         <div className="carrier360-invoice-list">
           {(audits || []).map(item => {
-            const result = auditPresentation(item);
+            const result = auditListPresentation(item);
             const [statusLabel, statusColor] = REVIEW_STATUS[result.reviewStatus] || REVIEW_STATUS.pending;
             return (
               <button type="button" key={item.id} onClick={() => onState({ mode: 'result', audit: item.id, invoice: null })}>
@@ -1067,9 +1030,9 @@ function CarrierAccountView({ carrier, summary, ops, zohoFinancial, canConfigure
       <div className="carrier360-subnav">{panels.map(([id, label]) => <button type="button" key={id} className={panel === id ? 'active' : ''} onClick={() => onPanel(id)}>{label}</button>)}</div>
       {panel === 'overview' ? <>
         <div className="carrier360-mini-kpis">
-          <StatCard icon={BookOpen} label="الرصيد المفتوح" value={`${fmt(Math.abs(summary.balance))} ر.س`} sub={summary.balance > 0 ? 'لها علينا' : summary.balance < 0 ? 'لنا عليها' : 'متعادل'} color={summary.balance ? 'var(--red)' : 'var(--green)'}/>
-          {showCod ? <StatCard icon={Banknote} label="COD تاريخي متبقٍ" value={`${fmt(summary.codOutstanding)} ر.س`} sub={`${summary.codOutCount} متوقعة · ${summary.codInCount} مستلمة`} color="var(--gold)"/> : null}
-          <StatCard icon={CreditCard} label="إجمالي الحركات المدينة" value={`${fmt(summary.totalDr)} ر.س`} sub="من دفتر الشركة الحالي"/>
+          <SummaryStat icon={BookOpen} label="الرصيد المفتوح" value={`${fmt(Math.abs(summary.balance))} ر.س`} sub={summary.balance > 0 ? 'لها علينا' : summary.balance < 0 ? 'لنا عليها' : 'متعادل'} color={summary.balance ? 'var(--red)' : 'var(--green)'}/>
+          {showCod ? <SummaryStat icon={Banknote} label="COD تاريخي متبقٍ" value={`${fmt(summary.codOutstanding)} ر.س`} sub={`${summary.codOutCount} متوقعة · ${summary.codInCount} مستلمة`} color="var(--gold)"/> : null}
+          <SummaryStat icon={CreditCard} label="إجمالي الحركات المدينة" value={`${fmt(summary.totalDr)} ر.س`} sub="من دفتر الشركة الحالي"/>
         </div>
         <ZohoFinancialSection financial={zohoFinancial} canConfigure={canConfigure} onConfigure={onConfigure}/>
         <SectionCard title="آخر الحركات" accent="var(--accent)"><OpsList ops={ops}/></SectionCard>
@@ -1175,6 +1138,7 @@ export default function CarrierProfile({ carriers = [], setCarriers, onCarriersC
         canUpload={can('audits.create')}
         onUpload={() => updateLocation({ view: 'invoices', mode: 'upload', audit: null, invoice: null })}
       />
+      <OperationsWorkspaceNav active="carriers"/>
       {showZohoLink && (
         <ZohoLinkModal
           carrierId={carrierId}
@@ -1205,7 +1169,7 @@ export default function CarrierProfile({ carriers = [], setCarriers, onCarriersC
         display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
         gap: 10, marginBottom: 14,
       }}>
-        <StatCard
+        <SummaryStat
           icon={BookOpen}
           label={balLabel}
           value={`${fmt(Math.abs(summary.balance))} ر.س`}
@@ -1214,7 +1178,7 @@ export default function CarrierProfile({ carriers = [], setCarriers, onCarriersC
           title="فتح حساب الشركة"
           onClick={() => updateLocation({ view: 'account', panel: 'ledger' })}
         />
-        {hasLegacyCod ? <StatCard
+        {hasLegacyCod ? <SummaryStat
           icon={Banknote}
           label="COD تاريخي متبقّي"
           value={`${fmt(summary.codOutstanding)} ر.س`}
@@ -1223,7 +1187,7 @@ export default function CarrierProfile({ carriers = [], setCarriers, onCarriersC
           title="فتح تصفية الرصيد التاريخي"
           onClick={() => updateLocation({ view: 'account', panel: 'cod' })}
         /> : null}
-        {hasLegacyCod ? <StatCard
+        {hasLegacyCod ? <SummaryStat
           icon={Building2}
           label="المتبقّي بعد خصم التحصيل"
           value={`${fmt(Math.abs(summary.netPosition))} ر.س`}
@@ -1232,7 +1196,7 @@ export default function CarrierProfile({ carriers = [], setCarriers, onCarriersC
           title="فتح حساب الشركة لمراجعة الصافي"
           onClick={() => updateLocation({ view: 'account', panel: 'overview' })}
         /> : null}
-        <StatCard
+        <SummaryStat
           icon={FileText}
           label="المراجعات"
           value={summary.audits}
@@ -1240,7 +1204,7 @@ export default function CarrierProfile({ carriers = [], setCarriers, onCarriersC
           title="فتح فواتير ومراجعات هذه الشركة"
           onClick={() => updateLocation({ view: 'invoices' })}
         />
-        <StatCard
+        <SummaryStat
           icon={Inbox}
           label="ملفات Webhook"
           value={summary.webhooks}
@@ -1249,7 +1213,7 @@ export default function CarrierProfile({ carriers = [], setCarriers, onCarriersC
           title="الملفات الواردة تلقائيًا لهذه الشركة"
           onClick={() => updateLocation({ view: 'invoices' })}
         />
-        <StatCard
+        <SummaryStat
           icon={CheckCircle2}
           label="آخر نشاط"
           value={relTime(summary.lastActivityAt)}

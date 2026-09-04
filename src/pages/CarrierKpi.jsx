@@ -1,8 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { RefreshCw, TrendingUp, TrendingDown, AlertTriangle, BarChart3 } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
+import { Button as Btn, EmptyState as Empty, Money, PageHeader, Panel as Card, Spinner, StatStrip } from '../design-system/EnterpriseUI.jsx';
+import { toast } from '../lib/toast.js';
+import OperationsWorkspaceNav from '../components/enterprise/OperationsWorkspaceNav.jsx';
 import { loadCarrierKpis } from '../lib/carrierStatementsService.js';
 import { carrierScore } from '../lib/carrierScore.js';
+import './ReportsWorkspace.css';
 
 const fmt = n => (n == null || Number.isNaN(n))
   ? '—'
@@ -41,27 +44,26 @@ export default function CarrierKpi({ isActive = true, carrierId = '', embedded =
   );
 
   return (
-    <div style={{ padding: embedded ? 0 : '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
+    <div className="carrier-kpi-view" style={{ padding: embedded ? 0 : undefined }}>
       <PageHeader
         icon={<BarChart3 size={22}/>}
         title={carrierId ? 'أداء شركة الشحن' : 'أداء شركات الشحن'}
         subtitle={carrierId ? 'الدقة والمخالفات والمطالبات والالتزام بالسداد لهذه الشركة.' : 'مؤشرات الدقة، النزاعات، الالتزام بالسداد، والتغطية بالتدقيق لكل شركة.'}
         actions={<Btn size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refresh}>تحديث</Btn>}
       />
+      <OperationsWorkspaceNav active="carriers"/>
 
       {visibleKpis.length === 0 ? (
         <Empty icon="📊" title="لا توجد بيانات بعد" sub="ارفع كشف حساب وفواتير لتظهر المؤشرات هنا"/>
       ) : (
         <>
           {/* Overall totals */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px,1fr))', gap: 12, marginBottom: 18 }}>
-            <Stat label="إجمالي الفواتير" value={totals.ops} color="var(--accent)" big/>
-            <Stat label="صافي حركة دفتر الناقلين" value={fmt(totals.totalBilled)} suffix="ر.س" color={totals.totalBilled >= 0 ? 'var(--text)' : 'var(--green)'} big
-              hint="الفواتير والخصومات والتحصيلات؛ السالب يعني صافي رصيد لصالحك وليس فاتورة سالبة"/>
-            <Stat label="استرداد عبر التدقيق" value={fmt(totals.overchargeAmt)} suffix="ر.س"
-              hint={`${totals.overcharges} مراجعة بفروق`} color="var(--green)"/>
-            <Stat label="نزاعات مفتوحة" value={totals.disputesOpen} color="var(--red)"/>
-          </div>
+          <StatStrip items={[
+            { key: 'ops', label: 'إجمالي الفواتير', value: totals.ops.toLocaleString('en-US') },
+            { key: 'ledger', label: 'صافي حركة دفتر الناقلين', value: <Money value={totals.totalBilled}/>, note: 'السالب يعني صافي رصيد لصالحك' },
+            { key: 'recovery', label: 'استرداد عبر التدقيق', value: <Money value={totals.overchargeAmt}/>, note: `${totals.overcharges} مراجعة بفروق`, tone: 'success' },
+            { key: 'disputes', label: 'نزاعات مفتوحة', value: totals.disputesOpen.toLocaleString('en-US'), tone: totals.disputesOpen ? 'danger' : undefined },
+          ]}/>
 
           {/* Per-carrier scorecards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px,1fr))', gap: 14 }}>
@@ -72,7 +74,6 @@ export default function CarrierKpi({ isActive = true, carrierId = '', embedded =
     </div>
   );
 }
-
 // ── CarrierCard ────────────────────────────────────────────────────────
 function CarrierCard({ k }) {
   // الدرجة الموحّدة من carrierScore.js (نفس معادلة جدول «صحة الناقلين» في
@@ -165,7 +166,6 @@ function CarrierCard({ k }) {
     </Card>
   );
 }
-
 // ── Building blocks ────────────────────────────────────────────────────
 function Row({ icon, label, value, valueColor, extra, extraColor, sub }) {
   return (
@@ -190,27 +190,6 @@ function Row({ icon, label, value, valueColor, extra, extraColor, sub }) {
           {extra}
         </div>
       )}
-    </div>
-  );
-}
-
-function Stat({ label, value, suffix, hint, color, big }) {
-  return (
-    <div className="stat-card" style={{
-      background: 'var(--card)', border: '1px solid var(--border)',
-      borderRadius: 11, padding: '13px 16px',
-      '--sc-tone': color,
-    }}>
-      <div style={{ color: 'var(--muted)', fontSize: 10, fontFamily: 'var(--font-mono)', marginBottom: 3 }}>
-        {label}
-      </div>
-      <div style={{
-        color, fontSize: big ? 22 : 16, fontFamily: 'var(--font-mono)', fontWeight: 700, whiteSpace: 'nowrap',
-      }}>
-        {value}
-        {suffix && <span style={{ fontSize: 10, color: 'var(--muted)', marginRight: 4 }}> {suffix}</span>}
-      </div>
-      {hint && <div style={{ color: 'var(--muted)', fontSize: 10, marginTop: 3 }}>{hint}</div>}
     </div>
   );
 }

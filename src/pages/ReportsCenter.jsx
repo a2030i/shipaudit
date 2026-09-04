@@ -7,8 +7,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
-import { FileBarChart, Truck, Landmark, Download, RefreshCw, CalendarRange, Receipt, Activity, AlertTriangle } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, Select, toast, PageHeader } from '../components/UI.jsx';
+import { FileBarChart, Truck, Landmark, Download, RefreshCw, CalendarRange, Receipt } from 'lucide-react';
+import { toast } from '../components/UI.jsx';
+import {
+  Alert, Button as Btn, DataTable, EmptyState as Empty, PageHeader,
+  Pagination, SelectInput as Select, Spinner, StatStrip, Surface as Card,
+} from '../design-system/EnterpriseUI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadMonthlyReport } from '../lib/monthlyReportService.js';
 import { loadCarriers } from '../lib/coreService.js';
@@ -34,15 +38,6 @@ const KIND_LABEL = {
   balance_sheet: 'الميزانية العمومية', cash_flow: 'التدفق النقدي',
   trial_balance: 'ميزان المراجعة', general_ledger: 'دفتر الأستاذ العام',
 };
-
-function HealthMetric({ label, value, sub, tone = 'normal' }) {
-  const color = tone === 'warn' ? 'var(--gold-ink)' : tone === 'ok' ? 'var(--green)' : 'var(--text)';
-  return <div style={{ padding: 14, border: '1px solid var(--border2)', borderRadius: 13, background: 'var(--surface)', minWidth: 0 }}>
-    <div style={{ color: 'var(--muted)', fontSize: 11.5, fontWeight: 800 }}>{label}</div>
-    <div style={{ color, fontSize: 20, fontWeight: 900, marginTop: 6, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
-    <div style={{ color: 'var(--text2)', fontSize: 10.5, marginTop: 4, lineHeight: 1.6 }}>{sub}</div>
-  </div>;
-}
 
 export default function ReportsCenter({ isActive = true }) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -207,29 +202,23 @@ export default function ReportsCenter({ isActive = true }) {
   if (!canViewAny) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية عرض نوع واحد على الأقل من التقارير."/></div>;
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
+    <div className="report-generator-view">
       <PageHeader icon={<FileBarChart size={24}/>} title="مركز التقارير"
         subtitle="تقارير رسمية بمعاملات — كل تقرير يُخزَّن تلقائياً ويُعاد تحميله من السجل أدناه"/>
 
-      {canFinancial && financialHealth ? <section aria-label="ملخص الصحة المالية من زوهو" style={{ marginBottom: 22, padding: 18, border: '1px solid var(--border)', borderRadius: 18, background: 'var(--card)', boxShadow: 'var(--shadow-sm)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}><Activity size={18} color="var(--accent)"/><div style={{ display: 'grid', gap: 2 }}><b>الصورة المالية الحالية</b><small style={{ color: 'var(--muted)' }}>أرصدة وأعمار دين ومراقبة المصدر — من مرآة Zoho Books</small></div></div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 10 }}>
-          <HealthMetric label="ذمم العملاء" value={`${fmt(financialHealth.ar?.total)} ر.س`} sub={`${financialHealth.ar?.customers || 0} عميل · +90 يوم ${fmt(financialHealth.ar?.over_90)}`}/>
-          <HealthMetric label="ذمم الموردين" value={`${fmt(financialHealth.ap?.total)} ر.س`} sub={`${financialHealth.ap?.vendors || 0} مورد · +90 يوم ${fmt(financialHealth.ap?.over_90)}`}/>
-          <HealthMetric label="ضريبة القيمة المضافة" value={`${fmt(financialHealth.vat?.net_due)} ر.س`} sub={financialHealth.vat?.healthy ? `محدثة منذ ${financialHealth.vat?.age_minutes || 0} دقيقة` : 'التحديث متأخر — حدّث المصدر'} tone={financialHealth.vat?.healthy ? 'ok' : 'warn'}/>
-          <HealthMetric label="استهلاك Zoho API اليوم" value={Number(financialHealth.api?.calls || 0).toLocaleString('en-US')} sub={`تنبيه عند ${Number(financialHealth.api?.warning_calls || 0).toLocaleString('en-US')} · تقييد ${financialHealth.api?.rate_limited || 0}`} tone={financialHealth.api?.status === 'healthy' ? 'ok' : 'warn'}/>
-        </div>
-      </section> : canFinancial && financialHealth === false ? (
-        <section aria-label="تعذّر تحميل المصدر المالي" style={{ marginBottom: 22, padding: 18, border: '1px solid color-mix(in srgb, var(--red) 35%, var(--border))', borderRadius: 18, background: 'color-mix(in srgb, var(--red) 6%, var(--card))', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <AlertTriangle size={20} color="var(--red)"/>
-          <div><b>المصدر غير متاح</b><small style={{ display: 'block', color: 'var(--muted)', marginTop: 3 }}>تعذّر قراءة ملخص Zoho المالي؛ لم نعرض أصفارًا بديلة. أعد المحاولة قبل اتخاذ قرار من المؤشرات.</small></div>
-        </section>
+      {canFinancial && financialHealth ? <StatStrip items={[
+        { key: 'ar', label: 'ذمم العملاء', value: <bdi dir="ltr">{fmt(financialHealth.ar?.total)} ر.س</bdi>, note: `${financialHealth.ar?.customers || 0} عميل · +90 يوم ${fmt(financialHealth.ar?.over_90)}` },
+        { key: 'ap', label: 'ذمم الموردين', value: <bdi dir="ltr">{fmt(financialHealth.ap?.total)} ر.س</bdi>, note: `${financialHealth.ap?.vendors || 0} مورد · +90 يوم ${fmt(financialHealth.ap?.over_90)}` },
+        { key: 'vat', label: 'ضريبة القيمة المضافة', value: <bdi dir="ltr">{fmt(financialHealth.vat?.net_due)} ر.س</bdi>, note: financialHealth.vat?.healthy ? `محدثة منذ ${financialHealth.vat?.age_minutes || 0} دقيقة` : 'التحديث متأخر — حدّث المصدر', tone: financialHealth.vat?.healthy ? 'success' : 'warning' },
+        { key: 'api', label: 'استهلاك Zoho API اليوم', value: Number(financialHealth.api?.calls || 0).toLocaleString('en-US'), note: `تنبيه عند ${Number(financialHealth.api?.warning_calls || 0).toLocaleString('en-US')} · تقييد ${financialHealth.api?.rate_limited || 0}`, tone: financialHealth.api?.status === 'healthy' ? 'success' : 'warning' },
+      ]}/> : canFinancial && financialHealth === false ? (
+        <Alert tone="danger" title="المصدر غير متاح">تعذّر قراءة ملخص Zoho المالي؛ لم نعرض أصفارًا بديلة. أعد المحاولة قبل اتخاذ قرار من المؤشرات.</Alert>
       ) : null}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, marginBottom: 26 }}>
+      <div className="report-builder-list">
         {canOperational ? <>
         {/* التقرير الشهري */}
-        <ReportCard icon={<CalendarRange size={18}/>} color="var(--green)"
+        <ReportBuilderRow icon={<CalendarRange size={18}/>}
           title="التقرير الشهري للناقلين"
           desc="مفوتر · تحصيل COD · إشعارات · مدفوعات · صافي — لكل ناقل في الشهر المختار">
           <Select value={pMonth} onChange={e => updateParam('month', e.target.value)}>
@@ -238,10 +227,10 @@ export default function ReportsCenter({ isActive = true }) {
           <Btn variant="accent" size="full" disabled={!canExport || busy === 'monthly' || !pMonth} icon={busy === 'monthly' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genMonthly}>
             توليد التقرير
           </Btn>
-        </ReportCard>
+        </ReportBuilderRow>
 
         {/* كشف حساب ناقل */}
-        <ReportCard icon={<Truck size={18}/>} color="#3B82F6"
+        <ReportBuilderRow icon={<Truck size={18}/>}
           title="كشف حساب ناقل رسمي"
           desc="كل الحركات برصيد جارٍ + COD المعلّق + سطر توقيع — مستند النزاع والمطالبة">
           <Select value={pCarrier} onChange={e => updateParam('carrier', e.target.value)}>
@@ -250,12 +239,12 @@ export default function ReportsCenter({ isActive = true }) {
           <Btn variant="accent" size="full" disabled={!canExport || busy === 'soa' || !pCarrier} icon={busy === 'soa' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genCarrierSoa}>
             توليد الكشف
           </Btn>
-        </ReportCard>
+        </ReportBuilderRow>
         </> : null}
 
         {/* المطابقة البنكية */}
         {canBankReconciliation ? (
-        <ReportCard icon={<Landmark size={18}/>} color="var(--gold)"
+        <ReportBuilderRow icon={<Landmark size={18}/>}
           title="المطابقة البنكية (بنك × دفتر)"
           desc="3 أوراق: مطابَق · حركة بنك بلا سداد مسجّل (الخطر) · سداد مسجّل لم يظهر في البنك">
           <Select value={pReconMonth} onChange={e => updateParam('reconMonth', e.target.value)}>
@@ -265,12 +254,12 @@ export default function ReportsCenter({ isActive = true }) {
           <Btn variant="accent" size="full" disabled={!canExport || busy === 'recon'} icon={busy === 'recon' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genRecon}>
             توليد المطابقة
           </Btn>
-        </ReportCard>
+        </ReportBuilderRow>
         ) : null}
 
         {/* الإقرار الضريبي — من زوهو بخانات نموذج الهيئة */}
         {canFinancial ? <>
-        <ReportCard icon={<Receipt size={18}/>} color="var(--brand)"
+        <ReportBuilderRow icon={<Receipt size={18}/>}
           title="مسودة الإقرار الضريبي PDF (القيمة المضافة)"
           desc="خانات نموذج الهيئة (1..16) من زوهو + مطابقة مستقلة لضريبة الخانتين 1 و7 قبل الإيداع">
           <Select value={pQuarter} onChange={e => updateParam('quarter', e.target.value)}>
@@ -279,10 +268,10 @@ export default function ReportsCenter({ isActive = true }) {
           <Btn variant="accent" size="full" disabled={!canExport || busy === 'vat'} icon={busy === 'vat' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genVat}>
             توليد الإقرار
           </Btn>
-        </ReportCard>
+        </ReportBuilderRow>
 
         {/* قائمة الدخل من زوهو لأي فترة */}
-        <ReportCard icon={<FileBarChart size={18}/>} color="var(--accent3)"
+        <ReportBuilderRow icon={<FileBarChart size={18}/>}
           title="قائمة الدخل PDF (الأرباح والخسائر)"
           desc="PDF رسمي بهوية لمحة — بنفس أقسام زوهو وحساباته حرفياً، لأي فترة تختارها">
           <div style={{ display: 'flex', gap: 8 }}>
@@ -295,9 +284,9 @@ export default function ReportsCenter({ isActive = true }) {
             icon={busy === 'pnl' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genPnl}>
             توليد القائمة
           </Btn>
-        </ReportCard>
+        </ReportBuilderRow>
 
-        <ReportCard icon={<FileBarChart size={18}/>} color="var(--gold)"
+        <ReportBuilderRow icon={<FileBarChart size={18}/>}
           title="التقارير المالية الرسمية من زوهو"
           desc="ميزانية عمومية · تدفق نقدي · ميزان مراجعة · دفتر أستاذ — مع حفظ نسخة في سجل التقارير">
           <Select value={pFinReport} onChange={e => updateParam('report', e.target.value)}>
@@ -311,7 +300,7 @@ export default function ReportsCenter({ isActive = true }) {
             icon={busy === 'financial' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genFinancial}>
             توليد التقرير المحدد
           </Btn>
-        </ReportCard>
+        </ReportBuilderRow>
         </> : null}
       </div>
 
@@ -330,8 +319,8 @@ export default function ReportsCenter({ isActive = true }) {
       {history == null ? <Card style={{ padding: 30, textAlign: 'center' }}><Spinner size={20}/></Card>
         : !history.length ? <Card><Empty icon="📁" title="لا تقارير محفوظة بعد" sub="كل تقرير تولّده يُخزَّن هنا تلقائياً"/></Card>
         : (
-          <Card style={{ padding: 0, overflow: 'hidden' }}>
-            <table className="m-cards" style={{ width: '100%', fontSize: 12.5 }}>
+          <Card>
+            <DataTable caption="التقارير الصادرة سابقًا">
               <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
                 {['التاريخ', 'النوع', 'الملف', 'صفوف', ''].map(h =>
                   <th key={h} style={{ padding: '9px 12px', fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>{h}</th>)}
@@ -353,15 +342,8 @@ export default function ReportsCenter({ isActive = true }) {
                   </tr>
                 ))}
               </tbody>
-            </table>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 12px', borderTop: '1px solid var(--border)', fontSize: 11.5, color: 'var(--muted)' }}>
-              <span>عرض {pagedHistory.length} من {filteredHistory.length} · الأحدث أولاً</span>
-              <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <Btn size="sm" variant="ghost" disabled={historyPage === 0} onClick={() => updateParam('page', Math.max(0, historyPage - 1) || '')}>السابق</Btn>
-                <span>{historyPage + 1} / {historyPages}</span>
-                <Btn size="sm" variant="ghost" disabled={historyPage + 1 >= historyPages} onClick={() => updateParam('page', Math.min(historyPages - 1, historyPage + 1))}>التالي</Btn>
-              </span>
-            </div>
+            </DataTable>
+            <Pagination page={historyPage} pages={historyPages} total={filteredHistory.length} pageSize={HISTORY_PAGE_SIZE} onChange={page => updateParam('page', page || '')}/>
           </Card>
         )}
       </> : (
@@ -373,16 +355,14 @@ export default function ReportsCenter({ isActive = true }) {
   );
 }
 
-function ReportCard({ icon, color, title, desc, children }) {
+function ReportBuilderRow({ icon, title, desc, children }) {
   return (
-    <Card style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-        <span style={{ width: 34, height: 34, borderRadius: 9, display: 'inline-flex', alignItems: 'center',
-          justifyContent: 'center', background: `${color}18`, color }}>{icon}</span>
-        <div style={{ fontWeight: 800, fontSize: 14 }}>{title}</div>
+    <Card className="report-builder-row">
+      <div className="report-builder-row__copy">
+        {icon}
+        <div><strong>{title}</strong><p>{desc}</p></div>
       </div>
-      <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.6, minHeight: 38 }}>{desc}</div>
-      {children}
+      <div className="report-builder-row__controls">{children}</div>
     </Card>
   );
 }

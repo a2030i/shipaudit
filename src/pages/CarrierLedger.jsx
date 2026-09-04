@@ -3,8 +3,12 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Search, RefreshCw, Link2, FileText, Download, BookOpen } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
-import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast, PageHeader } from '../components/UI.jsx';
-import CarrierTabs from '../components/CarrierTabs.jsx';
+import {
+  Button as Btn, DataTable, Dialog as Modal, EmptyState as Empty, Input,
+  PageHeader, Panel as Card, Select, Spinner,
+} from '../design-system/EnterpriseUI.jsx';
+import { toast } from '../lib/toast.js';
+import OperationsWorkspaceNav from '../components/enterprise/OperationsWorkspaceNav.jsx';
 import StatementUploadModal from '../components/StatementUploadModal.jsx';
 import {
   loadOperations,
@@ -128,14 +132,16 @@ export default function CarrierLedger({ isActive = true, carrierId = '', embedde
   // لا نلمس الرابط إلا حين تكون صفحة الدفتر نشطة، ونُبقي كل المعاملات (بما فيها
   // `doc=` للـdeep-link).
   useEffect(() => {
-    if (!isActive) return;
+    // Carrier 360 owns the canonical `id` and the full return context. The
+    // embedded ledger must not add its legacy `carrier` alias to that URL.
+    if (!isActive || embedded) return;
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
       if (carrier) next.set('carrier', carrier);
       else next.delete('carrier');
       return next;
     }, { replace: true });
-  }, [carrier, isActive]); // eslint-disable-line
+  }, [carrier, isActive, embedded]); // eslint-disable-line
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -593,6 +599,7 @@ export default function CarrierLedger({ isActive = true, carrierId = '', embedde
     return (
       <div style={{ padding: embedded ? 0 : '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
         <PageHeader icon={<BookOpen size={22}/>} title="كشف الحساب"/>
+        {!embedded ? <OperationsWorkspaceNav active="invoices"/> : null}
         <Card style={{ textAlign: 'center', padding: 44 }}>
           <div style={{ fontSize: 44, marginBottom: 12 }}>📒</div>
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>الدفتر فاضي</div>
@@ -614,7 +621,6 @@ export default function CarrierLedger({ isActive = true, carrierId = '', embedde
 
   return (
     <div style={{ padding: embedded ? 0 : '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
-      {!embedded && <CarrierTabs carrierId={carrier} carrierName={currentCarrierName} active="ledger"/>}
       <PageHeader
         icon={<BookOpen size={22}/>}
         title="كشف الحساب"
@@ -654,6 +660,7 @@ export default function CarrierLedger({ isActive = true, carrierId = '', embedde
           <Btn size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refresh}>تحديث</Btn>
         </>}
       />
+      {!embedded ? <OperationsWorkspaceNav active="invoices"/> : null}
 
       {/* Balance summary */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px,1fr))', gap: 12, marginBottom: 12 }}>
@@ -862,7 +869,7 @@ export default function CarrierLedger({ isActive = true, carrierId = '', embedde
           {filtered.length === 0
             ? <Empty icon="📒" title="لا توجد عمليات" sub="ارفع كشف حساب أرامكس لتعبئة الدفتر"/>
             : (
-              <table className="m-cards" style={{ fontSize: 12, width: '100%' }}>
+              <DataTable className="m-cards" caption="حركات دفتر حساب الناقل">
                 <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
                   <tr>
                     <th style={{ width: 36, textAlign: 'center' }}>
@@ -1039,7 +1046,7 @@ export default function CarrierLedger({ isActive = true, carrierId = '', embedde
                     );
                   })}
                 </tbody>
-              </table>
+              </DataTable>
             )
           }
         </div>
@@ -1103,7 +1110,7 @@ function ActionModal({ modal, carrierName, onClose, onPaid, onPaidBulk, onDisput
           maxHeight: 220, overflowY: 'auto', marginBottom: 14,
           border: '1px solid var(--border)', borderRadius: 9,
         }}>
-          <table style={{ fontSize: 11, width: '100%' }}>
+          <DataTable caption="العمليات المحددة للتسديد الجماعي">
             <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)' }}>
               <tr>
                 <th style={{ minWidth: 110 }}>رقم المستند</th>
@@ -1128,7 +1135,7 @@ function ActionModal({ modal, carrierName, onClose, onPaid, onPaidBulk, onDisput
                 );
               })}
             </tbody>
-          </table>
+          </DataTable>
         </div>
         <Input label="رقم الحوالة المشترك (اختياري)" value={paymentRef}
           onChange={e => setPaymentRef(e.target.value)} placeholder="FT261XXXX"/>

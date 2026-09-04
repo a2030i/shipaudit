@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { CheckCircle2, XCircle, RotateCcw, AlertCircle, ClipboardCheck } from 'lucide-react';
-import { Card, Btn, StatCard, Badge, DiffCell, Spinner, Modal, Empty, toast, PageHeader } from '../components/UI.jsx';
+import { Badge, DiffCell } from '../components/UI.jsx';
+import { Button as Btn, DataTable, Dialog as Modal, EmptyState as Empty, PageHeader, Panel as Card, Spinner, StatStrip } from '../design-system/EnterpriseUI.jsx';
+import { toast } from '../lib/toast.js';
+import OperationsWorkspaceNav from '../components/enterprise/OperationsWorkspaceNav.jsx';
 import { exportAuditExcel, exportWeightsForExternalSystem, exportExcessWeights, exportInboundReturns } from '../engine/export.js';
 import { aiAnalyzeAudit, aiChat } from '../engine/openrouter.js';
 import { loadSettings, getActiveContract } from '../data/carriers.js';
@@ -415,7 +418,7 @@ function ResultsTable({ results, filter, showDetail, contract, startIndex = 0 })
 
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ fontSize: 12 }}>
+      <DataTable caption="تفاصيل معادلة تكلفة المراجعة">
         <thead>
           {showDetail ? (
             <>
@@ -556,7 +559,7 @@ function ResultsTable({ results, filter, showDetail, contract, startIndex = 0 })
             </tr>
           </tfoot>
         )}
-      </table>
+      </DataTable>
     </div>
   );
 }
@@ -1072,6 +1075,7 @@ export default function AuditResults({ audit, carriers, onNewAudit, onApproved, 
             </Btn>
           </>}
         />
+        {!embedded ? <OperationsWorkspaceNav active="invoices"/> : null}
 
         {auditControl && (
           <div style={{
@@ -1121,25 +1125,15 @@ export default function AuditResults({ audit, carriers, onNewAudit, onApproved, 
         )}
 
         {/* Stats */}
-        <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:16}}>
-          <StatCard label="إجمالي" value={summary.total} color="var(--accent)" onClick={()=>setFilter('all')}/>
-          <StatCard label="✓ مطابقة" value={summary.ok} color="var(--green)" onClick={()=>setFilter('ok')}/>
-          <StatCard label="✗ فروق" value={summary.mismatch} color="var(--red)" onClick={()=>setFilter('mismatch')}/>
-          {summary.favorable > 0 && (
-            <StatCard label="↓ لصالحك" value={summary.favorable} color="var(--accent)" onClick={()=>setFilter('favorable')}/>
-          )}
-          {summary.inbound > 0 && (
-            <StatCard label="🛬 وارد (مرتجع)" value={summary.inbound} color="var(--gold, #D97706)" onClick={()=>setFilter('inbound')}/>
-          )}
-          <StatCard label="؟ غير معروف" value={summary.unknown} color="var(--muted)" onClick={()=>setFilter('unknown')}/>
-          <div style={{background:'var(--card)',border:'1px solid var(--border)',borderRadius:11,padding:'13px 18px',
-            borderTop:`3px solid ${presentation.variance>0?'var(--red)':'var(--green)'}`}}>
-            <div style={{color:'var(--muted)',fontSize:10,fontFamily:'var(--font-mono)',marginBottom:3}}>إجمالي الفرق</div>
-            <div style={{color:presentation.variance>0?'var(--red)':'var(--green)',fontSize:20,fontFamily:'var(--font-mono)',fontWeight:700}}>
-              {presentation.variance>=0?'+':''}{presentation.variance.toFixed(2)} ر.س
-            </div>
-          </div>
-        </div>
+        <StatStrip items={[
+          { key: 'all', label: 'إجمالي', value: summary.total, onClick: () => setFilter('all') },
+          { key: 'ok', label: 'مطابقة', value: summary.ok, tone: 'success', onClick: () => setFilter('ok') },
+          { key: 'mismatch', label: 'فروق', value: summary.mismatch, tone: 'danger', onClick: () => setFilter('mismatch') },
+          ...(summary.favorable > 0 ? [{ key: 'favorable', label: 'لصالحك', value: summary.favorable, tone: 'success', onClick: () => setFilter('favorable') }] : []),
+          ...(summary.inbound > 0 ? [{ key: 'inbound', label: 'وارد (مرتجع)', value: summary.inbound, tone: 'warning', onClick: () => setFilter('inbound') }] : []),
+          { key: 'unknown', label: 'غير معروف', value: summary.unknown, tone: 'neutral', onClick: () => setFilter('unknown') },
+          { key: 'variance', label: 'إجمالي الفرق', value: `${presentation.variance >= 0 ? '+' : ''}${presentation.variance.toFixed(2)} ر.س`, tone: presentation.variance > 0 ? 'danger' : 'success' },
+        ]}/>
 
         {/* ── Invoice reconciliation panel ─────────────────────────────
             Shows the exact pre-VAT / VAT / gross numbers so the user

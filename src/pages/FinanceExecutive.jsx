@@ -14,6 +14,8 @@ import {
   loadPnlSnapshots, loadZohoFinancialDashboard,
 } from '../lib/pnlService.js';
 import { loadCashflowForecast } from '../lib/forecastService.js';
+import EnterpriseFinanceOverview from '../components/enterprise/EnterpriseFinanceOverview.jsx';
+import { ErrorState, LoadingState, Page as DsPage, PageHeader as DsPageHeader } from '../design-system/EnterpriseUI.jsx';
 import './finance-executive.css';
 
 const MONEY = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -227,12 +229,31 @@ export default function FinanceExecutive({ carriers = [], isActive = true }) {
   };
 
   if (state.loading && !state.loadedAt) {
-    return <div className="fex-loading"><Spinner size={24}/><strong>جارٍ تجهيز مركز المالية التنفيذي</strong><span>Zoho · البنوك · الموردون · Lamha · توقع السيولة</span></div>;
+    return <DsPage><DsPageHeader title="مركز المالية" description="السيولة، الذمم، الالتزامات والمطابقة"/><LoadingState title="جارٍ تجهيز مركز المالية" description="Zoho · البنوك · الموردون · لمحة · توقع السيولة"/></DsPage>;
   }
   if (state.error && !state.loadedAt) {
-    return <div className="fex-loading is-error"><CircleAlert size={24}/><strong>تعذر إعداد الصورة المالية</strong><span>{state.error.message || 'تعذر الوصول إلى المصادر.'}</span><button onClick={reload}>إعادة المحاولة</button></div>;
+    return <DsPage><DsPageHeader title="مركز المالية"/><ErrorState title="تعذر إعداد الصورة المالية" description={state.error.message || 'تعذر الوصول إلى المصادر.'} onRetry={reload}/></DsPage>;
   }
 
+  return <EnterpriseFinanceOverview
+    state={state}
+    period={period}
+    snapshot={snapshot}
+    cash={cash}
+    vendor={vendor}
+    bills={bills}
+    bank={bank}
+    netProfit={netProfit}
+    operationalCollectible={operationalCollectible}
+    accountingOutstanding={accountingOutstanding}
+    residual={residual}
+    vendorPayable={vendorPayable}
+    onPeriodChange={amount => updatePeriod(movePeriod(period, amount))}
+    onReload={reload}
+    navigate={navigate}
+  />;
+
+  /* واجهة المالية السابقة محفوظة مؤقتًا كفرع غير قابل للوصول حتى اكتمال الترحيل. */
   return (
     <div className="finance-executive" dir="rtl">
       <header className="fex-header">

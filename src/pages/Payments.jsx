@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { RefreshCw, Search, Trash2, ChevronDown, ChevronLeft, FileText } from 'lucide-react';
-import { Card, Btn, Input, Modal, Empty, Spinner, toast } from '../components/UI.jsx';
+import { toast } from '../lib/toast.js';
 import {
   loadPayments,
   loadPaymentOps,
@@ -9,6 +9,7 @@ import {
   loadCarriersOverview,
 } from '../lib/carrierStatementsService.js';
 import { useAuth } from '../lib/auth.jsx';
+import { Button as Btn, DataTable, Dialog as Modal, EmptyState as Empty, Panel as Card, Spinner } from '../design-system/EnterpriseUI.jsx';
 
 const fmt = n => (n == null || Number.isNaN(n))
   ? '—'
@@ -21,7 +22,7 @@ const SHIPMENT_LABEL = {
   international_out:  '✈️ دولي صادر',
 };
 
-export default function Payments({ isActive = true }) {
+export default function Payments({ isActive = true, embedded = false }) {
   const { can } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [carrier, setCarrier] = useState(() => searchParams.get('carrier') || '');
@@ -127,13 +128,13 @@ export default function Payments({ isActive = true }) {
   );
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1300, margin: '0 auto' }}>
+    <div style={{ padding: embedded ? 0 : '24px 28px 80px', maxWidth: 1300, margin: '0 auto' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-          <h2 style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', margin: 0 }}>
-            💰 الدفعات
-          </h2>
+          {!embedded && <h2 style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', margin: 0 }}>
+            الدفعات
+          </h2>}
           {carrierList.length > 0 && (
             <select value={carrier} onChange={e => setCarrier(e.target.value)}
               style={{
@@ -293,7 +294,7 @@ function PaymentRow({ payment, isExpanded, ops, onToggle, onDelete, canDelete })
                   📝 {payment.notes}
                 </div>
               )}
-              <table style={{ width: '100%', fontSize: 12 }}>
+              <DataTable caption="دفعات شركات الشحن">
                 <thead>
                   <tr style={{ background: 'var(--card)' }}>
                     <th style={{ padding: '8px 14px', textAlign: 'right' }}>رقم المستند</th>
@@ -330,7 +331,7 @@ function PaymentRow({ payment, isExpanded, ops, onToggle, onDelete, canDelete })
                     );
                   })}
                 </tbody>
-              </table>
+              </DataTable>
             </>
           )}
         </div>

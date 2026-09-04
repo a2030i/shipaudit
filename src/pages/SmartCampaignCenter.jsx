@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle,
   BarChart3,
@@ -22,7 +22,13 @@ import {
   Users,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { Btn, Spinner, toast } from '../components/UI.jsx';
+import { toast } from '../components/UI.jsx';
+import {
+  Alert, Button as Btn, DataTable, EmptyState, FilterBar, Identifier, Money, Page, PageHeader,
+  PhoneNumber, StatStrip, StatusBadge, Spinner, Surface,
+} from '../design-system/EnterpriseUI.jsx';
+import CampaignWorkspaceNav from '../components/enterprise/CampaignWorkspaceNav.jsx';
+import '../components/enterprise/batch4-workspaces.css';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import IvrCampaignModal from '../components/IvrCampaignModal.jsx';
 import CampaignResultModal from '../components/CampaignResultModal.jsx';
@@ -50,6 +56,7 @@ import {
 import './smart-campaign-center.css';
 import { readAudienceHandoff } from '../lib/agingOperations.js';
 import { campaignBucketLabel } from '../lib/customerCampaignBuckets.js';
+import { buildStore360Url } from '../lib/store360Navigation.js';
 
 const STEPS = ['الهدف', 'الجمهور', 'الحماية', 'القناة', 'المراجعة'];
 const COLLECTION_BUCKETS = [
@@ -189,18 +196,12 @@ function SummaryStrip({ campaigns, activeFilter, onFilter }) {
     if (campaign.status === 'needs_decision') acc.decision += 1;
     return acc;
   }, { draft: 0, scheduled: 0, running: 0, decision: 0 });
-  return (
-    <div className="scc-summary" aria-label="ملخص تشغيل الحملات">
-      <SummaryItem id="draft" label="مسودات" value={counts.draft} active={activeFilter === 'draft'} onClick={onFilter}/>
-      <SummaryItem id="scheduled" label="مجدولة" value={counts.scheduled} active={activeFilter === 'scheduled'} onClick={onFilter}/>
-      <SummaryItem id="running" label="تعمل الآن" value={counts.running} tone="success" active={activeFilter === 'running'} onClick={onFilter}/>
-      <SummaryItem id="decision" label="تحتاج قراراً" value={counts.decision} tone="warning" active={activeFilter === 'decision'} onClick={onFilter}/>
-    </div>
-  );
-}
-
-function SummaryItem({ id, label, value, tone = 'default', active, onClick }) {
-  return <button type="button" className={`scc-summary__item is-${tone}${active ? ' is-active' : ''}`} aria-pressed={active} onClick={() => onClick(id)}><span>{label}</span><strong>{fmt0(value)}</strong></button>;
+  return <StatStrip items={[
+    { key: 'draft', label: 'مسودات', value: fmt0(counts.draft), note: activeFilter === 'draft' ? 'الفلتر الحالي' : 'تحت الإعداد والمراجعة', onClick: () => onFilter('draft') },
+    { key: 'scheduled', label: 'مجدولة', value: fmt0(counts.scheduled), note: activeFilter === 'scheduled' ? 'الفلتر الحالي' : 'بانتظار موعدها', onClick: () => onFilter('scheduled') },
+    { key: 'running', label: 'تعمل الآن', value: fmt0(counts.running), note: activeFilter === 'running' ? 'الفلتر الحالي' : 'قيد التنفيذ', tone: 'success', onClick: () => onFilter('running') },
+    { key: 'decision', label: 'تحتاج قراراً', value: fmt0(counts.decision), note: activeFilter === 'decision' ? 'الفلتر الحالي' : 'تتطلب مراجعة', tone: 'warning', onClick: () => onFilter('decision') },
+  ]}/>;
 }
 
 function StepRail({ step, onStep }) {
@@ -297,43 +298,31 @@ function AudienceFilters({ objective, definition, onChange }) {
 }
 
 function CampaignList({ rows, loading, onOpenResult, onEdit }) {
-  if (loading) return <div className="scc-list-loading"><Spinner/></div>;
-  return (
-    <div className="scc-table-wrap">
-      <table className="scc-table">
-        <thead><tr><th>الحملة</th><th>الهدف</th><th>الجمهور</th><th>القناة</th><th>الحالة</th><th>النتيجة</th><th>الإجراء</th></tr></thead>
-        <tbody>
-          {rows.slice(0, 12).map(row => {
-            const status = STATUS_META[row.status] || STATUS_META.draft;
-            const result = row.resultSummary || {};
-            return (
-              <tr key={row.id || row.name}>
-                <td data-label="الحملة"><strong>{row.name}</strong><small>{row.legacy ? 'سجل تاريخي' : `CMP-${String(row.id || '').slice(0, 8).toUpperCase()}`}</small></td>
-                <td data-label="الهدف">{SMART_CAMPAIGN_OBJECTIVES[row.objective]?.label || 'حملة سابقة'}</td>
-                <td data-label="الجمهور"><strong>{fmt0(row.readyCount || result.targets)}</strong><small>{row.financialAmount ? `${fmtMoney(row.financialAmount)} ر.س` : `${fmt0(row.audienceCount || result.targets)} نتيجة`}</small></td>
-                <td data-label="القناة">{SMART_CAMPAIGN_CHANNELS[row.channel]?.label || (row.legacy ? 'واتساب عبر هاتف' : 'غير محددة')}</td>
-                <td data-label="الحالة"><span className={`scc-status is-${status[1]}`}>{status[0]}</span></td>
-                <td data-label="النتيجة">{result.replied != null ? `${fmt0(result.replied)} ردّ` : result.tasks != null ? `${fmt0(result.tasks)} مهمة` : '—'}</td>
-                <td data-label="الإجراء"><div className="scc-row-actions">
-                  {row.status === 'draft' || row.status === 'review' || row.status === 'ready' ? (
-                    <button type="button" className="scc-row-action" onClick={() => onEdit(row)} aria-label={`تعديل ${row.name}`}><Pencil size={15}/><span>تعديل</span></button>
-                  ) : (
-                    <button type="button" className="scc-row-action is-result" onClick={() => onOpenResult(row)} aria-label={`عرض نتيجة ${row.name}`}><BarChart3 size={15}/><span>النتيجة</span></button>
-                  )}
-                </div></td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      {!rows.length && <div className="scc-empty">لا توجد حملات بعد. ابدأ بحملة جديدة أو احفظ أول مسودة.</div>}
-    </div>
-  );
+  const columns = [
+    { key: 'name', label: 'الحملة', className: 'mobile-identity', render: row => <><strong>{row.name}</strong><small><Identifier value={row.legacy ? 'سجل تاريخي' : `CMP-${String(row.id || '').slice(0, 8).toUpperCase()}`}/></small></> },
+    { key: 'objective', label: 'الهدف', render: row => SMART_CAMPAIGN_OBJECTIVES[row.objective]?.label || 'حملة سابقة' },
+    { key: 'audience', label: 'الجمهور', render: row => { const result = row.resultSummary || {}; return <><strong>{fmt0(row.readyCount || result.targets)}</strong><small>{row.financialAmount ? <Money value={row.financialAmount}/> : `${fmt0(row.audienceCount || result.targets)} نتيجة`}</small></>; } },
+    { key: 'channel', label: 'القناة', render: row => SMART_CAMPAIGN_CHANNELS[row.channel]?.label || (row.legacy ? 'واتساب عبر هاتف' : 'غير محددة') },
+    { key: 'status', label: 'الحالة', render: row => { const meta = STATUS_META[row.status] || STATUS_META.draft; return <StatusBadge tone={meta[1]}>{meta[0]}</StatusBadge>; } },
+    { key: 'result', label: 'النتيجة', render: row => { const result = row.resultSummary || {}; return result.replied != null ? `${fmt0(result.replied)} ردّ` : result.tasks != null ? `${fmt0(result.tasks)} مهمة` : '—'; } },
+    { key: 'action', label: 'الإجراء', render: row => ['draft', 'review', 'ready'].includes(row.status)
+      ? <Btn size="sm" icon={<Pencil size={14}/>} onClick={() => onEdit(row)}>تعديل</Btn>
+      : <Btn size="sm" icon={<BarChart3 size={14}/>} onClick={() => onOpenResult(row)}>النتيجة</Btn> },
+  ];
+  return <DataTable
+    caption="سجل الحملات الموحد"
+    columns={columns}
+    rows={rows.slice(0, 12)}
+    getRowKey={row => row.id || row.name}
+    loading={loading}
+    empty="لا توجد حملات بعد. ابدأ بحملة جديدة أو احفظ أول مسودة."
+  />;
 }
 
 export default function SmartCampaignCenter({ isActive = true }) {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const audienceContextToken = searchParams.get('audienceContext');
   const { user, can } = useAuth();
   const canWhatsApp = can('campaigns.send');
@@ -363,11 +352,33 @@ export default function SmartCampaignCenter({ isActive = true }) {
   const [assignedHatifUserId, setAssignedHatifUserId] = useState('');
   const [audienceHandoff, setAudienceHandoff] = useState(null);
   const [campaignFilter, setCampaignFilter] = useState('');
+  const [audienceResultFilter, setAudienceResultFilter] = useState(() => searchParams.get('audienceResult') || '');
   const [resultCampaign, setResultCampaign] = useState(null);
   const handoffFromStore = audienceHandoff?.source === 'store_360'
     || audienceHandoff?.returnTo?.startsWith('/customer-360');
   const handoffOriginLabel = audienceHandoff?.originLabel || (handoffFromStore ? 'Customer 360' : 'Aging Operations');
   const handoffSelectionLabel = audienceHandoff?.selectionLabel || (handoffFromStore ? 'العميل المحدد' : 'المحدد في التحصيل');
+
+  const openAudienceResult = filter => {
+    setAudienceResultFilter(filter);
+    const next = new URLSearchParams(searchParams);
+    if (filter) next.set('audienceResult', filter); else next.delete('audienceResult');
+    setSearchParams(next, { replace: true });
+  };
+
+  const openAudienceCustomer = row => {
+    const target = buildStore360Url({
+      storeId: row.storeId,
+      view: 'overview',
+      source: 'campaign-audience',
+      returnTo: `${location.pathname}${location.search}`,
+    });
+    if (!target) {
+      toast('لا يمكن فتح Customer 360 دون Store ID موثوق لهذا السجل.', 'info');
+      return;
+    }
+    navigate(target);
+  };
 
   useEffect(() => {
     if (!isActive) return;
@@ -470,6 +481,16 @@ export default function SmartCampaignCenter({ isActive = true }) {
     debtorPhones,
   }), [preparedRows, protections, channel, debtorPhones]);
   const exclusionReasons = useMemo(() => whatsappAudienceExclusionBreakdown(audienceSummary.counts), [audienceSummary.counts]);
+  const protectionReady = !!protections && !protectionsError;
+  const audienceResultRows = useMemo(() => {
+    if (!audienceResultFilter) return [];
+    if (audienceResultFilter === 'all') return preparedRows;
+    if (audienceResultFilter === 'review') return protectionReady ? [] : preparedRows;
+    if (!protectionReady) return [];
+    if (audienceResultFilter === 'eligible') return audienceSummary.ready;
+    const readyKeys = new Set(audienceSummary.ready.map(row => row._rk));
+    return preparedRows.filter(row => !readyKeys.has(row._rk));
+  }, [audienceResultFilter, audienceSummary.ready, preparedRows, protectionReady]);
   const financialAmount = useMemo(() => audience.reduce((sum, row) => sum + (Number(row.amount) || 0), 0), [audience]);
   const assignedHatifUser = useMemo(
     () => hatifUsers.find(row => row.userId === assignedHatifUserId) || null,
@@ -507,8 +528,19 @@ export default function SmartCampaignCenter({ isActive = true }) {
     if (!campaignFilter) return campaignRows;
     if (campaignFilter === 'draft') return campaignRows.filter(row => ['draft', 'review', 'ready'].includes(row.status));
     if (campaignFilter === 'decision') return campaignRows.filter(row => row.status === 'needs_decision');
+    if (campaignFilter === 'active') return campaignRows.filter(row => ['scheduled', 'running'].includes(row.status));
     return campaignRows.filter(row => row.status === campaignFilter);
   }, [campaignRows, campaignFilter]);
+
+  useEffect(() => {
+    if (!isActive || audienceContextToken) return;
+    const requestedView = searchParams.get('view') || 'overview';
+    if (requestedView === 'audiences') { setStep(2); setCampaignFilter(''); }
+    else if (requestedView === 'draft') { setStep(1); setCampaignFilter('draft'); }
+    else if (requestedView === 'launch') { setStep(5); setCampaignFilter(''); }
+    else if (requestedView === 'active') { setCampaignFilter('active'); }
+    else setCampaignFilter('');
+  }, [audienceContextToken, isActive, searchParams]);
 
   const toggleCampaignFilter = next => setCampaignFilter(current => current === next ? '' : next);
 
@@ -660,20 +692,22 @@ export default function SmartCampaignCenter({ isActive = true }) {
 
   if (!isActive) return null;
   return (
-    <div className="smart-campaign-center workspace-page" dir="rtl">
-      <header className="scc-header">
-        <div><h1>مركز الحملات الذكي</h1><p>أنشئ الجمهور، راجع الحماية، ثم فعّل القناة من مكان واحد.</p></div>
-        <div className="scc-header__actions">
+    <Page className="smart-campaign-center campaign-workspace">
+      <PageHeader
+        eyebrow="مركز عمل"
+        title="الحملات"
+        description="ابنِ الجمهور، راجع الأهلية والحماية، ثم سلّمه للقناة دون دمج الإنشاء بالإرسال."
+        actions={<>
+          <Btn icon={<Save size={15}/>} onClick={() => resetComposer(true)} disabled={!canManage}>مسودة جديدة</Btn>
           <Btn variant="primary" icon={<Plus size={16}/>} onClick={() => resetComposer(false)} disabled={!canManage}>حملة جديدة</Btn>
-          <Btn variant="ghost" icon={<Save size={15}/>} onClick={() => resetComposer(true)} disabled={!canManage}>مسودة جديدة</Btn>
-        </div>
-      </header>
+        </>}
+      />
+      <CampaignWorkspaceNav/>
 
-      {canWhatsApp && !hatifUsersLoading && !hatifUsers.length ? <div className="scc-integration-alert" role="alert">
-        <AlertTriangle size={17}/>
-        <div><strong>إطلاق WhatsApp متوقف حتى يكتمل ربط موظفي هاتف</strong><span>{hatifUsersError || 'لم يرجع التكامل أي موظف يمكن إسناد ردود الحملة إليه.'}</span></div>
-        <button type="button" onClick={() => navigate('/settings/hatif')}>مراجعة الربط</button>
-      </div> : null}
+      {canWhatsApp && !hatifUsersLoading && !hatifUsers.length ? <Alert className="scc-integration-alert" tone="warning" title="إطلاق WhatsApp متوقف حتى يكتمل ربط موظفي هاتف">
+        <span>{hatifUsersError || 'لم يرجع التكامل أي موظف يمكن إسناد ردود الحملة إليه.'}</span>
+        <Btn size="sm" onClick={() => navigate('/settings/hatif')}>مراجعة الربط</Btn>
+      </Alert> : null}
 
       {audienceHandoff && (
         <div className="scc-audience-handoff">
@@ -696,7 +730,7 @@ export default function SmartCampaignCenter({ isActive = true }) {
       )}
 
       <div className="scc-workspace">
-        <aside className="scc-composer">
+        <Surface as="aside" className="scc-composer">
           <div className="scc-composer__head">
             <div><h2>منشئ الحملة</h2><span>{editingId ? 'تعديل حملة قائمة' : 'حملة جديدة غير مرسلة'}</span></div>
             {editingId && <button type="button" onClick={() => resetComposer(false)}>بدء أخرى</button>}
@@ -716,17 +750,40 @@ export default function SmartCampaignCenter({ isActive = true }) {
             <div className="scc-block__title is-sub"><ClipboardList size={15}/><span>فلاتر الجمهور</span></div>
             {universeLoading ? <div className="scc-inline-loading"><Spinner/> يحمّل الجمهور الحي…</div>
               : universeError ? <div className="scc-alert is-danger"><AlertTriangle size={15}/>{universeError}</div>
-                : <AudienceFilters objective={objective} definition={definition} onChange={setDefinition}/>}
+                : <FilterBar className="scc-audience-filters"><AudienceFilters objective={objective} definition={definition} onChange={setDefinition}/></FilterBar>}
           </div>
 
           <div className="scc-equation" aria-label="معادلة جمهور الحملة">
-            <AudienceNumber label="نتيجة الفلتر" value={audienceSummary.source} tone="source"/>
+            <AudienceNumber label="إجمالي المطابق" value={audienceSummary.source} tone="source" onClick={() => openAudienceResult('all')}/>
             <span className="scc-equation__operator">−</span>
-            <AudienceNumber label="مستبعد تلقائياً" value={audienceSummary.excluded} tone="excluded"/>
+            <AudienceNumber label="غير مؤهل / مستبعد" value={protectionReady ? audienceSummary.excluded : 0} tone="excluded" onClick={() => openAudienceResult('excluded')}/>
             <span className="scc-equation__operator">=</span>
-            <AudienceNumber label="جاهز" value={audienceSummary.ready.length} tone="ready"/>
+            <AudienceNumber label="مؤهل" value={protectionReady ? audienceSummary.ready.length : 0} tone="ready" onClick={() => openAudienceResult('eligible')}/>
+            <span className="scc-equation__operator">+</span>
+            <AudienceNumber label="يحتاج مراجعة" value={protectionReady ? 0 : audienceSummary.source} tone="review" onClick={() => openAudienceResult('review')}/>
           </div>
           {!!financialAmount && <div className="scc-financial-total">مبلغ الجمهور المحدد <strong>{fmtMoney(financialAmount)} ر.س</strong></div>}
+
+          {audienceResultFilter ? <section className="scc-audience-result-set" aria-label="سجلات جمهور الحملة">
+            <div className="scc-section-head">
+              <div><h2>{audienceResultFilter === 'all' ? 'كل الجمهور المطابق' : audienceResultFilter === 'eligible' ? 'الجمهور المؤهل' : audienceResultFilter === 'review' ? 'جمهور يحتاج مراجعة' : 'الجمهور غير المؤهل أو المستبعد'}</h2><span>{fmt0(audienceResultRows.length)} سجل كوّن هذا الرقم</span></div>
+              <Btn size="sm" onClick={() => openAudienceResult('')}>إغلاق</Btn>
+            </div>
+            {audienceResultRows.length ? <DataTable
+              caption="السجلات المكوّنة لعدد الجمهور"
+              rows={audienceResultRows.slice(0, 100)}
+              getRowKey={(row, index) => row._rk || `${row.to}-${index}`}
+              getRowLabel={row => `فتح Customer 360 للعميل ${row.name || row.to}`}
+              onRowClick={openAudienceCustomer}
+              columns={[
+                { key: 'name', label: 'العميل', className: 'mobile-identity', render: row => <><strong>{row.name || 'بلا اسم'}</strong><small><Identifier value={row.storeId ? `#${row.storeId}` : row.source || '—'}/></small></> },
+                { key: 'phone', label: 'الجوال', render: row => <PhoneNumber value={row.to}/> },
+                { key: 'source', label: 'المصدر', render: row => row.source || '—' },
+                { key: 'amount', label: 'القيمة', render: row => row.amount != null ? <Money value={row.amount}/> : '—' },
+                { key: 'state', label: 'حالة المراجعة', render: row => <StatusBadge tone={!protectionReady ? 'warning' : audienceSummary.ready.some(item => item._rk === row._rk) ? 'success' : 'danger'}>{!protectionReady ? 'تحتاج اكتمال الفحص' : audienceSummary.ready.some(item => item._rk === row._rk) ? 'مؤهل' : 'مستبعد'}</StatusBadge> },
+              ]}
+            /> : <EmptyState compact title="لا توجد سجلات في هذه الحالة"/>}
+          </section> : null}
 
           <div className="scc-protection">
             <div className="scc-block__title"><ShieldCheck size={16}/><span>الحماية</span></div>
@@ -780,11 +837,11 @@ export default function SmartCampaignCenter({ isActive = true }) {
               {step < 3 ? 'متابعة إلى الحماية' : step < 4 ? 'متابعة إلى القناة' : step < 5 ? 'مراجعة الحملة' : channel === 'employee_task' ? 'إنشاء مهام الفريق' : channel === 'export' ? 'تصدير الجمهور' : 'فتح مراجعة القناة'}
             </Btn>
           </div>
-        </aside>
+        </Surface>
 
         <SummaryStrip campaigns={campaignRows} activeFilter={campaignFilter} onFilter={toggleCampaignFilter}/>
 
-        <section className="scc-campaign-list">
+        <Surface as="section" className="scc-campaign-list">
           <div className="scc-section-head">
             <div><h2>قائمة الحملات</h2><span>{campaignFilter ? `${fmt0(visibleCampaignRows.length)} من ${fmt0(campaignRows.length)} حملة` : `${fmt0(campaignRows.length)} حملة موحدة وسجل تاريخي`}</span></div>
             <div className="scc-section-actions">
@@ -793,7 +850,7 @@ export default function SmartCampaignCenter({ isActive = true }) {
             </div>
           </div>
           <CampaignList rows={visibleCampaignRows} loading={loadingCampaigns} onOpenResult={setResultCampaign} onEdit={openCampaign}/>
-        </section>
+        </Surface>
       </div>
 
       <WhatsAppSendModal
@@ -827,12 +884,12 @@ export default function SmartCampaignCenter({ isActive = true }) {
         onShowMessages={() => navigate(`/whatsapp-settings?tab=campaigns&panel=messages&campaign=${encodeURIComponent(resultCampaign?.name || '')}`)}
         onShowIvrLog={() => navigate('/whatsapp-settings?tab=ivr')}
       />
-    </div>
+    </Page>
   );
 }
 
-function AudienceNumber({ label, value, tone }) {
-  return <div className={`scc-audience-number is-${tone}`}><span>{label}</span><strong>{fmt0(value)}</strong></div>;
+function AudienceNumber({ label, value, tone, onClick }) {
+  return <button type="button" className={`scc-audience-number is-${tone}`} onClick={onClick} aria-label={`فتح سجلات ${label}`}><span>{label}</span><strong>{fmt0(value)}</strong></button>;
 }
 
 function ChannelButton({ id, icon: Icon, selected, disabled, onClick }) {

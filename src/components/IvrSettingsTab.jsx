@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { ShieldCheck, CheckCircle2, X, Save, Plus, Trash2, PhoneCall, Upload, Download, Send } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, toast } from './UI.jsx';
+import { DataTable } from '../design-system/EnterpriseUI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadIvrConfig, saveIvrConfig, verifyIvr, launchIvrCampaign, loadIvrCampaigns, loadIvrCalls, loadIvrAnalytics, ivrStatusBadge, exportIvrCampaign, IVR_ACTIONS, IVR_VARS, uploadIvrAudio } from '../lib/ivrService.js';
 import { loadWhatsAppConfig } from '../lib/whatsappService.js';
@@ -426,7 +427,7 @@ export default function IvrTab() {
               </div>
             )}
             {(analytics.by_script || []).length > 1 && (
-              <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 10 }}>
+              <DataTable className="m-cards" caption="متغيرات نص المكالمة">
                 <thead><tr style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 11 }}>
                   <th style={{ padding: '5px 7px' }} data-label="">السكربت</th>
                   <th style={{ padding: '5px 7px' }}>مكالمات</th>
@@ -443,7 +444,7 @@ export default function IvrTab() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </DataTable>
             )}
           </Card>
         );
@@ -453,7 +454,7 @@ export default function IvrTab() {
         <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 10 }}>📋 سجل المكالمات</div>
         {!camps.length ? <Empty title="لا مكالمات بعد" subtitle="أطلِق حملة مكالمات من صفحات التحصيل/المبيعات."/> : (
           <div style={{ display: 'grid', gap: 12 }}>
-            <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <DataTable className="m-cards" caption="حملات IVR">
               <thead><tr style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 11.5 }}>
                 <th style={{ padding: '6px 8px' }} data-label="">الحملة</th>
                 <th style={{ padding: '6px 8px' }}>مكالمات</th>
@@ -474,7 +475,7 @@ export default function IvrTab() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
 
             {openCamp && (
               <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
@@ -485,7 +486,7 @@ export default function IvrTab() {
                   </Btn>
                 </div>
                 {loadingCalls ? <Spinner/> : !calls.length ? <div style={{ fontSize: 12, color: 'var(--muted)' }}>لا صفوف.</div> : (
-                  <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <DataTable className="m-cards" caption="سجل مكالمات IVR">
                     <thead><tr style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 11 }}>
                       <th style={{ padding: '5px 7px' }} data-label="">الاسم</th>
                       <th style={{ padding: '5px 7px' }}>الرقم</th>
@@ -522,7 +523,7 @@ export default function IvrTab() {
                         </tr>
                       ); })}
                     </tbody>
-                  </table>
+                  </DataTable>
                 )}
               </div>
             )}

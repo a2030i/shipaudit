@@ -690,7 +690,9 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
   ]);
   assert.match(cyclePage, /<UploadWizard key=\{period\}[^>]*initialPeriod=\{period\} lockPeriod/);
   assert.match(cyclePage, /accounting-cycle-period-bar/);
-  assert.match(cyclePage, /new URLSearchParams\(\{ period \}\)/);
+  assert.match(cyclePage, /const canonical = new URLSearchParams\(params\)/);
+  assert.match(cyclePage, /canonical\.set\('period', period\)/);
+  assert.match(cyclePage, /<Tabs[\s\S]*onChange=\{changeStage\}/);
   assert.match(cyclePage, /new URLSearchParams\(\{ period: nextPeriod \}\)/);
   assert.match(cyclePage, /المراحل والملفات والنتائج أدناه تتبع هذا الشهر فقط/);
   assert.ok(

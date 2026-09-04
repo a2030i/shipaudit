@@ -5,10 +5,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   FileSpreadsheet, RefreshCw, Printer, Clock, History, ArrowUpRight,
-  ArrowDownRight, CheckCircle2, Calendar, Plus, Trash2, Edit3, FileText,
+  ArrowDownRight, Calendar, Plus, Trash2, Edit3, FileText,
   AlertTriangle, ShieldCheck, Eye, Download, Upload,
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
+import { DataTable, StatusBadge } from '../design-system/EnterpriseUI.jsx';
 import { ClipboardList } from 'lucide-react';
 import {
   loadAllContractsOverview,
@@ -297,104 +298,31 @@ export default function ContractsOverview({ isActive = true }) {
           </span>
         </div>
 
-        {loading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spinner size={26}/></div>
-        ) : rows.length === 0 ? (
-          <Empty icon="📄" title="ما فيه عقود مسجّلة" sub="أضف عقد من صفحة شركات الشحن"/>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="m-cards contracts-overview-table">
-              <thead>
-                <tr>
-                  <th style={{ minWidth: 160 }}>الشركة</th>
-                  <th style={{ minWidth: 140 }}>العقد</th>
-                  <th style={{ minWidth: 110 }}>الفترة</th>
-                  <th style={{ minWidth: 110, background: 'color-mix(in srgb, var(--accent) 6%, transparent)' }}>الحد الأساسي</th>
-                  <th style={{ minWidth: 110, background: 'color-mix(in srgb, var(--accent) 6%, transparent)' }}>السعر الأساسي</th>
-                  <th style={{ minWidth: 130, background: 'rgba(251,191,36,.06)' }}>كل كيلو زائد</th>
-                  <th style={{ minWidth: 80,  background: 'rgba(58,173,120,.06)' }}>الوقود</th>
-                  <th style={{ minWidth: 80,  background: 'rgba(168,85,247,.06)' }}>رسوم أمنية %</th>
-                  <th style={{ minWidth: 90,  background: 'color-mix(in srgb, var(--accent) 6%, transparent)' }}>رسوم COD</th>
-                  <th style={{ minWidth: 80 }}>الوجهات</th>
-                  <th style={{ minWidth: 220 }}>مستند العقد</th>
-                  <th style={{ minWidth: 70 }}>الحالة</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r, idx) => (
-                  <tr key={`${r.carrierId}-${r.contractId}`} style={{ background: idx % 2 === 0 ? 'transparent' : 'var(--surface2)' }}>
-                    <td data-label="">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                        <span style={{ fontSize: 18 }}>{r.carrierLogo}</span>
-                        <span style={{ fontWeight: 700, color: 'var(--text)' }}>{r.carrierName}</span>
-                      </div>
-                    </td>
-                    <td data-label="العقد" style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--accent)' }}>
-                      {r.contractLabel}
-                    </td>
-                    <td data-label="الفترة" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
-                      {fmtDateOnly(r.startDate)}
-                      <br/>
-                      <span style={{ opacity: .6 }}>→ {r.endDate || 'مفتوح'}</span>
-                    </td>
-                    <td data-label="الحد الأساسي" style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{fmt(r.baseUpTo, 'كغ')}</td>
-                    <td data-label="السعر الأساسي" style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--accent)' }}>{fmt(r.basePrice, 'ر.س')}</td>
-                    <td data-label="كل كيلو زائد" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gold)', fontWeight: 600 }}>
-                      {r.excessPerKg != null ? `${r.excessPerKg} ر.س / ${r.excessUnit}كغ` : '—'}
-                    </td>
-                    <td data-label="الوقود" style={{ fontFamily: 'var(--font-mono)', color: 'var(--green)' }}>{pct(r.fuelPct)}</td>
-                    <td data-label="رسوم أمنية" style={{ fontFamily: 'var(--font-mono)', color: 'var(--purple)' }}>{pct(r.rssPct)}</td>
-                    <td data-label="رسوم COD" style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{fmt(r.codFee, 'ر.س')}</td>
-                    <td data-label="الوجهات" style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>{r.destinations.length}</td>
-                    <td data-label="مستند العقد">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        {r.contractPdfPath ? (
-                          <>
-                            <Btn size="sm" variant="ghost" icon={<Eye size={13}/>} onClick={() => handleDocumentView(r)} disabled={Boolean(documentBusy)}>
-                              {documentBusy === `${r.carrierId}:view` ? 'يفتح…' : 'عرض'}
-                            </Btn>
-                            <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={() => handleDocumentDownload(r)} disabled={Boolean(documentBusy)}>
-                              {documentBusy === `${r.carrierId}:download` ? 'ينزّل…' : 'تنزيل'}
-                            </Btn>
-                          </>
-                        ) : (
-                          <span style={{ fontSize: 11, color: 'var(--gold)', fontWeight: 700 }}>غير مرفوع</span>
-                        )}
-                        <Btn
-                          size="sm"
-                          variant="ghost"
-                          icon={<Upload size={13}/>}
-                          disabled={Boolean(documentBusy)}
-                          onClick={() => {
-                            documentUploadRowRef.current = r;
-                            documentInputRef.current?.click();
-                          }}
-                        >
-                          {documentBusy === `${r.carrierId}:upload` ? 'يرفع…' : (r.contractPdfPath ? 'استبدال' : 'رفع PDF')}
-                        </Btn>
-                      </div>
-                    </td>
-                    <td data-label="الحالة">
-                      {r.isActive ? (
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 4,
-                          padding: '2px 9px', borderRadius: 12,
-                          background: 'color-mix(in srgb, var(--accent) 10%, transparent)',
-                          border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
-                          color: 'var(--accent)', fontSize: 10.5, fontWeight: 700,
-                        }}>
-                          <CheckCircle2 size={10}/> ساري
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: 10.5, color: 'var(--muted)' }}>—</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <DataTable
+          caption="جدول عقود شركات الشحن"
+          className="contracts-overview-table"
+          loading={loading}
+          rows={rows}
+          getRowKey={r => `${r.carrierId}-${r.contractId}`}
+          empty="ما فيه عقود مسجّلة — أضف عقدًا من صفحة شركات الشحن"
+          columns={[
+            { key: 'carrier', label: 'الشركة', render: r => <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}><span aria-hidden="true" style={{ fontSize: 18 }}>{r.carrierLogo}</span><strong>{r.carrierName}</strong></div> },
+            { key: 'contract', label: 'العقد', className: 'numeric', render: r => <bdi>{r.contractLabel}</bdi> },
+            { key: 'period', label: 'الفترة', className: 'numeric', render: r => <><bdi>{fmtDateOnly(r.startDate)}</bdi><br/><span>إلى <bdi>{r.endDate || 'مفتوح'}</bdi></span></> },
+            { key: 'baseUpTo', label: 'الحد الأساسي', className: 'numeric', render: r => <bdi>{fmt(r.baseUpTo, 'كغ')}</bdi> },
+            { key: 'basePrice', label: 'السعر الأساسي', className: 'numeric', render: r => <bdi>{fmt(r.basePrice, 'ر.س')}</bdi> },
+            { key: 'excess', label: 'كل كيلو زائد', className: 'numeric', render: r => <bdi>{r.excessPerKg != null ? `${r.excessPerKg} ر.س / ${r.excessUnit}كغ` : '—'}</bdi> },
+            { key: 'fuel', label: 'الوقود', className: 'numeric', render: r => <bdi>{pct(r.fuelPct)}</bdi> },
+            { key: 'rss', label: 'رسوم أمنية %', className: 'numeric', render: r => <bdi>{pct(r.rssPct)}</bdi> },
+            { key: 'cod', label: 'رسوم COD', className: 'numeric', render: r => <bdi>{fmt(r.codFee, 'ر.س')}</bdi> },
+            { key: 'destinations', label: 'الوجهات', className: 'numeric', render: r => <bdi>{r.destinations.length}</bdi> },
+            { key: 'document', label: 'مستند العقد', render: r => <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              {r.contractPdfPath ? <><Btn size="sm" variant="ghost" icon={<Eye size={13}/>} onClick={() => handleDocumentView(r)} disabled={Boolean(documentBusy)}>{documentBusy === `${r.carrierId}:view` ? 'يفتح…' : 'عرض'}</Btn><Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={() => handleDocumentDownload(r)} disabled={Boolean(documentBusy)}>{documentBusy === `${r.carrierId}:download` ? 'ينزّل…' : 'تنزيل'}</Btn></> : <StatusBadge tone="warning">غير مرفوع</StatusBadge>}
+              <Btn size="sm" variant="ghost" icon={<Upload size={13}/>} disabled={Boolean(documentBusy)} onClick={() => { documentUploadRowRef.current = r; documentInputRef.current?.click(); }}>{documentBusy === `${r.carrierId}:upload` ? 'يرفع…' : (r.contractPdfPath ? 'استبدال' : 'رفع PDF')}</Btn>
+            </div> },
+            { key: 'status', label: 'الحالة', render: r => <StatusBadge tone={r.isActive ? 'success' : 'neutral'}>{r.isActive ? 'ساري' : 'منتهي'}</StatusBadge> },
+          ]}
+        />
       </Card>
 
       {/* ── CHANGE HISTORY ────────────────────────────────────────────── */}
@@ -477,26 +405,17 @@ export default function ContractsOverview({ isActive = true }) {
                       background: 'var(--surface)',
                       borderTop: '1px solid var(--border)',
                     }}>
-                      <table className="m-cards" style={{ marginTop: 12 }}>
-                        <thead>
-                          <tr>
-                            <th style={{ minWidth: 130 }}>الحقل</th>
-                            <th style={{ minWidth: 200, background: 'rgba(248,113,113,.05)' }}>قبل</th>
-                            <th style={{ minWidth: 200, background: 'color-mix(in srgb, var(--accent) 5%, transparent)' }}>بعد</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {Object.entries(h.changes.fields).map(([field, { before, after }]) => (
-                            <tr key={field}>
-                              <td data-label="" style={{ fontWeight: 600, color: 'var(--text)' }}>
-                                {FIELD_AR[field] || field}
-                              </td>
-                              <td data-label="قبل" style={{ background: 'rgba(248,113,113,.03)' }}>{renderValue(before)}</td>
-                              <td data-label="بعد" style={{ background: 'color-mix(in srgb, var(--accent) 3%, transparent)' }}>{renderValue(after)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      <DataTable
+                        caption={`تفاصيل تغيير ${h.contract_label || h.contract_id}`}
+                        className="contract-history-diff"
+                        rows={Object.entries(h.changes.fields).map(([field, values]) => ({ field, ...values }))}
+                        getRowKey={row => row.field}
+                        columns={[
+                          { key: 'field', label: 'الحقل', render: row => <strong>{FIELD_AR[row.field] || row.field}</strong> },
+                          { key: 'before', label: 'قبل', render: row => renderValue(row.before) },
+                          { key: 'after', label: 'بعد', render: row => renderValue(row.after) },
+                        ]}
+                      />
                     </div>
                   )}
                 </div>

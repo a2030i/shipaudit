@@ -3,7 +3,12 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Scale, RefreshCw, Plus, Trash2 } from 'lucide-react';
-import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast, PageHeader } from '../components/UI.jsx';
+import {
+  Button as Btn, DataTable, Dialog as Modal, EmptyState as Empty, Input,
+  PageHeader, Panel as Card, Select, Spinner,
+} from '../design-system/EnterpriseUI.jsx';
+import { toast } from '../lib/toast.js';
+import OperationsWorkspaceNav from '../components/enterprise/OperationsWorkspaceNav.jsx';
 import { loadClaims, createClaim, updateClaim, deleteClaim, summarizeClaims, CLAIM_STATUS } from '../lib/claimsService.js';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -80,6 +85,7 @@ export default function Claims({ carriers = [], isActive, carrierId = '', embedd
           </>
         }
       />
+      <OperationsWorkspaceNav active="carriers"/>
 
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginBottom: 18 }}>
@@ -114,7 +120,7 @@ export default function Claims({ carriers = [], isActive, carrierId = '', embedd
         ? <Card><Empty icon="⚖️" title="لا مطالبات نشطة" sub="سجّل أول مطالبة من زر «مطالبة جديدة» عند اكتشاف فرق"/></Card>
         : (
           <Card style={{ padding: 0, overflow: 'hidden' }}>
-            <table className="m-cards" style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
+            <DataTable className="m-cards" caption="مطالبات شركات الشحن">
               <thead>
                 <tr style={{ background: 'var(--bg2)', textAlign: 'right' }}>
                   {['الناقل', 'المطالبة', 'المرجع', 'المبلغ', 'الحالة', 'إجراء'].map(h => (
@@ -162,7 +168,7 @@ export default function Claims({ carriers = [], isActive, carrierId = '', embedd
                   );
                 })}
               </tbody>
-            </table>
+            </DataTable>
           </Card>
         ))}
 

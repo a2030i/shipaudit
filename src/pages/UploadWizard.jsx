@@ -13,7 +13,10 @@ import {
   Upload, FileSpreadsheet, Sparkles, CheckCircle2, Calendar,
   Truck, AlertCircle, ArrowLeft, ArrowRight, Building2, FileCheck,
 } from 'lucide-react';
-import { Card, Btn, Select, Spinner, Badge, toast, PageHeader } from '../components/UI.jsx';
+import { Badge } from '../components/UI.jsx';
+import { Button as Btn, PageHeader, Panel as Card, Select, Spinner } from '../design-system/EnterpriseUI.jsx';
+import { toast } from '../lib/toast.js';
+import OperationsWorkspaceNav from '../components/enterprise/OperationsWorkspaceNav.jsx';
 import { Upload as UploadIcon } from 'lucide-react';
 import { detectColumns, mapRows, auditAll, buildSummary, detectHeaderRow, buildHeaders, detectCarrierFromFile, getFieldSchema, findUnmappedMonetaryColumns, isExactMonetaryMirror } from '../engine/audit.js';
 import { parseAramexInvoice } from '../engine/aramexInvoiceParser.js';
@@ -1260,6 +1263,7 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '',
         subtitle={lockCarrier && carrier ? `فاتورة ${carrier.name} — اختر الفترة ثم ارفع الملف لعرض نتيجة المراجعة` : 'اختر الفترة وارفع الفاتورة، ثم راجع النتيجة قبل الاعتماد'}
         meta={`الخطوة ${step}/3 — ${step === 1 ? 'الفترة' : step === 2 ? 'الرفع' : 'المراجعة'} · الفترة ${period}`}
       />
+      {!embedded ? <OperationsWorkspaceNav active="invoices"/> : null}
 
       {/* ── STEP INDICATOR ────────────────────────────────────────────── */}
       <Card style={{ padding: '16px 18px', marginBottom: 22, maxWidth: 760, marginInline: 'auto', border: '1px solid var(--border)' }}>

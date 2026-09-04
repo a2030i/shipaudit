@@ -8,11 +8,12 @@ import { AGING_PAGE_SIZE } from '../../lib/agingOperations.js';
 import useMobileLayout from '../../lib/useMobileLayout.js';
 import { useWindowedRows } from '../../hooks/useWindowedRows.js';
 import { ProgressiveListFooter } from '../MobileUX.jsx';
+import { Money, NumberValue } from '../../design-system/EnterpriseUI.jsx';
 import OperationalResultSet from './OperationalResultSet.jsx';
 import { daysSinceLastShipment } from '../../lib/customerOperationalQuery.js';
 import './aging-operations-queue.css';
 
-const MONEY = value => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const MONEY = value => `\u2066${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\u2069`;
 const DATE = value => value ? new Date(value).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short', year: 'numeric' }) : 'غير متاح';
 const STAGE = { todo: 'جديدة', contacted: 'تم التواصل', promised: 'وعد دفع', snoozed: 'مؤجلة' };
 
@@ -112,13 +113,13 @@ function RowCard({ row, selected, onSelect, onOpen, onInvoices }) {
     </div>
     <div className="aoq-card__identity">
       <div><strong>{customer.storeName || customer.name}</strong><small>{customer.storeId ? `متجر #${customer.storeId}` : `Zoho #${customer.zohoId}`}</small></div>
-      <div className="aoq-amount"><strong>{MONEY(summary.amount)} ر.س</strong><small>{summary.amount === customer.owed ? 'إجمالي القابل للتحصيل' : `داخل الشروط · الإجمالي ${MONEY(customer.owed)} ر.س`}</small></div>
+      <div className="aoq-amount"><strong><Money value={summary.amount}/></strong><small>{summary.amount === customer.owed ? 'إجمالي القابل للتحصيل' : <>داخل الشروط · الإجمالي <Money value={customer.owed}/></>}</small></div>
     </div>
     <div className="aoq-card__facts">
       <span><b>{summary.invoiceCount}</b> فاتورة{summary.openingCount ? ' + رصيد افتتاحي' : ''}</span>
       <span>الأقدم <b>{summary.oldestDays} يومًا</b></span>
       <span>الدفع <b>{customer.billingType || 'غير متاح'}</b></span>
-      <span>المحفظة <b>{MONEY(customer.walletBalance)} ر.س</b></span>
+      <span>المحفظة <b><Money value={customer.walletBalance}/></b></span>
       <span>حساب لمحة <b>{customer.platformStatus || 'غير متاح'}</b></span>
       <span>آخر شحنة <b>{shipmentDays == null ? 'لا توجد' : `${shipmentDays} يومًا`}</b></span>
       {sharedCount ? <span className="aoq-shared-contact">متاجر الرقم <b>{sharedCount} أخرى</b></span> : null}
@@ -127,7 +128,7 @@ function RowCard({ row, selected, onSelect, onOpen, onInvoices }) {
         <div>
           <span>آخر دفعة <b>{customer.lastPaymentDate ? DATE(customer.lastPaymentDate) : 'لا توجد'}</b></span>
           <span>آخر تواصل* <b>{row.lastCommunicationAt ? DATE(row.lastCommunicationAt) : 'غير متاح'}</b></span>
-          <span>الوعد <b>{task?.promise_date ? `${MONEY(task.promise_amount)} · ${DATE(task.promise_date)}` : 'لا يوجد'}</b></span>
+          <span>الوعد <b>{task?.promise_date ? <><Money value={task.promise_amount}/> · {DATE(task.promise_date)}</> : 'لا يوجد'}</b></span>
           <span>المحصل <b>{row.assignee || 'بلا مسؤول'}</b></span>
         </div>
       </details>
@@ -187,10 +188,10 @@ export default function AgingOperationsQueue({
       ? `العملاء في شرائح الأعمار المحددة: ${CUSTOMER_CAMPAIGN_BUCKETS.filter(bucket => filters.aging.has(bucket.key)).map(bucket => bucket.label).join(' + ')}`
       : 'لديهم مبالغ مستحقة قابلة للتحصيل وفق مصدر التحصيل الحالي.',
     metrics: [
-      { key: 'count', label: 'عدد النتائج', value: totalRows },
-      { key: 'amount', label: filters.minDays || filters.maxDays ? 'مبلغ العمر المحدد' : 'مبلغ العرض', value: `${MONEY(totalAmount)} ر.س`, detail: filters.minDays || filters.maxDays ? 'من الفواتير داخل نطاق العمر فقط' : null },
+      { key: 'count', label: 'عدد النتائج', value: <NumberValue value={totalRows}/> },
+      { key: 'amount', label: filters.minDays || filters.maxDays ? 'مبلغ العمر المحدد' : 'مبلغ العرض', value: <Money value={totalAmount}/>, detail: filters.minDays || filters.maxDays ? 'من الفواتير داخل نطاق العمر فقط' : null },
       { key: 'oldest', label: 'أقدم استحقاق', value: `${rows.reduce((max, row) => Math.max(max, Number(row.summary?.oldestDays) || 0), 0)} يومًا`, detail: 'ضمن الصفحة الحالية' },
-      { key: 'reconcile', label: 'مطابقة التفاصيل', value: reconciliation?.pending ? 'جارية' : reconciliation?.ok ? 'مطابق' : 'تحتاج مراجعة', detail: reconciliation?.pending ? 'بانتظار نفس طلب الشريحة' : `${MONEY(reconciliation?.detailsTotal)} / ${MONEY(reconciliation?.dashboardTotal)} ر.س` },
+      { key: 'reconcile', label: 'مطابقة التفاصيل', value: reconciliation?.pending ? 'جارية' : reconciliation?.ok ? 'مطابق' : 'تحتاج مراجعة', detail: reconciliation?.pending ? 'بانتظار نفس طلب الشريحة' : <><Money value={reconciliation?.detailsTotal}/> / <Money value={reconciliation?.dashboardTotal}/></> },
     ],
     source: 'Zoho Books / customer_collectible_lines',
     updatedAt: sourceUpdatedAt,

@@ -2,6 +2,7 @@
 // يُستخدَم في تاب «الحملات» بالإعدادات (كامل مع فلاتر) وفي تاريخ العميل (مُدمَج، phone).
 import { useState, useEffect } from 'react';
 import { Spinner, Empty } from './UI.jsx';
+import { DataTable } from '../design-system/EnterpriseUI.jsx';
 import { loadWhatsAppLog } from '../lib/whatsappService.js';
 
 import { saDateTime as fmtDateTime } from '../lib/saTime.js';   // توقيت السعودية
@@ -27,7 +28,7 @@ export function CampaignLogTable({ rows, compact = false }) {
   const td = { padding: '9px 11px', fontSize: 12, verticalAlign: 'top' };
   return (
     <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
-      <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <DataTable className="m-cards" caption="سجل حملات واتساب">
         <thead><tr style={{ background: 'var(--surface2)' }}>
           {['المستلِم', ...(compact ? [] : ['الجوال']), 'القالب', ...(compact ? [] : ['الحملة']), 'المُرسِل', 'الوقت', 'الحالة'].map(h => <th key={h} style={th}>{h}</th>)}
         </tr></thead>
@@ -51,7 +52,7 @@ export function CampaignLogTable({ rows, compact = false }) {
             );
           })}
         </tbody>
-      </table>
+      </DataTable>
     </div>
   );
 }

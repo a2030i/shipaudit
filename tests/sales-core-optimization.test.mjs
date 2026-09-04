@@ -12,8 +12,8 @@ const whatsapp = read('src/lib/whatsappService.js');
 const modal = read('src/components/WhatsAppSendModal.jsx');
 
 test('sales hub mounts only the active reachable view', () => {
-  assert.match(hub, /visibleTabs\.find\(item => item\.id === tab\)/);
-  assert.doesNotMatch(hub, /visibleTabs\.map\(/);
+  assert.match(hub, /visibleViews\.find\(item => item\.id === view\)/);
+  assert.doesNotMatch(hub, /visibleViews\.map\(/);
 });
 
 test('pipeline keeps filters and paging in the URL and loads employees lazily', () => {

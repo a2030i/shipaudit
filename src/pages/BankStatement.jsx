@@ -1,12 +1,13 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Upload, Download, Trash2, Search, Wallet, Calendar, AlertCircle, Link2, CheckCircle2, Save, Database } from 'lucide-react';
-import { Card, Btn, Modal, Spinner, Empty, PageHeader, toast } from '../components/UI.jsx';
+import { toast } from '../lib/toast.js';
 import { parseExcelFile, generateCleanExcel, extractCarrierPayments, annotateRejected } from '../engine/bankStatementProcessor.js';
 import { suggestPaymentMatches, markOperationsPaid } from '../lib/carrierStatementsService.js';
 import { saveBankTransactions, loadBankTransactions, deleteBankTransaction, loadPreviousClosing, saveStatementSummary, loadStatementSummaries, setBankNote, classifyBankTransaction, clearBankClassification } from '../lib/bankTransactionsService.js';
 import { loadCarriers } from '../lib/coreService.js';
 import { bankNameOf, bankPeriodOptions, bankTransactionTotals, findBankPeriodClosing, rowsForBank, selectedBankName } from '../lib/bankStatementScope.js';
 import { useAuth } from '../lib/auth.jsx';
+import { Button as Btn, DataTable, Dialog as Modal, EmptyState as Empty, PageHeader, Panel as Card, Spinner } from '../design-system/EnterpriseUI.jsx';
 
 // ── State machine: idle → processing → done | error ──
 const fmtMoney = n =>
@@ -26,7 +27,7 @@ const CARRIER_ALIASES = {
   smsa:   ['سمسا', 'smsa', 'SMSA'],
 };
 
-export default function BankStatement({ isActive = true, defaultSavedClass = 'all' }) {
+export default function BankStatement({ isActive = true, defaultSavedClass = 'all', embedded = false }) {
   const { user, can } = useAuth();
   const [state, setState] = useState('idle');           // idle | processing | done | error
   const [errorMsg, setErrorMsg] = useState('');
@@ -397,13 +398,13 @@ export default function BankStatement({ isActive = true, defaultSavedClass = 'al
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="bank-statement-page" style={{ padding: '24px 28px 80px', maxWidth: 1200, margin: '0 auto' }}>
-      <PageHeader
+    <div className="bank-statement-page" style={{ padding: embedded ? 0 : '24px 28px 80px', maxWidth: 1200, margin: '0 auto' }}>
+      {!embedded && <PageHeader
         icon={<Wallet size={20}/>}
         title="الحسابات البنكية"
         subtitle="ارفع كشف البنك، راجع رصيد الفترة، ثم احفظ الدفتر دون تكرار العمليات."
         meta="الرفع هنا للدفتر الداخلي فقط؛ رفع كشف Zoho يتم يدويًا من Zoho."
-      />
+      />}
 
       {/* View toggle: this upload vs the accumulated saved ledger */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 18 }}>
@@ -626,7 +627,7 @@ export default function BankStatement({ isActive = true, defaultSavedClass = 'al
               {filtered.length === 0
                 ? <Empty icon="🔍" title="لا توجد عمليات مطابقة" sub="جرب نص بحث مختلف"/>
                 : (
-                  <table className="m-cards" style={{ fontSize: 12, width: '100%' }}>
+                  <DataTable className="m-cards" caption="حركات الكشف البنكي الحالي">
                     <thead style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--surface)' }}>
                       <tr>
                         <th style={{ minWidth: 90 }}>التاريخ</th>
@@ -664,7 +665,7 @@ export default function BankStatement({ isActive = true, defaultSavedClass = 'al
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </DataTable>
                 )
               }
             </div>
@@ -828,7 +829,7 @@ export default function BankStatement({ isActive = true, defaultSavedClass = 'al
                     {savedFiltered.length === 0
                       ? <Empty icon="🔍" title="لا توجد عمليات مطابقة" sub="عدّل الفترة أو نوع العملية أو نص البحث"/>
                       : (
-                        <table className="m-cards" style={{ fontSize: 12, width: '100%' }}>
+                        <DataTable className="m-cards" caption="الحركات البنكية المحفوظة">
                           <thead style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--surface)' }}>
                             <tr>
                               <th style={{ minWidth: 90 }}>التاريخ</th>
@@ -893,7 +894,7 @@ export default function BankStatement({ isActive = true, defaultSavedClass = 'al
                               </tr>
                             ))}
                           </tbody>
-                        </table>
+                        </DataTable>
                       )
                     }
                   </div>

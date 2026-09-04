@@ -42,7 +42,8 @@ import { scoreLevel } from '../lib/carrierScore.js';
 import TeamReadinessPanel from '../components/TeamReadinessPanel.jsx';
 import SourceStatusStrip from '../components/SourceStatusStrip.jsx';
 import { metricDefinition } from '../lib/metricCatalog.js';
-import FigmaCommandCenter from '../components/operations/FigmaCommandCenter.jsx';
+import EnterpriseCommandCenter from '../components/enterprise/EnterpriseCommandCenter.jsx';
+import { Button as DsButton, ErrorState, LoadingState, Page as DsPage, PageHeader as DsPageHeader } from '../design-system/EnterpriseUI.jsx';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import {
   loadActivationConfig,
@@ -251,7 +252,7 @@ export default function Overview({ carriers = [], isActive = true }) {
   // حارس الصفحة (§1.32): كانت غرفة العمليات بلا أي حارس — موظف بصلاحية
   // sales.view فقط هبط عليها ورأى كل الأرقام المالية (اكتُشف 2026-07-16).
   if (!can('overview.view')) {
-    return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «عرض الصفحة الرئيسية» — تُمنح من شاشة الفريق"/></div>;
+    return <DsPage><DsPageHeader title="مركز القيادة"/><ErrorState title="لا صلاحية" description="تحتاج صلاحية «عرض الصفحة الرئيسية» — تُمنح من شاشة الفريق"/></DsPage>;
   }
 
   // لا نعرض بيانات شهر سابق تحت عنوان الشهر الجديد أثناء الانتقال أو عند
@@ -260,35 +261,13 @@ export default function Overview({ carriers = [], isActive = true }) {
 
   if (!hasCurrentData && loadError) {
     return (
-      <div className="overview-page workspace-page">
-        <PageHeader
-          icon={<Activity size={22}/>}
-          iconColor="var(--accent3)"
-          title="لوحة العمل"
-          subtitle="تعذّر جلب الملخص المالي — لم نعرض أصفاراً بديلة حتى لا تُفهم كأرقام حقيقية"
-        />
-        <div className="data-load-error" role="alert">
-          <AlertTriangle size={22}/>
-          <div>
-            <strong>البيانات لم تصل من المصدر</strong>
-            <span>{loadError.message || 'تحقق من الاتصال ثم أعد المحاولة.'}</span>
-          </div>
-          <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh}>إعادة المحاولة</Btn>
-        </div>
-      </div>
+      <DsPage><DsPageHeader title="مركز القيادة" description="تعذّر جلب الملخص المالي؛ لم نعرض أصفارًا بديلة." actions={<DsButton size="sm" icon={<RefreshCw size={13}/>} onClick={refresh}>إعادة المحاولة</DsButton>}/><ErrorState title="البيانات لم تصل من المصدر" description={loadError.message || 'تحقق من الاتصال ثم أعد المحاولة.'} onRetry={refresh}/></DsPage>
     );
   }
 
   if (!hasCurrentData) {
     return (
-      <div className="overview-page workspace-page">
-        <PageHeader
-          icon={<Activity size={22}/>} iconColor="var(--accent3)"
-          title="لوحة العمل"
-          subtitle="قرارات العملاء والسيولة والنمو في شاشة واحدة"
-        />
-        <WorkspaceLoadingState title="جارٍ إعداد الملخص التنفيذي" source="مصادر التشغيل والمالية" rows={4}/>
-      </div>
+      <DsPage><DsPageHeader title="مركز القيادة" description="قرارات العملاء والسيولة والنمو في شاشة واحدة"/><LoadingState title="جارٍ إعداد الملخص التنفيذي" description="مصادر التشغيل والمالية"/></DsPage>
     );
   }
 
@@ -304,7 +283,7 @@ export default function Overview({ carriers = [], isActive = true }) {
   };
 
   return (
-    <FigmaCommandCenter
+    <EnterpriseCommandCenter
       data={data}
       vat={vat}
       executiveFinance={executiveFinance}

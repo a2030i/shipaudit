@@ -1,8 +1,10 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Upload, FileText, AlertCircle, Search, Trash2, Save, Sparkles, RefreshCw } from 'lucide-react';
-import CarrierTabs from '../components/CarrierTabs.jsx';
-import { Card, Btn, Input, Spinner, Empty, Badge, toast, PageHeader } from '../components/UI.jsx';
+import { Badge } from '../components/UI.jsx';
+import { Button as Btn, DataTable, EmptyState as Empty, Input, PageHeader, Panel as Card, Spinner } from '../design-system/EnterpriseUI.jsx';
+import { toast } from '../lib/toast.js';
+import OperationsWorkspaceNav from '../components/enterprise/OperationsWorkspaceNav.jsx';
 import { parseAramexStatement } from '../engine/aramexStatementParser.js';
 import { parseSmsaStatement, sniffStatementCarrier } from '../engine/smsaStatementParser.js';
 import { parseStatementWithAI } from '../engine/aiStatementParser.js';
@@ -331,9 +333,6 @@ export default function CarrierStatements({ carriers = [], initialCarrierId = ''
   // ── Render ────────────────────────────────────────────────────────────
   return (
     <div style={{ padding: embedded ? 0 : '24px 28px 80px', maxWidth: 1300, margin: '0 auto' }}>
-      {fromWorkspace && !embedded && (
-        <CarrierTabs carrierId={carrierId} carrierName={carrierName} active="statements"/>
-      )}
       <PageHeader
         icon={<FileText size={22}/>}
         title="كشوف الحساب الخارجية"
@@ -344,6 +343,7 @@ export default function CarrierStatements({ carriers = [], initialCarrierId = ''
           </Btn>
         }
       />
+      {!embedded ? <OperationsWorkspaceNav active="invoices"/> : null}
 
       {/* IDLE — carrier picker + drop zone */}
       {state === 'idle' && (
@@ -620,7 +620,7 @@ export default function CarrierStatements({ carriers = [], initialCarrierId = ''
               {filtered.length === 0
                 ? <Empty icon="🔍" title="لا توجد عمليات مطابقة"/>
                 : (
-                  <table className="m-cards" style={{ fontSize: 12, width: '100%' }}>
+                  <DataTable className="m-cards" caption="عمليات كشف حساب الناقل">
                     <thead style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--surface)' }}>
                       <tr>
                         {existingMap && <th style={{ minWidth: 70 }}>الحالة</th>}
@@ -701,7 +701,7 @@ export default function CarrierStatements({ carriers = [], initialCarrierId = ''
                         );
                       })}
                     </tbody>
-                  </table>
+                  </DataTable>
                 )
               }
             </div>

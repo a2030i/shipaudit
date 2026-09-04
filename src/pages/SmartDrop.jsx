@@ -12,7 +12,9 @@ import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { UploadCloud, FileText, Banknote, BookOpen, X } from 'lucide-react';
-import { Card, Btn, Spinner, toast, PageHeader } from '../components/UI.jsx';
+import { Button as Btn, Page, PageHeader, Panel as Card, Spinner } from '../design-system/EnterpriseUI.jsx';
+import { toast } from '../lib/toast.js';
+import OperationsWorkspaceNav from '../components/enterprise/OperationsWorkspaceNav.jsx';
 import { detectHeaderRow, buildHeaders, detectColumns, detectCarrierFromFile } from '../engine/audit.js';
 import { sniffStatementCarrier } from '../engine/smsaStatementParser.js';
 import { looksLikeAramexInvoice } from '../engine/aramexInvoiceParser.js';
@@ -116,12 +118,13 @@ export default function SmartDrop({ carriers = [] }) {
   }, [carriers, findCarrier, navigate]);
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 760, margin: '0 auto' }}>
+    <Page className="enterprise-workspace enterprise-operations-page">
       <PageHeader
         icon={<UploadCloud size={22}/>}
         title="رفع ملف"
         subtitle="اسحب أي ملف من أي شركة — فاتورة، تحصيل، أو كشف حساب — والنظام يتعرّف ويوجّه"
       />
+      <OperationsWorkspaceNav active="invoices"/>
 
       {/* Plain div, NOT <Card> — Card swallows unknown props, so the
           onDragOver/onDrop handlers never reached the DOM and drag-drop
@@ -191,6 +194,6 @@ export default function SmartDrop({ carriers = [] }) {
           )}
         </Card>
       )}
-    </div>
+    </Page>
   );
 }

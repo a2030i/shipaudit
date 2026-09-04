@@ -6,7 +6,11 @@ import {
   MessageCircle, PhoneCall, RefreshCw, RotateCcw,
   ShieldCheck, SlidersHorizontal, UploadCloud, Webhook, Workflow, XCircle,
 } from 'lucide-react';
-import { Btn, Card, PageHeader, Spinner } from '../components/UI.jsx';
+import {
+  Alert, Button as Btn, DataTable, FilterBar, PageHeader, SelectInput,
+  StatStrip, StatusBadge, LoadingState,
+} from '../design-system/EnterpriseUI.jsx';
+import AdminWorkspaceNav from '../components/enterprise/AdminWorkspaceNav.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadZohoWebhookHealth } from '../lib/pnlService.js';
 import { loadLamhaDirectorySyncState, loadUploadsOverview } from '../lib/uploadsHubService.js';
@@ -15,7 +19,6 @@ import { loadWebhookEvents, countWebhookStatuses } from '../lib/webhookService.j
 import { loadCronHealth } from '../lib/integrityService.js';
 import { loadRecentAgentRuns, loadWorkAgents } from '../lib/workAgentService.js';
 import { probeTahseelConnection } from '../lib/tahseelService.js';
-import './OperationsCenter.css';
 
 const HOUR = 60 * 60 * 1000;
 
@@ -67,111 +70,7 @@ const eventStatusOptions = [
   { id: 'success', label: 'مكتملة' },
 ];
 
-function IntegrationCard({ item, onOpen }) {
-  const meta = statusMeta[item.status] || statusMeta.unavailable;
-  const StatusIcon = meta.icon;
-  const Icon = item.icon;
-  return (
-    <Card className={`operations-integration-card is-${item.status}`}>
-      <div className="operations-integration-card__head">
-        <span className="operations-integration-card__icon"><Icon size={20}/></span>
-        <div>
-          <h3>{item.title}</h3>
-          <p>{item.subtitle}</p>
-        </div>
-        <span className={`operations-status is-${item.status}`}>
-          <StatusIcon size={13}/>{meta.label}
-        </span>
-      </div>
-      <div className="operations-integration-card__facts">
-        {item.facts.map((fact) => (
-          <div key={fact.label}>
-            <span>{fact.label}</span>
-            <strong className={fact.tone ? `tone-${fact.tone}` : ''}>{fact.value}</strong>
-          </div>
-        ))}
-      </div>
-      <div className="operations-integration-card__foot">
-        <span>{item.note}</span>
-        <Btn size="sm" variant="ghost" onClick={() => onOpen(item.path)}>
-          {item.action} <ExternalLink size={13}/>
-        </Btn>
-      </div>
-    </Card>
-  );
-}
-
-function IntegrationGateway({ item, onOpen }) {
-  const Icon = item.icon;
-  return (
-    <Card className={`operations-gateway is-${item.tone || 'blue'}`}>
-      <div className="operations-gateway__head">
-        <span className="operations-gateway__icon"><Icon size={21}/></span>
-        <div>
-          <h3>{item.title}</h3>
-          <p>{item.description}</p>
-        </div>
-        <span className="operations-gateway__mode">{item.mode}</span>
-      </div>
-      <div className="operations-gateway__actions">
-        {item.actions.map((action, index) => (
-          <button
-            key={action.path}
-            className={index === 0 ? 'is-primary' : ''}
-            onClick={() => onOpen(action.path)}
-          >
-            <span>{action.label}</span>
-            <ExternalLink size={14}/>
-          </button>
-        ))}
-      </div>
-      <small>{item.note}</small>
-    </Card>
-  );
-}
-
-function RunRow({ run, agentsById }) {
-  const failed = Number(run.failed_count) || 0;
-  const status = failed > 0 || run.status === 'failed' ? 'failed' : run.status === 'running' ? 'running' : 'success';
-  const name = agentsById.get(run.agent_id)?.name || 'مهمة تشغيل';
-  return (
-    <div className="operations-run-row">
-      <span className={`operations-run-dot is-${status}`}/>
-      <div className="operations-run-row__main">
-        <strong>{name}</strong>
-        <span>{run.summary || (status === 'success' ? 'اكتمل التشغيل بلا ملاحظات' : 'راجع نتيجة التشغيل')}</span>
-      </div>
-      <div className="operations-run-row__numbers">
-        <span>فحص {Number(run.checked_count) || 0}</span>
-        <span>إجراء {Number(run.action_count) || 0}</span>
-        {failed > 0 && <span className="tone-red">فشل {failed}</span>}
-      </div>
-      <time>{relativeTime(run.started_at)}</time>
-    </div>
-  );
-}
-
-function ActivityRow({ event, onOpen }) {
-  const source = eventSourceMeta[event.source] || eventSourceMeta.schedules;
-  const SourceIcon = source.icon;
-  return (
-    <button className={`operations-activity-row is-${event.status}`} onClick={() => onOpen(event.path)}>
-      <span className="operations-activity-row__icon"><SourceIcon size={16}/></span>
-      <span className="operations-activity-row__body">
-        <span className="operations-activity-row__source">{source.label}</span>
-        <strong>{event.title}</strong>
-        <small>{event.detail}</small>
-      </span>
-      <span className="operations-activity-row__meta">
-        <span className={`operations-event-status is-${event.status}`}>{event.statusLabel}</span>
-        <time>{relativeTime(event.at)}</time>
-      </span>
-      <ExternalLink size={14}/>
-    </button>
-  );
-}
-
-export default function OperationsCenter({ isActive = true }) {
+export default function OperationsCenter({ isActive = true, embedded = false }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { can, canAny, isAdmin } = useAuth();
@@ -474,7 +373,7 @@ export default function OperationsCenter({ isActive = true }) {
     return { cards, gateways, actions, crons, agents, runs, events, lateCrons, failedRuns, healthyCards };
   }, [allowed, period, state]);
 
-  if (!model) return <div className="operations-loading"><Spinner size={28}/></div>;
+  if (!model) return <LoadingState title="جارٍ تحميل حالة التكاملات…" description="تُقرأ المصادر المتاحة بالتوازي حسب صلاحيات الحساب."/>;
 
   const agentsById = new Map((model?.agents || []).map((agent) => [agent.id, agent]));
   const visibleRuns = model?.runs?.slice(0, 8) || [];
@@ -484,145 +383,80 @@ export default function OperationsCenter({ isActive = true }) {
     && (eventSource === 'all' || event.source === eventSource)
   )).slice(0, 24);
 
+  const integrationColumns = [
+    { key: 'title', label: 'التكامل', className: 'mobile-identity', render: item => <div><strong>{item.title}</strong><small>{item.subtitle}</small></div> },
+    { key: 'status', label: 'الحالة', render: item => <StatusBadge tone={item.status === 'healthy' ? 'success' : item.status === 'attention' ? 'warning' : 'neutral'}>{statusMeta[item.status]?.label || 'غير معروف'}</StatusBadge> },
+    { key: 'facts', label: 'آخر أثر وملخص الحالة', className: 'mobile-wide', render: item => <div className="admin-integration-facts">{item.facts.map(fact => <span key={fact.label}><small>{fact.label}</small><bdi>{fact.value}</bdi></span>)}</div> },
+    { key: 'action', label: 'الإجراء المتاح', render: item => <Btn size="sm" onClick={() => navigate(item.path)}>{item.action}</Btn> },
+  ];
+  const gatewayColumns = [
+    { key: 'title', label: 'البوابة', className: 'mobile-identity', render: item => <div><strong>{item.title}</strong><small>{item.description}</small></div> },
+    { key: 'mode', label: 'نطاق العمل', render: item => <StatusBadge dot={false} tone="neutral">{item.mode}</StatusBadge> },
+    { key: 'note', label: 'حاجز الأمان', className: 'mobile-wide', render: item => <small>{item.note}</small> },
+    { key: 'action', label: 'الوصول', render: item => <div className="admin-row-actions">{item.actions.map(action => <Btn key={action.path} size="sm" onClick={() => navigate(action.path)}>{action.label}</Btn>)}</div> },
+  ];
+  const eventColumns = [
+    { key: 'title', label: 'الحدث', className: 'mobile-identity', render: event => <div><strong>{event.title}</strong><small>{event.detail}</small></div> },
+    { key: 'source', label: 'المصدر', render: event => eventSourceMeta[event.source]?.label || 'النظام' },
+    { key: 'status', label: 'الحالة', render: event => <StatusBadge tone={event.status === 'success' ? 'success' : 'warning'}>{event.statusLabel}</StatusBadge> },
+    { key: 'at', label: 'آخر أثر', render: event => <bdi>{relativeTime(event.at)}</bdi> },
+  ];
+  const cronColumns = [
+    { key: 'label', label: 'المهمة المجدولة', className: 'mobile-identity', render: cron => <div><strong>{cron.label}</strong><small>{cron.detail}</small></div> },
+    { key: 'status', label: 'الحالة', render: cron => <StatusBadge tone={cron.healthy ? 'success' : 'warning'}>{cron.status || (cron.healthy ? 'سليم' : 'يحتاج مراجعة')}</StatusBadge> },
+    { key: 'schedule', label: 'الجدولة', render: cron => <bdi dir="ltr">{cron.schedule || '—'}</bdi> },
+  ];
+  const runColumns = [
+    { key: 'agent', label: 'التشغيل', className: 'mobile-identity', render: run => <div><strong>{agentsById.get(run.agent_id)?.name || 'مهمة تشغيل'}</strong><small>{run.summary || 'لا يوجد ملخص'}</small></div> },
+    { key: 'status', label: 'الحالة', render: run => <StatusBadge tone={Number(run.failed_count) > 0 || run.status === 'failed' ? 'danger' : run.status === 'running' ? 'warning' : 'success'}>{run.status || 'مكتمل'}</StatusBadge> },
+    { key: 'counts', label: 'النتيجة', render: run => <bdi dir="ltr">{Number(run.checked_count) || 0} / {Number(run.action_count) || 0} / {Number(run.failed_count) || 0}</bdi> },
+    { key: 'at', label: 'الوقت', render: run => <bdi>{relativeTime(run.started_at)}</bdi> },
+  ];
+
   return (
-    <div className="operations-center">
-      <PageHeader
-        icon={<Workflow size={22}/>}
-        iconColor="var(--accent)"
-        title="مركز التكاملات والتشغيل"
-        subtitle="اعرف ما يعمل الآن، وما تأخر، وافتح الإجراء الصحيح دون البحث بين الصفحات"
-        actions={<Btn size="sm" variant="primary" onClick={load} disabled={loading}>
-          <RefreshCw size={14} className={loading ? 'spin' : ''}/> {loading ? 'جارٍ التحديث…' : 'تحديث الحالة الآن'}
-        </Btn>}
-      />
+    <div className={`operations-center admin-integrations-view${embedded ? ' is-embedded' : ''}`}>
+      <PageHeader title="التكاملات" description="حالة الاتصال وآخر مزامنة وفشل مسجل، مع فصل القراءة عن إجراءات الربط والكتابة." actions={<Btn size="sm" variant="primary" icon={<RefreshCw size={14}/>} onClick={load} disabled={loading}>{loading ? 'جارٍ التحديث…' : 'تحديث الحالة'}</Btn>}/>
+      {!embedded ? <AdminWorkspaceNav active="integrations"/> : null}
 
-      <section className="operations-gateways" aria-labelledby="operations-gateways-title">
-        <div className="operations-section-title">
-          <div><span>وصول مباشر</span><h2 id="operations-gateways-title">بوابات تشغيل التكاملات</h2></div>
-          <p>اختر الوظيفة نفسها بدل البحث عنها داخل صفحات الإعدادات أو دورة المحاسب.</p>
-        </div>
-        <div className="operations-gateways-grid">
-          {model.gateways.map((item) => <IntegrationGateway key={item.key} item={item} onOpen={navigate}/>) }
-        </div>
+      <StatStrip items={[
+        { label: 'التكاملات المتاحة', value: model.cards.length, note: 'حسب الصلاحيات' },
+        { label: 'حالة سليمة', value: model.healthyCards, note: 'آخر أثر مسجل', tone: 'success' },
+        { label: 'تحتاج إجراء', value: model.actions.length, note: 'Result Sets واضحة', tone: model.actions.length ? 'warning' : undefined },
+        { label: 'مهام متأخرة', value: model.lateCrons.length, note: 'من جدولة النظام', tone: model.lateCrons.length ? 'danger' : undefined },
+      ]}/>
+      {state?.errors?.length > 0 ? <Alert tone="warning" title="مصادر غير متاحة">تعذّر تحديث {state.errors.length} مصدر. لم تُحوّل المصادر الغائبة إلى حالة سليمة.</Alert> : null}
+
+      <section className="admin-data-section" aria-labelledby="operations-integrations-title">
+        <header><div><h2 id="operations-integrations-title">حالة التكاملات</h2><p>الحالة، آخر نجاح أو فشل، ثم الإجراء المتاح لكل تكامل.</p></div></header>
+        <DataTable caption="حالة التكاملات" columns={integrationColumns} rows={model.cards} getRowKey={item => item.key} onRowClick={item => navigate(item.path)} empty="لا توجد تكاملات متاحة لهذه الصلاحية"/>
       </section>
 
-      {state?.errors?.length > 0 && (
-        <div className="operations-source-error">
-          <AlertTriangle size={17}/>
-          <span>تعذّر تحديث {state.errors.length} مصدر. بقيت المصادر الأخرى ظاهرة ويمكن إعادة المحاولة.</span>
-        </div>
-      )}
+      {model.actions.length ? <section className="admin-data-section" aria-labelledby="operations-actions-title">
+        <header><div><h2 id="operations-actions-title">يحتاج إجراء الآن</h2><p>الاستثناءات مرتبة كقائمة عمل، وليست مؤشرات مغلقة.</p></div></header>
+        <DataTable caption="استثناءات التكاملات" columns={[
+          { key: 'title', label: 'الاستثناء', className: 'mobile-identity', render: action => <strong>{action.title}</strong> },
+          { key: 'tone', label: 'الأولوية', render: action => <StatusBadge tone={action.tone === 'red' ? 'danger' : 'warning'}>{action.tone === 'red' ? 'عالية' : 'مراجعة'}</StatusBadge> },
+          { key: 'action', label: 'الوصول', render: action => <Btn size="sm" onClick={() => navigate(action.path)}>فتح التفاصيل</Btn> },
+        ]} rows={model.actions} getRowKey={(action, index) => `${action.path}-${index}`} onRowClick={action => navigate(action.path)}/>
+      </section> : null}
 
-      <section className={`operations-verdict ${model.actions.length ? 'is-attention' : 'is-healthy'}`}>
-        <div className="operations-verdict__icon">
-          {model.actions.length ? <AlertTriangle size={26}/> : <ShieldCheck size={26}/>}
-        </div>
-        <div className="operations-verdict__copy">
-          <span>الحالة التشغيلية الآن</span>
-          <h2>{model.actions.length ? `${model.actions.length} نقاط تحتاج تدخلك` : 'كل القنوات المتاحة تعمل دون تنبيه حالي'}</h2>
-          <p>{model.healthyCards} من {model.cards.length} تكاملات متاحة حالتها سليمة حسب آخر أثر تشغيلي مسجل.</p>
-        </div>
-        <div className="operations-verdict__stats">
-          <div><strong>{model.cards.length}</strong><span>تكاملات</span></div>
-          <div><strong>{model.agents.filter((agent) => agent.status === 'active').length}</strong><span>وكلاء نشطون</span></div>
-          <div><strong>{model.lateCrons.length}</strong><span>مهام متأخرة</span></div>
-        </div>
+      <section className="admin-data-section" aria-labelledby="operations-gateways-title">
+        <header><div><h2 id="operations-gateways-title">إجراءات التكامل</h2><p>القراءة والتحديث والربط والكتابة تبقى مسارات منفصلة بصلاحياتها الحالية.</p></div></header>
+        <DataTable caption="إجراءات التكامل" columns={gatewayColumns} rows={model.gateways} getRowKey={item => item.key} empty="لا توجد بوابات تشغيل متاحة"/>
       </section>
 
-      {model.actions.length > 0 && (
-        <section className="operations-actions" aria-labelledby="operations-actions-title">
-          <div className="operations-section-title">
-            <div><span>الأولوية</span><h2 id="operations-actions-title">يحتاج إجراء الآن</h2></div>
-          </div>
-          <div className="operations-actions__list">
-            {model.actions.map((action, index) => (
-              <button key={`${action.path}-${index}`} className={`is-${action.tone}`} onClick={() => navigate(action.path)}>
-                <span>{index + 1}</span><strong>{action.title}</strong><ExternalLink size={15}/>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <section aria-labelledby="operations-integrations-title">
-        <div className="operations-section-title">
-          <div><span>المصادر</span><h2 id="operations-integrations-title">حالة التكاملات</h2></div>
-          <p>تعتمد الحالة على آخر مزامنة أو حدث أو ملف وصل فعليًا، لا على وجود إعداد محفوظ فقط.</p>
-        </div>
-        <div className="operations-integrations-grid">
-          {model.cards.map((item) => <IntegrationCard key={item.key} item={item} onOpen={navigate}/>) }
-        </div>
+      <section className="admin-data-section" aria-labelledby="operations-activity-title">
+        <header><div><h2 id="operations-activity-title">آخر ما حدث في النظام</h2><p>فتح الصف ينقل إلى مصدر الحدث مع بقاء الفلاتر في الرابط.</p></div></header>
+        <FilterBar>
+          <SelectInput aria-label="تصفية أحداث التكاملات حسب الحالة" value={eventStatus} onChange={event => updateEventFilter('status', event.target.value)}>{eventStatusOptions.map(option => <option value={option.id} key={option.id}>{option.label}</option>)}</SelectInput>
+          <SelectInput aria-label="تصفية أحداث التكاملات حسب المصدر" value={eventSource} onChange={event => updateEventFilter('source', event.target.value)}><option value="all">كل المصادر</option>{availableEventSources.map(([id, meta]) => <option key={id} value={id}>{meta.label}</option>)}</SelectInput>
+        </FilterBar>
+        <DataTable caption="أحداث التكاملات" columns={eventColumns} rows={visibleEvents} getRowKey={event => event.id} onRowClick={event => navigate(event.path)} empty="لا توجد أحداث مطابقة للفلاتر"/>
       </section>
 
-      <section className="operations-activity" aria-labelledby="operations-activity-title">
-        <div className="operations-section-title">
-          <div><span>سجل موحد</span><h2 id="operations-activity-title">آخر ما حدث في النظام</h2></div>
-          <p>الأحداث مرتبة زمنيًا من كل مصدر متاح لك، والنقر على أي صف يفتح مكان معالجته.</p>
-        </div>
-        <Card className="operations-activity-panel">
-          <div className="operations-activity-filters">
-            <div className="operations-filter-group" aria-label="تصفية حسب الحالة">
-              <SlidersHorizontal size={15}/>
-              {eventStatusOptions.map((option) => (
-                <button key={option.id} className={eventStatus === option.id ? 'is-active' : ''} onClick={() => updateEventFilter('status', option.id)}>
-                  {option.label}
-                  <span>{option.id === 'all' ? model.events.length : model.events.filter((event) => event.status === option.id).length}</span>
-                </button>
-              ))}
-            </div>
-            <label className="operations-source-filter">
-              <span>المصدر</span>
-              <select value={eventSource} onChange={(event) => updateEventFilter('source', event.target.value)}>
-                <option value="all">كل المصادر</option>
-                {availableEventSources.map(([id, meta]) => <option key={id} value={id}>{meta.label}</option>)}
-              </select>
-            </label>
-          </div>
-          <div className="operations-activity-list">
-            {visibleEvents.length ? visibleEvents.map((event) => <ActivityRow key={event.id} event={event} onOpen={navigate}/>) : (
-              <div className="operations-empty-state">
-                <CheckCircle2 size={24}/><strong>لا توجد أحداث مطابقة</strong><span>غيّر الحالة أو المصدر لعرض بقية السجل.</span>
-              </div>
-            )}
-          </div>
-          {visibleEvents.length > 0 && <div className="operations-activity-summary">يعرض {visibleEvents.length} من {model.events.length} حدثًا متاحًا حسب صلاحياتك.</div>}
-        </Card>
-      </section>
-
-      <section className="operations-runtime" aria-labelledby="operations-runtime-title">
-        <div className="operations-section-title">
-          <div><span>الأتمتة</span><h2 id="operations-runtime-title">الجدولة والوكلاء</h2></div>
-          <div className="operations-section-actions">
-            {canAny(['agents.view']) && <Btn size="sm" variant="ghost" onClick={() => navigate('/work-agents')}><Bot size={13}/> إدارة الوكلاء</Btn>}
-            {allowed('system.view_audit_log') && <Btn size="sm" variant="ghost" onClick={() => navigate('/integrity')}><Activity size={13}/> سلامة المهام</Btn>}
-          </div>
-        </div>
-
-        <div className="operations-runtime-grid">
-          <Card className="operations-runtime-panel">
-            <div className="operations-runtime-panel__head"><Clock3 size={18}/><h3>المهام المجدولة</h3><span>{model.crons.length}</span></div>
-            {model.crons.length === 0 ? <p className="operations-empty">لا توجد بيانات جدولة متاحة لهذه الصلاحية.</p> : (
-              <div className="operations-cron-list">
-                {model.crons.slice(0, 8).map((cron) => (
-                  <div key={cron.job} className={cron.healthy ? 'is-healthy' : 'is-attention'}>
-                    <span>{cron.healthy ? <CheckCircle2 size={15}/> : <AlertTriangle size={15}/>}</span>
-                    <div><strong>{cron.label}</strong><small>{cron.detail}</small></div>
-                    <time>{cron.schedule}</time>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-
-          <Card className="operations-runtime-panel">
-            <div className="operations-runtime-panel__head"><RotateCcw size={18}/><h3>آخر التشغيلات</h3><span>{visibleRuns.length}</span></div>
-            {visibleRuns.length === 0 ? <p className="operations-empty">لا توجد تشغيلات مسجلة لهذه الصلاحية.</p> : (
-              <div className="operations-runs-list">
-                {visibleRuns.map((run) => <RunRow key={run.id} run={run} agentsById={agentsById}/>) }
-              </div>
-            )}
-          </Card>
-        </div>
+      <section className="admin-runtime-grid" aria-label="الجدولة والوكلاء">
+        <div className="admin-data-section"><header><div><h2>المهام المجدولة</h2><p>الحالة الحالية كما يعيدها فحص الجدولة.</p></div>{allowed('system.view_audit_log') ? <Btn size="sm" onClick={() => navigate('/integrity')}>تفاصيل السلامة</Btn> : null}</header><DataTable caption="المهام المجدولة" columns={cronColumns} rows={model.crons.slice(0, 8)} getRowKey={cron => cron.job} empty="لا توجد بيانات جدولة متاحة"/></div>
+        <div className="admin-data-section"><header><div><h2>آخر تشغيلات الوكلاء</h2><p>الفحص والإجراء والفشل دون منح صلاحية تشغيل.</p></div>{canAny(['agents.view']) ? <Btn size="sm" onClick={() => navigate('/work-agents')}>إدارة الوكلاء</Btn> : null}</header><DataTable caption="آخر تشغيلات الوكلاء" columns={runColumns} rows={visibleRuns} getRowKey={run => run.id} empty="لا توجد تشغيلات مسجلة"/></div>
       </section>
     </div>
   );

@@ -9,6 +9,9 @@ import {
 } from 'lucide-react';
 import IvrCampaignModal from '../components/IvrCampaignModal.jsx';
 import { Card, Btn, Spinner, Empty, Input, Modal, toast } from '../components/UI.jsx';
+import { Button, DataTable, PageHeader } from '../design-system/EnterpriseUI.jsx';
+import CampaignWorkspaceNav from '../components/enterprise/CampaignWorkspaceNav.jsx';
+import '../components/enterprise/batch4-workspaces.css';
 import { useAuth } from '../lib/auth.jsx';
 import IvrTab from '../components/IvrSettingsTab.jsx';
 import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
@@ -221,7 +224,16 @@ export default function WhatsAppSettings({ isActive = true, settingsOnly = false
   const activeMeta = visibleTabs.find(t => t.id === tab) || visibleTabs[0];
 
   return (
-    <div className="hatif-center workspace-page">
+    <div className="hatif-center workspace-page campaign-results-workspace">
+      {!settingsOnly ? <>
+        <PageHeader
+          eyebrow="مركز الحملات"
+          title={activeMeta?.label || 'النتائج والسجل'}
+          description="نتائج الرسائل والمكالمات وجودة القنوات من السجلات الحالية نفسها."
+          actions={<Button onClick={() => navigate('/workspace/campaigns?view=overview')}>العودة لمساحة الحملات</Button>}
+        />
+        <CampaignWorkspaceNav active="results"/>
+      </> : null}
       <div className="hatif-center__body">
         <div
           aria-label={activeMeta?.label}
@@ -618,7 +630,7 @@ function OutreachImpactTab() {
       {rows == null ? <div style={{ padding: 30, textAlign: 'center' }}><Spinner/></div>
         : !rows.length ? <Empty icon="💰" title="لا حملات في الفترة"/>
         : (
-          <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <DataTable caption="ملخص قنوات التواصل">
             <thead><tr style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 11.5 }}>
               <th style={{ padding: '7px 9px' }} data-label="">الحملة</th>
               <th style={{ padding: '7px 9px' }}>تواصل</th>
@@ -639,7 +651,7 @@ function OutreachImpactTab() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         )}
       {/* أداء القوالب + أفضل ساعة إرسال */}
       {(tmpl.length > 0 || hours.length > 0) && (
@@ -647,7 +659,7 @@ function OutreachImpactTab() {
           {tmpl.length > 0 && (
             <div>
               <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 6 }}>📝 أداء القوالب</div>
-              <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <DataTable caption="تفاصيل صحة القناة">
                 <thead><tr style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 11 }}>
                   <th style={{ padding: '5px 7px' }} data-label="">القالب</th><th style={{ padding: '5px 7px' }}>أُرسل</th>
                   <th style={{ padding: '5px 7px' }}>سُلّم</th><th style={{ padding: '5px 7px' }}>قُرئ</th><th style={{ padding: '5px 7px' }}>ردّ</th>
@@ -663,7 +675,7 @@ function OutreachImpactTab() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
           )}
           {hours.length > 0 && (
@@ -928,7 +940,7 @@ function AgentActivityTab() {
         : !calls.length ? (
           <div style={{ fontSize: 12, color: 'var(--muted)', padding: '8px 2px' }}>لا مكالمات في هذه الفترة. راقب حالة المزامنة أعلاه.</div>
         ) : (
-          <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <DataTable caption="جودة قوالب الحملات">
             <thead><tr style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 11.5 }}>
               <th style={{ padding: '7px 9px' }} data-label="">الموظف</th>
               <th style={{ padding: '7px 9px' }}>مكالمات</th>
@@ -957,7 +969,7 @@ function AgentActivityTab() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         )}
 
       <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text)', marginTop: 10 }}>💬 إسناد المحادثات (واتساب)</div>
@@ -966,7 +978,7 @@ function AgentActivityTab() {
           <Empty icon="📞" title="لا نشاط بعد"
             sub="يمتلئ تلقائياً كلما تولّى موظف محادثة في هاتف (webhook مساحة العمل يُرسل حدث التعيين)."/>
         ) : (
-          <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <DataTable caption="مستكشف رسائل الحملات">
             <thead><tr style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 11.5 }}>
               <th style={{ padding: '7px 9px' }} data-label="">الموظف</th>
               <th style={{ padding: '7px 9px' }}>محادثات</th>
@@ -989,7 +1001,7 @@ function AgentActivityTab() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         )}
       {/* آخر المكالمات — تسجيل + ملخّص AI لكل مكالمة */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
@@ -1283,7 +1295,7 @@ function CampaignsTab() {
         </div>
       )}
       <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
-        <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <DataTable caption="أثر التواصل والتحصيل">
           <thead><tr style={{ background: 'var(--surface2)' }}>
             {['الحملة', 'القالب', 'آخر إرسال', 'المستهدفون', 'وصلت', 'قُرئت', 'ردّوا', 'فشل'].map(h => <th key={h} style={rth}>{h}</th>)}
           </tr></thead>
@@ -1312,7 +1324,7 @@ function CampaignsTab() {
             ))}
             {!report.length && <tr><td colSpan={8} style={{ padding: 20, textAlign: 'center', fontSize: 12, color: 'var(--muted)' }}>لا حملات بعد</td></tr>}
           </tbody>
-        </table>
+        </DataTable>
       </div>
       {report.length > 12 && (
         <div style={{ display: 'flex', justifyContent: 'center' }}>
@@ -1389,7 +1401,7 @@ function CampaignsTab() {
             </div>
           </div>
           <div className="m-flow" style={{ overflowX: 'auto' }}>
-            <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <DataTable caption="سجل المكالمات وIVR">
               <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
                 {['القالب', 'أُرسل', 'وصلت', 'ردّوا', 'خنق ميتا', 'بلا واتساب', 'بلا حالة', 'الحكم'].map(h =>
                   <th key={h} style={{ padding: '8px 10px', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>)}
@@ -1432,7 +1444,7 @@ function CampaignsTab() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
           {qual.some(t => t.otherFail > 0) && (
             <div style={{ fontSize: 11.5, color: 'var(--red)' }}>

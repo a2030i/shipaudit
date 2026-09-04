@@ -3,7 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Upload, RefreshCw, Search, AlertCircle, CheckCircle2, XCircle, MessageSquare, Trash2, Download, ChevronDown, ChevronLeft, Pencil, Check, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
-import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast, PageHeader, DropZone } from '../components/UI.jsx';
+import { DropZone } from '../design-system/EnterpriseUI.jsx';
+import { toast } from '../lib/toast.js';
 import CarrierTabs from '../components/CarrierTabs.jsx';
 import { Banknote } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
@@ -17,6 +18,7 @@ import { INTERNAL_PARSER, REMITTANCE_PARSERS, listSupportedCarriers } from '../e
 import { loadCarriers } from '../lib/coreService.js';
 import { useWindowedRows } from '../hooks/useWindowedRows.js';
 import { carrierHasOutstandingLegacyCod } from '../lib/carrierOperatingModel.js';
+import { Button as Btn, DataTable, Dialog as Modal, EmptyState as Empty, Input, PageHeader, Panel as Card, Spinner } from '../design-system/EnterpriseUI.jsx';
 
 // ─── Status meta ──────────────────────────────────────────────────────────
 // over_remit splits visually: recent (≤ 30d, blue) is just sequencing —
@@ -566,7 +568,7 @@ export default function CodSettlements({ isActive = true, carrierId = '', embedd
           active="cod"
         />
       )}
-      <PageHeader
+      {!embedded && <PageHeader
         icon={<Banknote size={22}/>}
         title="تصفية تحصيلات COD القديمة"
         subtitle="لا تُنشأ التزامات جديدة. تظهر فقط الشركات ذات الرصيد المتبقي حتى تصفيرها"
@@ -628,7 +630,7 @@ export default function CodSettlements({ isActive = true, carrierId = '', embedd
             </div>
           </>
         }
-      />
+      />}
 
       {outstandingReady && pickerCarriers.length === 0 ? (
         <Card style={{ padding: 44, textAlign: 'center' }}>
@@ -1025,7 +1027,7 @@ export default function CodSettlements({ isActive = true, carrierId = '', embedd
               {filtered.length === 0
                 ? <Empty icon="✓" title="لا شيء في هذي الحالة" sub="غيّر التبويب أعلاه"/>
                 : (
-                  <table className="m-cards" style={{ fontSize: 12, width: '100%' }}>
+                  <DataTable className="m-cards" caption="فروقات تسويات COD">
                     <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
                       <tr>
                         <th style={{ width: 34, textAlign: 'center' }}>
@@ -1071,7 +1073,7 @@ export default function CodSettlements({ isActive = true, carrierId = '', embedd
                         </tr>
                       )}
                     </tbody>
-                  </table>
+                  </DataTable>
                 )
               }
             </div>
@@ -1158,7 +1160,7 @@ export default function CodSettlements({ isActive = true, carrierId = '', embedd
                   ✅ <b>تم التوصيل:</b> {stats.delivered} · 🔁 <b>مرتجع متجاهَل:</b> {stats.notDelivered} · 0️⃣ مبلغ صفر: {stats.zeroAmount}<br/>
                   ➕ <b>أُضيف جديد:</b> {totalAdded} · ⏭ <b>مكرّر متخطّى:</b> {totalDups}
                 </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                <DataTable caption="ملخص تسوية COD">
                   <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
                     {['الناقل', 'مُسلَّم', 'أُضيف', 'مكرّر', 'القيمة'].map(h => <th key={h} style={{ padding: '8px 10px', fontSize: 11, color: 'var(--muted)' }}>{h}</th>)}
                   </tr></thead>
@@ -1173,7 +1175,7 @@ export default function CodSettlements({ isActive = true, carrierId = '', embedd
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
                 {results.some(r => r.error) && (
                   <div style={{ color: 'var(--red)', fontSize: 12, marginTop: 8 }}>⚠️ أخطاء: {results.filter(r => r.error).map(r => `${labelOf(r.carrierId)}: ${r.error}`).join(' · ')}</div>
                 )}
@@ -1844,7 +1846,7 @@ export function UploadModal({ direction, carrier, scheduleSlot = null, onClose, 
               marginTop: 12, maxHeight: 200, overflowY: 'auto',
               border: '1px solid var(--border)', borderRadius: 9,
             }}>
-              <table style={{ fontSize: 11, width: '100%' }}>
+              <DataTable caption="شحنات ملف تسوية COD">
                 <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)' }}>
                   <tr><th>AWB</th><th style={{ textAlign: 'left' }}>المبلغ</th></tr>
                 </thead>
@@ -1878,7 +1880,7 @@ export function UploadModal({ direction, carrier, scheduleSlot = null, onClose, 
                     </td></tr>
                   )}
                 </tbody>
-              </table>
+              </DataTable>
             </div>
           )}
         </>

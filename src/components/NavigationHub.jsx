@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowRight, LayoutDashboard, LogOut, Plus, X,
+  ArrowRight, LogOut, Plus, X,
 } from 'lucide-react';
 
-const CENTER_ORDER = ['customers', 'sales', 'finance', 'shipping', 'reports', 'settings'];
+const CENTER_ORDER = ['customers', 'sales', 'campaigns', 'finance', 'shipping', 'reports', 'settings'];
+const MOBILE_OVERFLOW_CENTERS = new Set(['campaigns', 'shipping', 'reports', 'settings']);
 
 function queryPath(path, key, value, currentSearch = '', preserveCurrentQuery = false) {
   const [pathname, ownSearch = ''] = String(path || '/overview').split('?');
@@ -60,8 +61,8 @@ function currentEntityNodes(workspace, entry, currentPath, currentSearch) {
     return [...base, {
       id: 'directory:current', label: 'ملف المتجر الحالي', description: 'كل ما يخص المتجر المفتوح', icon: entry.icon,
       children: [
-        ['overview', 'نظرة عامة'], ['finance', 'المالية والفواتير'], ['work', 'المبيعات والتحصيل'],
-        ['shipments', 'الشحنات والناقلون'], ['communications', 'التواصل'], ['timeline', 'النشاط الكامل'],
+        ['overview', 'نظرة عامة'], ['finance', 'المالية'], ['shipments', 'الشحن'],
+        ['work', 'التحصيل'], ['communications', 'التواصل'], ['timeline', 'النشاط'], ['alerts', 'المشاكل والتنبيهات'],
       ].map(([id, label]) => ({
         id: `store:${id}`, label, icon: entry.icon,
         path: queryPath('/customer-360', 'view', id, currentSearch, true),
@@ -212,27 +213,16 @@ export default function NavigationHub({
     ]);
 
   const activeSection = orderedSections.find(section => section.id === sectionId) || null;
-  const campaignItem = navItems.find(item => item.id === 'campaign-center');
-  const centerRows = orderedSections.flatMap(section => [
-    {
+  const centerRows = orderedSections
+    .filter(section => MOBILE_OVERFLOW_CENTERS.has(section.id))
+    .map(section => ({
       id: `center:${section.id}`,
       label: section.label,
       description: section.hint || 'فتح مركز العمل',
       icon: section.icon,
       path: section.path,
       sectionId: section.id,
-      accent: section.accent,
-    },
-    ...(section.id === 'sales' && campaignItem ? [{
-      id: 'center:campaigns',
-      label: 'الحملات',
-      description: 'الجمهور · الإطلاق · المتابعة والنتائج',
-      icon: campaignItem.icon,
-      path: campaignItem.path,
-      sectionId: 'campaigns',
-      accent: '#2563eb',
-    }] : []),
-  ]);
+    }));
 
   if (!open) return null;
 
@@ -340,8 +330,8 @@ export default function NavigationHub({
           <>
             <div className="navigation-hub__title-row">
               <span>
-                <h2 id="navigation-hub-title">كل أقسام النظام</h2>
-                <p>اختر مهمتك الأساسية؛ التفاصيل التقنية مخفية من القائمة</p>
+                <h2 id="navigation-hub-title">المزيد</h2>
+                <p>الحملات والتشغيل والتقارير والإدارة</p>
               </span>
               <button type="button" className="navigation-hub__quick-action navigation-hub__quick-action--compact" onClick={() => { onClose(); onQuickAction(); }}>
                 <Plus size={18}/><span>إجراء جديد</span>
@@ -349,22 +339,9 @@ export default function NavigationHub({
             </div>
 
             <div className="navigation-hub__catalog navigation-hub__center-list" aria-label="أقسام النظام">
-              {canOpenHome ? (
-                <button
-                  type="button"
-                  className={`navigation-hub__center-row${currentPath === '/overview' ? ' is-active' : ''}`}
-                  onClick={() => activate({ path: '/overview' })}
-                >
-                  <span className="navigation-hub__destination-icon"><LayoutDashboard size={21}/></span>
-                  <span><strong>الرئيسية</strong><small>القرارات والاستثناءات ومصادر البيانات</small></span>
-                  <ArrowRight size={17}/>
-                </button>
-              ) : null}
               {centerRows.map(row => {
                 const Icon = row.icon;
-                const active = row.sectionId === 'campaigns'
-                  ? currentPath === row.path
-                  : currentSectionId === row.sectionId && currentPath !== '/campaigns';
+                const active = currentSectionId === row.sectionId;
                 return (
                   <button
                     type="button"

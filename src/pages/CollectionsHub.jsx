@@ -7,9 +7,11 @@
 // يجلب فقط عند تفعيله (isActive). المسارات القديمة تهبط على تبويبها،
 // والرابط القانوني /customer-money?view=<id> مع قبول tab للروابط التاريخية.
 import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
-import { HandCoins, PhoneCall, FileText } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth.jsx';
+import { Breadcrumbs, Page, PageHeader, Tabs, Button } from '../design-system/EnterpriseUI.jsx';
+import FinanceWorkspaceNav from '../components/enterprise/FinanceWorkspaceNav.jsx';
+import { reportReturnPath } from '../lib/workspaceJourneyNavigation.js';
 
 import CustomerMoney       from './CustomerMoney.jsx';
 import Collections         from './Collections.jsx';
@@ -17,23 +19,13 @@ import CustomerReceivables from './CustomerReceivables.jsx';
 
 const TABS = [
   {
-    id: 'money', label: 'نظرة عامة وأعمار المستحقات', icon: HandCoins, component: CustomerMoney, perm: 'receivables.view',
-    eyebrow: 'مرجع المديونية', purpose: 'اعرف المبلغ الحقيقي المستحق من كل عميل',
-    description: 'يعرض فواتير زوهو المفتوحة ويقودك مباشرة إلى العميل والفواتير المتأخرة. هذه الشاشة للقرار المالي، وليست سجل اتصالات.',
-    outcome: 'عميل ومبلغ وفواتير واضحة', tone: 'var(--green)',
+    id: 'money', label: 'المستحقات وأعمار الدين', component: CustomerMoney, perm: 'receivables.view',
   },
   {
-    id: 'queue', label: 'إجراء اليوم ووعود السداد', icon: PhoneCall, component: Collections, perm: 'collections.view',
-    eyebrow: 'تنفيذ يومي', purpose: 'اتصل، سجّل الوعد، وحدّد المتابعة التالية',
-    description: 'قائمة عمل فريق التحصيل. استخدمها بعد معرفة الدين لتوثيق المحاولات والوعود ومنع تكرار الاتصال من أكثر من موظف.',
-    outcome: 'مالك واضح وخطوة تالية', tone: 'var(--red)',
+    id: 'queue', label: 'إجراء اليوم والوعود', component: Collections, perm: 'collections.view',
   },
   {
-    id: 'internal', label: 'الأرصدة والمطابقة', icon: FileText, component: CustomerReceivables, perm: 'receivables.view',
-    secondary: true,
-    eyebrow: 'تدقيق ومطابقة', purpose: 'قارن كشف النظام الداخلي مع المرجع المالي',
-    description: 'هذه شاشة فحص فروقات وربط بيانات، وليست المصدر الذي يُطالب العميل بناءً عليه. المطالبة تبدأ من «من يدين لك؟».',
-    outcome: 'فروقات معروفة بلا تضارب', tone: 'var(--accent3)',
+    id: 'internal', label: 'الأرصدة والمطابقة', component: CustomerReceivables, perm: 'receivables.view',
   },
 ];
 
@@ -45,6 +37,7 @@ const LEGACY_PATH_TO_TAB = {
 
 export default function CollectionsHub({ isActive = true }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { can } = useAuth();
   const visibleTabs = TABS.filter(t => !t.perm || can(t.perm));
 
@@ -57,6 +50,17 @@ export default function CollectionsHub({ isActive = true }) {
     return visibleTabs[0]?.id || 'money';
   };
   const [tab, setTab] = useState(getInitialTab);
+  const routeParams = new URLSearchParams(location.search);
+  const reportReturnTo = reportReturnPath(routeParams.get('source'), routeParams.get('returnTo'));
+
+  const changeTab = nextTab => {
+    if (!visibleTabs.some(item => item.id === nextTab)) return;
+    const params = new URLSearchParams(location.search);
+    params.set('view', nextTab);
+    params.delete('tab');
+    navigate(`/customer-money?${params.toString()}`);
+    setTab(nextTab);
+  };
 
   useEffect(() => {
     if (!isActive) return;
@@ -66,8 +70,17 @@ export default function CollectionsHub({ isActive = true }) {
   }, [location.pathname, location.search]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+    <Page className="collections-workspace">
+      <Breadcrumbs items={[{ label: 'المالية' }, { label: 'تحصيل العملاء' }]}/>
+      <PageHeader
+        eyebrow="مساحة عمل"
+        title="تحصيل العملاء"
+        description="موقف المديونية، قائمة تنفيذ الفريق، والمطابقة الداخلية في مسار واحد."
+        actions={reportReturnTo ? <Button size="sm" onClick={() => navigate(reportReturnTo)}>العودة إلى التقرير</Button> : null}
+      />
+      <FinanceWorkspaceNav active={tab === 'queue' ? 'collections' : 'receivables'}/>
+      <Tabs items={visibleTabs} active={tab} onChange={changeTab} label="أقسام تحصيل العملاء"/>
+      <div className="collections-workspace__body">
         {visibleTabs.map(t => {
           const Cmp = t.component;
           const active = tab === t.id;
@@ -76,14 +89,14 @@ export default function CollectionsHub({ isActive = true }) {
               key={t.id}
               aria-label={t.label}
               role="tabpanel"
-              className="ws-tab-panel"
-              style={{ display: active ? 'block' : 'none', height: '100%' }}
+              className="collections-workspace__panel"
+              hidden={!active}
             >
-              <Cmp isActive={isActive && active}/>
+              <Cmp isActive={isActive && active} embedded/>
             </div>
           );
         })}
       </div>
-    </div>
+    </Page>
   );
 }

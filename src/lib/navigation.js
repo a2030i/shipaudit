@@ -2,15 +2,45 @@
 // تعريف المسار والصلاحية يبقى في App لأنه مرتبط بتركيب الصفحات، أما قرار
 // الظهور والقسم والترتيب والمسمى فيؤخذ حصراً من هذا الملف.
 export const NAV_SECTIONS = [
-  { id: 'sales',     path: '/workspace/sales',      label: 'المبيعات', icon: 'Target',     accent: '#8B5CF6', hint: 'نمو عملاء لمحة · العملاء المحتملون · التواصل' },
-  { id: 'customers', path: '/workspace/customers',  label: 'العملاء',  icon: 'Users',      accent: '#EF4444', hint: 'الملف الموحد · الخدمة · حالة العميل' },
-  { id: 'finance',   path: '/workspace/finance',    label: 'المالية',  icon: 'DollarSign', accent: '#F59E0B', hint: 'مال العملاء · التحصيل · المطابقة' },
-  { id: 'shipping',  path: '/workspace/operations', label: 'التشغيل',  icon: 'Truck',      accent: '#2B68DE', hint: 'الشحن · الفوترة · الدورة الشهرية' },
-  { id: 'reports',   path: '/workspace/reports',    label: 'التقارير', icon: 'FileCheck',  accent: '#22C55E', hint: 'المؤشرات · الرقابة · الأتمتة' },
-  { id: 'settings',  path: '/workspace/admin',      label: 'الإدارة',  icon: 'Settings',   accent: '#31D5E1', hint: 'الفريق · العقود · التكاملات' },
+  { id: 'customers', path: '/workspace/customers',  label: 'العملاء',  icon: 'Users',      hint: 'الملف الموحد والمخاطر' },
+  { id: 'sales',     path: '/workspace/sales',      label: 'المبيعات', icon: 'Target',     hint: 'الفرص والمتابعة والنمو' },
+  { id: 'campaigns', path: '/workspace/campaigns',  label: 'الحملات',  icon: 'MessageCircle', hint: 'الجمهور والإطلاق والنتائج' },
+  { id: 'finance',   path: '/workspace/finance',    label: 'المالية',  icon: 'DollarSign', hint: 'الذمم والتحصيل والبنوك' },
+  { id: 'shipping',  path: '/workspace/operations', label: 'التشغيل',  icon: 'Truck',      hint: 'الشحن والفوترة والدورة' },
+  { id: 'reports',   path: '/workspace/reports',    label: 'التقارير', icon: 'FileCheck',  hint: 'المؤشرات والتحليلات' },
+  { id: 'settings',  path: '/workspace/admin',      label: 'الإدارة',  icon: 'Settings',   hint: 'الفريق والعقود والتكاملات' },
 ];
 
 export const CENTER_PATHS = Object.fromEntries(NAV_SECTIONS.map(section => [section.id, section.path]));
+
+const normalizeWorkspacePath = route => {
+  const raw = String(route || '/').split(/[?#]/, 1)[0];
+  return raw.replace(/\/+$/, '') || '/';
+};
+
+/**
+ * Canonical workspace ownership for a route. Query parameters never influence
+ * ownership; they only preserve the caller's result-set context.
+ */
+export function resolveWorkspace(route, navigationItems = []) {
+  const pathname = normalizeWorkspacePath(route);
+  const center = NAV_SECTIONS.find(section => normalizeWorkspacePath(section.path) === pathname);
+  if (center) return center.id;
+
+  const item = navigationItems.find(entry => (
+    normalizeWorkspacePath(entry.path) === pathname
+    || entry.subTabs?.some(tab => normalizeWorkspacePath(tab.legacy) === pathname)
+  ));
+  return item?.section || null;
+}
+
+export function resolveSavedWorkspaceRoute({ requestedWorkspace, fallbackPath, savedRoute, navigationItems = [] }) {
+  if (typeof savedRoute !== 'string' || !savedRoute.startsWith('/')) return fallbackPath;
+  const savedUrl = new URL(savedRoute, 'https://shipaudit.local');
+  return resolveWorkspace(savedUrl.pathname, navigationItems) === requestedWorkspace
+    ? `${savedUrl.pathname}${savedUrl.search}${savedUrl.hash}`
+    : fallbackPath;
+}
 
 // بطاقات صفحات المراكز. كل بطاقة تمثل مساحة عمل كاملة، لا
 // تبويباً داخلياً. memberIds تُستخدم فقط لاشتقاق الصلاحية والأيقونة ومسار
@@ -26,21 +56,18 @@ export const CENTER_WORKSPACES = {
   sales: [
     {
       id: 'lamha-growth', label: 'مركز المبيعات', entryId: 'sales-hub', memberIds: ['sales-hub'], path: '/workspace/sales',
-      subTabIds: ['today', 'activation', 'pipeline', 'retargeting', 'hatif', 'segments'],
-      description: 'النشطون والداخلون والخارجون والشرائح، مع انتقال مباشر إلى عمل اليوم.',
+      subTabIds: ['overview', 'pipeline', 'external', 'today', 'retargeting', 'segments'],
+      description: 'مسار واحد للنمو والفرص والمتابعة والشرائح؛ تفاصيل العميل تعود دائمًا إلى Customer 360.',
+    },
+  ],
+  campaigns: [
+    {
+      id: 'campaigns', label: 'مساحة الحملات', entryId: 'campaign-center', memberIds: ['campaign-center'], path: '/workspace/campaigns',
+      description: 'ابنِ الجمهور وراجع الحماية ثم أطلق القناة وتابع النتيجة من مسار واحد.',
     },
     {
-      id: 'external', label: 'العملاء خارج المنصة', entryId: 'sales-hub', memberIds: ['sales-hub'], path: '/retargeting?view=external',
-      subTabIds: ['external'],
-      description: 'العملاء المحتملون والحملات التسويقية قبل دخولهم إلى لمحة.',
-    },
-    {
-      id: 'communications', label: 'المكالمات وIVR', entryId: 'whatsapp-settings', memberIds: ['whatsapp-settings'], path: '/whatsapp-settings?tab=ivr',
-      description: 'راجع المكالمات وشغّل إجراء IVR المصرح به من مكان واحد.',
-    },
-    {
-      id: 'campaigns', label: 'مركز الإعلانات والحملات', entryId: 'campaign-center', memberIds: ['campaign-center'], path: '/campaigns',
-      description: 'أنشئ الجمهور وراجع الحماية واختر القناة قبل إطلاق الحملة.',
+      id: 'performance', label: 'النتائج والقنوات', entryId: 'whatsapp-settings', memberIds: ['whatsapp-settings'], path: '/whatsapp-settings?tab=campaigns&source=campaigns-workspace',
+      description: 'نتائج الرسائل والمكالمات وجودة القنوات وأثر التواصل من سجل واحد.',
     },
   ],
   finance: [
@@ -81,49 +108,16 @@ export const CENTER_WORKSPACES = {
   ],
   reports: [
     {
-      id: 'library', label: 'مكتبة التقارير', entryId: 'reports', memberIds: ['reports'], path: '/reports',
-      description: 'التقارير الرسمية والشهرية ومعاملات التصدير.',
-    },
-    {
-      id: 'carrier-performance', label: 'أداء شركات الشحن', entryId: 'hub', memberIds: ['hub', 'platform-carriers'], path: '/carrier-kpi?source=reports',
-      skipSubTabs: true,
-      description: 'مقارنة أداء الناقلين والأسعار على مستوى جميع الشركات.',
-    },
-    {
-      id: 'communications-performance', label: 'التواصل والحملات', entryId: 'whatsapp-settings', memberIds: ['whatsapp-settings'], path: '/whatsapp-settings?tab=impact&source=reports',
-      skipSubTabs: true,
-      description: 'أثر الحملات ونشاط الفريق وجودة التواصل.',
-    },
-    {
-      id: 'exports', label: 'الملفات المصدّرة', entryId: 'internal-exports', memberIds: ['internal-exports'], path: '/internal-exports',
-      description: 'أرشيف الملفات الناتجة وإعادة تنزيلها من مصدرها.',
+      id: 'reports-workspace', label: 'مركز التقارير والتحليلات', entryId: 'reports',
+      memberIds: ['reports', 'monthly-report', 'internal-exports'], path: '/workspace/reports',
+      subTabIds: ['index', 'builder', 'monthly', 'exports'],
+      description: 'اكتشف التقارير حسب المجال ثم افتح التحليل أو التصدير مع بقاء الفلاتر والسياق.',
     },
   ],
   settings: [
     {
-      id: 'team', label: 'الفريق والصلاحيات', entryId: 'employees', memberIds: ['employees'],
-      description: 'أدر الموظفين وأدوارهم وصلاحياتهم من المسار الإداري المعتمد.',
-    },
-    {
-      id: 'carrier-config', label: 'شركات الشحن والعقود', entryId: 'carriers', memberIds: ['carriers', 'contracts'], path: '/carriers',
-      description: 'إعداد شركات الشحن والعقود والأسعار مع إبقاء كل سجل في عرضه.',
-    },
-    {
-      id: 'integrations', label: 'مزامنة لمحة والتكاملات', entryId: 'operations', memberIds: ['operations'], path: '/operations',
-      description: 'شاهد آخر مزامنة لمحة وصحة بقية المصادر وWebhooks من مكان واحد.',
-    },
-    {
-      id: 'automation', label: 'مركز الأتمتة', entryId: 'work-agents', memberIds: ['work-agents'], path: '/work-agents',
-      description: 'حالة الوكلاء وتشغيلاتهم وآخر نتائج الأتمتة.',
-    },
-    {
-      id: 'channels', label: 'القنوات والاتصال', entryId: 'hatif-settings', memberIds: ['hatif-settings'], path: '/settings/hatif',
-      description: 'إعدادات هاتف وIVR والقنوات المصرح بها.',
-    },
-    {
-      id: 'system-config', label: 'إعدادات النظام', entryId: 'app-settings', memberIds: ['app-settings'], path: '/settings/ai',
-      subTabIds: ['ai', 'data'],
-      description: 'إعدادات النظام والذكاء الاصطناعي والبيانات العامة.',
+      id: 'admin-workspace', label: 'مركز الإدارة والإعدادات', entryId: 'admin-workspace', memberIds: ['admin-workspace'], path: '/workspace/admin',
+      description: 'المستخدمون والوصول والتكاملات والعقود وصحة النظام، مع عزل الأدوات المتقدمة عن العمل اليومي.',
     },
   ],
 };
@@ -143,6 +137,10 @@ export const NAV_GROUPS = {
   sales: [
     { id: 'sales_ops', label: 'الفرص والصفقات' },
     { id: 'outreach_ops', label: 'التواصل والنمو' },
+  ],
+  campaigns: [
+    { id: 'campaign_ops', label: 'الجمهور والتشغيل' },
+    { id: 'campaign_insights', label: 'النتائج والقنوات' },
   ],
   finance: [
     { id: 'receivables_ops', label: 'تحصيل العملاء' },
@@ -186,8 +184,8 @@ export const NAV_ITEM_IA = {
   'sales-hub':         { label: 'فرص البيع من بيانات المنصة', section: 'sales', group: 'sales_ops', order: 10, visible: true },
   // مسارات متقاعدة: تبقى Redirects للتوافق ولا تظهر كبطاقات أو وجهات.
   crm:                 { label: 'إدارة المبيعات', section: 'sales', group: 'sales_ops', order: 20, visible: false },
-  'campaign-center':   { label: 'مركز الإعلانات والحملات', section: 'sales', group: 'outreach_ops', order: 25, visible: true },
-  'whatsapp-settings': { label: 'الحملات والاتصالات', section: 'sales', group: 'outreach_ops', order: 30, visible: true },
+  'campaign-center':   { label: 'مركز الحملات', section: 'campaigns', group: 'campaign_ops', order: 10, visible: true },
+  'whatsapp-settings': { label: 'أداء القنوات والاتصالات', section: 'campaigns', group: 'campaign_insights', order: 20, visible: true },
   marketers:           { label: 'المسوّقون والعمولات', section: 'sales', group: 'outreach_ops', order: 40, visible: false },
 
   'collections-hub':   { label: 'تحصيل العملاء', section: 'finance', group: 'receivables_ops', order: 10, visible: true },
@@ -203,18 +201,18 @@ export const NAV_ITEM_IA = {
   reports:             { label: 'مكتبة التقارير', section: 'reports', group: 'report_ops', order: 10, visible: true },
   'monthly-report':    { label: 'التقرير الشهري', section: 'reports', group: 'report_ops', order: 20, visible: true },
   'internal-exports':  { label: 'الملفات المصدرة', section: 'reports', group: 'report_ops', order: 30, visible: true },
-  integrity:           { label: 'سلامة البيانات', section: 'settings', group: 'integration_settings', order: 65, visible: true },
-  'activity-log':      { label: 'سجل النظام', section: 'settings', group: 'system_settings', order: 95, visible: true },
-
-  employees:           { label: 'الفريق والصلاحيات', section: 'settings', group: 'team_ops', order: 10, visible: true },
-  carriers:            { label: 'شركات الشحن', section: 'settings', group: 'shipping_settings', order: 20, visible: true },
-  contracts:           { label: 'العقود والأسعار', section: 'settings', group: 'shipping_settings', order: 30, visible: true },
-  operations:          { label: 'مركز التكاملات', section: 'settings', group: 'integration_settings', order: 40, visible: true },
-  uploads:             { label: 'رفع ومزامنة ملفات لمحة', section: 'settings', group: 'integration_settings', order: 50, visible: true },
-  webhook:             { label: 'وارد التكاملات', section: 'settings', group: 'integration_settings', order: 60, visible: true },
-  'work-agents':       { label: 'مركز الأتمتة', section: 'settings', group: 'integration_settings', order: 70, visible: true },
-  'hatif-settings':    { label: 'إعدادات هاتف وIVR', section: 'settings', group: 'integration_settings', order: 80, visible: true },
-  'app-settings':      { label: 'إعدادات النظام', section: 'settings', group: 'system_settings', order: 100, visible: true },
+  'admin-workspace':   { label: 'مركز الإدارة والإعدادات', section: 'settings', group: 'team_ops', order: 10, visible: true },
+  employees:           { label: 'الفريق والصلاحيات', section: 'settings', group: 'team_ops', order: 20, visible: false },
+  carriers:            { label: 'شركات الشحن', section: 'settings', group: 'shipping_settings', order: 30, visible: false },
+  contracts:           { label: 'العقود والأسعار', section: 'settings', group: 'shipping_settings', order: 40, visible: false },
+  operations:          { label: 'مركز التكاملات', section: 'settings', group: 'integration_settings', order: 50, visible: false },
+  uploads:             { label: 'رفع ومزامنة ملفات لمحة', section: 'settings', group: 'integration_settings', order: 60, visible: false },
+  webhook:             { label: 'وارد التكاملات', section: 'settings', group: 'integration_settings', order: 70, visible: false },
+  integrity:           { label: 'سلامة البيانات', section: 'settings', group: 'integration_settings', order: 80, visible: false },
+  'work-agents':       { label: 'مركز الأتمتة', section: 'settings', group: 'integration_settings', order: 90, visible: false },
+  'hatif-settings':    { label: 'إعدادات هاتف وIVR', section: 'settings', group: 'integration_settings', order: 100, visible: false },
+  'activity-log':      { label: 'سجل النظام', section: 'settings', group: 'system_settings', order: 110, visible: false },
+  'app-settings':      { label: 'إعدادات النظام', section: 'settings', group: 'system_settings', order: 120, visible: false },
 };
 
 export function applyNavigationIA(items) {

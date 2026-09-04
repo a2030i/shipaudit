@@ -1,6 +1,8 @@
 import { useState, useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, XCircle, HelpCircle, AlertCircle, Upload as UploadIcon } from 'lucide-react';
+import { X, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, XCircle, HelpCircle, AlertCircle } from 'lucide-react';
+import { setToastHandler, toast } from '../lib/toast.js';
+export { toast } from '../lib/toast.js';
 
 // ─── Button ────────────────────────────────────────────────────────────────────
 // Modern SaaS pill button. Flat fill + soft inset top highlight + hover
@@ -158,88 +160,6 @@ export function Card({ children, style = {}, accent, hover = false, onClick, cla
       }}
     >
       {children}
-    </div>
-  );
-}
-
-// ─── StatCard ──────────────────────────────────────────────────────────────────
-// Cleaner stat: tiny mono label up top, an optional tinted icon tile on
-// the right, a confident mono number, an optional sub-line. No accent
-// strip — colour shows through the icon tile and the number.
-// StatCard — Lamha internal-system style: white card, soft border + shadow,
-// icon beside the title (RTL right), big bold number, and an optional
-// red/green change pill («↓ 100% أقل من الشهر السابق»). Props:
-//   changePct  — signed number; renders the Lamha pill (down=red, up=green)
-//   changeLabel— text beside the pill (e.g. «أقل من الشهر السابق»)
-//   trend      — legacy SAR delta (kept for back-compat)
-export function StatCard({ label, value, sub, color, onClick, icon, trend, changePct, changeLabel }) {
-  const [hovered, setHovered] = useState(false);
-  const tone = color || 'var(--text)';
-  const down = (changePct ?? 0) < 0;
-  const chgColor = down ? 'var(--red)' : 'var(--green)';
-  return (
-    <div
-      className={`stat-card ${onClick ? 'stat-card-interactive' : ''}`}
-      role={onClick ? 'button' : undefined}
-      tabIndex={onClick ? 0 : undefined}
-      onKeyDown={onClick ? (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onClick();
-        }
-      } : undefined}
-      onClick={onClick}
-      onMouseEnter={() => onClick && setHovered(true)}
-      onMouseLeave={() => onClick && setHovered(false)}
-      style={{
-        background: 'var(--card)',
-        border: `1px solid var(--border2)`,
-        borderRadius: 'var(--r-lg)',
-        padding: '18px 20px',
-        cursor: onClick ? 'pointer' : 'default',
-        transition: 'transform .18s, box-shadow .18s',
-        transform: hovered && onClick ? 'translateY(-1px)' : 'none',
-        boxShadow: hovered && onClick ? 'var(--shadow-md)' : 'var(--shadow-sm)',
-        minWidth: 130,
-        '--sc-tone': tone === 'var(--text)' ? 'var(--accent)' : tone,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 7, color: 'var(--muted)', fontSize: 12.5, fontWeight: 600, minHeight: icon ? 38 : undefined }}>
-          {label}
-        </span>
-        {icon && <span className="stat-icon-tile">{icon}</span>}
-      </div>
-      <div style={{ color: tone, fontSize: 27, fontWeight: 800, lineHeight: 1, letterSpacing: 0 }}>
-        {value ?? '—'}
-      </div>
-      {changePct !== undefined && changePct !== null ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 11 }}>
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 3,
-            padding: '3px 9px', borderRadius: 999,
-            background: `color-mix(in srgb, ${chgColor} 10%, transparent)`,
-            color: chgColor, fontSize: 11.5, fontWeight: 700,
-          }}>
-            {down ? <TrendingDown size={12}/> : <TrendingUp size={12}/>}
-            {Math.abs(changePct)}%
-          </span>
-          {changeLabel && <span style={{ color: 'var(--muted)', fontSize: 11.5 }}>{changeLabel}</span>}
-        </div>
-      ) : sub ? (
-        <div style={{ color: 'var(--muted)', fontSize: 11.5, marginTop: 7 }}>{sub}</div>
-      ) : null}
-      {trend !== undefined && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginTop: 6 }}>
-          {trend > 0
-            ? <TrendingUp size={11} color="var(--red)"/>
-            : <TrendingDown size={11} color="var(--green)"/>
-          }
-          <span style={{ color: trend > 0 ? 'var(--red)' : 'var(--green)', fontSize: 11, fontWeight: 600 }}>
-            {trend > 0 ? '+' : ''}{trend.toFixed(2)} ر.س
-          </span>
-        </div>
-      )}
     </div>
   );
 }
@@ -917,94 +837,6 @@ export function SectionTitle({ tag, title, action, color = 'var(--accent)' }) {
   );
 }
 
-// ─── DropZone ────────────────────────────────────────────────────────────────
-// Reusable file picker with drag-and-drop. Click to browse OR drag a
-// file from File Explorer / Finder straight onto it. Visual feedback:
-// border + tint shift while a drag is active over the surface.
-//
-// Props:
-//   onFile(file)  required — called with the chosen File
-//   accept        string of extensions, e.g. ".xlsx,.xls,.csv"
-//   title         the big label, e.g. "اختر ملف Excel"
-//   hint          smaller secondary copy
-//   icon          optional icon (defaults to upload arrow)
-export function DropZone({ onFile, accept = '.xlsx,.xls,.csv', title = 'اختر ملف Excel', hint, icon, multi = false }) {
-  const [dragOver, setDragOver] = useState(false);
-  const inputId = `dz-${Math.random().toString(36).slice(2, 9)}`;
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setDragOver(false);
-    const files = Array.from(e.dataTransfer?.files || []);
-    if (!files.length) return;
-    if (multi) onFile(files);          // multi → array
-    else onFile(files[0]);             // single → File
-  };
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    if (!dragOver) setDragOver(true);
-  };
-  const handleDragLeave = (e) => {
-    // Only un-highlight when the drag truly leaves the zone (not when
-    // it crosses an inner element)
-    if (e.currentTarget.contains(e.relatedTarget)) return;
-    setDragOver(false);
-  };
-
-  const Icon = icon || UploadIcon;
-  const accent = 'var(--accent)';
-
-  return (
-    <div
-      onClick={() => document.getElementById(inputId)?.click()}
-      onDrop={handleDrop}
-      onDragOver={handleDragOver}
-      onDragEnter={handleDragOver}
-      onDragLeave={handleDragLeave}
-      style={{
-        padding: 34, textAlign: 'center', cursor: 'pointer',
-        border: `1.5px dashed ${dragOver ? accent : 'var(--border2)'}`,
-        background: dragOver
-          ? 'var(--accent-dim)'
-          : 'var(--surface2)',
-        borderRadius: 'var(--r-xl)',
-        boxShadow: dragOver ? '0 14px 34px rgba(37,99,235,.14)' : 'inset 0 1px 0 rgba(255,255,255,.8)',
-        transition: 'border-color .15s, background .15s, transform .15s, box-shadow .15s',
-        transform: dragOver ? 'scale(1.01)' : 'none',
-        position: 'relative',
-      }}
-    >
-      <div style={{
-        width: 52, height: 52, margin: '0 auto 12px',
-        borderRadius: 14,
-        background: `color-mix(in srgb, ${accent} 10%, transparent)`,
-        border: `1px solid color-mix(in srgb, ${accent} 18%, transparent)`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        <Icon size={25} color={accent} style={{ opacity: dragOver ? 1 : .95 }}/>
-      </div>
-      <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>
-        {dragOver ? 'أفلت الملف هنا' : title}
-      </div>
-      <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 8, lineHeight: 1.7 }}>
-        {hint || (
-          <>اسحب الملف هنا، أو <span style={{ color: accent, fontWeight: 600 }}>اضغط للاختيار</span></>
-        )}
-      </div>
-      <input
-        id={inputId} type="file" hidden accept={accept} multiple={multi}
-        onChange={e => {
-          const files = Array.from(e.target.files || []);
-          if (!files.length) return;
-          if (multi) onFile(files);
-          else onFile(files[0]);
-          e.target.value = '';
-        }}
-      />
-    </div>
-  );
-}
-
 // ─── Badge ─────────────────────────────────────────────────────────────────────
 const BADGE_CFG = {
   ok:          { bg: 'color-mix(in srgb, var(--accent) 10%, transparent)', color: 'var(--green)',  bd: 'color-mix(in srgb, var(--accent) 30%, transparent)',  lbl: '✓ مطابق',     Icon: CheckCircle2 },
@@ -1271,10 +1103,6 @@ export function SectionHeader({ title, icon, action, style = {} }) {
 }
 
 // ─── Toast ─────────────────────────────────────────────────────────────────────
-let _toastFn = null;
-export function setToastFn(fn) { _toastFn = fn; }
-export function toast(msg, type = 'info') { _toastFn?.(msg, type); }
-
 const TOAST_COLORS = {
   info:    { color: 'var(--accent)',  icon: <AlertCircle size={15}/> },
   success: { color: 'var(--green)',   icon: <CheckCircle2 size={15}/> },
@@ -1289,7 +1117,7 @@ let TOAST_SEQ = 0;
 export function ToastContainer() {
   const [toasts, setToasts] = useState([]);
 
-  setToastFn((msg, type = 'info') => {
+  setToastHandler((msg, type = 'info') => {
     const id = ++TOAST_SEQ;
     setToasts(t => [...t, { id, msg, type }]);
     setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 4200);

@@ -5,6 +5,7 @@ import {
   Clock3, PackageCheck, RefreshCw, Search, Store, Truck, UserPlus, UserRoundPlus, UserRoundX,
 } from 'lucide-react';
 import { Btn, Card, Empty, Modal, Select, Spinner, toast } from './UI.jsx';
+import { DataTable, PhoneNumber } from '../design-system/EnterpriseUI.jsx';
 import {
   assignPlatformSalesAccounts,
   loadAllLamhaStorePerformanceRows,
@@ -282,10 +283,10 @@ export default function LamhaStorePerformance() {
           {loading ? <div className="lamha-result-loading"><Spinner/><span>تحديث النتائج…</span></div> : null}
           {!loading && !data.rows.length ? <Empty icon="🏪" title="لا توجد متاجر مطابقة" sub="غيّر الفلتر أو عبارة البحث دون فقد سياق الصفحة."/> : null}
           {!loading && data.rows.length ? <div className="lamha-result-scroll">
-            <table>
+            <DataTable caption="أداء متاجر لمحة">
               <thead><tr><th>المتجر</th><th>شحن اليوم</th><th>آخر شحنة</th><th>حالة الحساب</th><th>نشاط الشحن</th><th>المرحلة</th><th>الدفع والربط</th><th aria-label="فتح المتجر"/></tr></thead>
               <tbody>{data.rows.map(row => <tr key={row.storeId} onClick={() => openStore(row)}>
-                <td data-label="المتجر"><b>{row.storeName}</b><small><span dir="ltr">#{row.storeId}</span>{row.phone ? <span dir="ltr">{row.phone}</span> : null}</small></td>
+                <td data-label="المتجر"><b>{row.storeName}</b><small><span dir="ltr">#{row.storeId}</span>{row.phone ? <PhoneNumber value={row.phone}/> : null}</small></td>
                 <td data-label="شحن اليوم"><b className={row.shipmentDelta > 0 ? 'positive' : row.negativeShipmentDelta < 0 ? 'danger-text' : ''}>{row.negativeShipmentDelta < 0 ? row.negativeShipmentDelta : `+${INT.format(row.shipmentDelta)}`}</b><small>{INT.format(row.shipmentCount)} تراكمي</small></td>
                 <td data-label="آخر شحنة"><b>{row.daysSinceLast == null ? 'لم يشحن' : row.daysSinceLast === 0 ? 'اليوم' : `منذ ${INT.format(row.daysSinceLast)} يوم`}</b><small>{shortDate(row.lastShipmentAt)}</small></td>
                 <td data-label="حالة الحساب"><StateBadge row={row}/>{row.rawStatus ? <small>قيمة لمحة: {row.rawStatus}</small> : null}</td>
@@ -294,7 +295,7 @@ export default function LamhaStorePerformance() {
                 <td data-label="الدفع والربط"><b>{row.billingType || 'غير متاح'}</b><small>{row.integrationType || 'بلا ربط ظاهر'}{row.walletBalance == null ? '' : ` · محفظة ${MONEY.format(row.walletBalance)} ر.س`}</small></td>
                 <td><button type="button" onClick={event => { event.stopPropagation(); openStore(row); }} aria-label={`فتح ملف ${row.storeName}`}><ChevronLeft size={17}/></button></td>
               </tr>)}</tbody>
-            </table>
+            </DataTable>
           </div> : null}
 
           {data.count > PAGE_SIZE ? <div className="lamha-result-pagination">

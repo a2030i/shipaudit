@@ -3,11 +3,13 @@
 // الشرائح/الأولوية/الربط + فلاتر كاملة + جدول فرص مُرقّم. يقرأ محرّك التصنيف
 // (v_crm_retargeting) عبر retargetingService — عميل فريد بالهاتف.
 import { useState, useEffect, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Target, RefreshCw, Phone, MessageCircle, ChevronLeft, ChevronRight, Search, Send, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
-import { Card, Btn, Spinner, Empty, PageHeader, Modal, toast } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, toast } from '../components/UI.jsx';
+import { DataTable, Dialog as Modal, PageHeader, PhoneNumber } from '../design-system/EnterpriseUI.jsx';
 import IvrCallButton from '../components/IvrCallButton.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadEmployees } from '../lib/employeeService.js';
@@ -22,6 +24,8 @@ import { CustomerCampaignHistory } from '../components/WhatsAppCampaignLog.jsx';
 import CustomerCommTimeline from '../components/CustomerCommTimeline.jsx';
 import { SalesMobileBadge, SalesMobileCard, SalesMobileList } from '../components/SalesMobileCard.jsx';
 import useMobileLayout from '../lib/useMobileLayout.js';
+import { searchGlobalEntities } from '../lib/globalSearchService.js';
+import { withWorkspaceReturn } from '../lib/workspaceJourneyNavigation.js';
 
 const fmt0 = (n) => Number(n || 0).toLocaleString('en-US');
 const fmt2 = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -77,6 +81,8 @@ function Sel({ value, onChange, children }) {
 const LIMIT = 50;
 
 export default function Retargeting({ isActive = true }) {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { can, user, isAdmin } = useAuth();
   const isMobile = useMobileLayout();
   const [exporting, setExporting] = useState(false);
@@ -97,11 +103,14 @@ export default function Retargeting({ isActive = true }) {
   const [waRecipients, setWaRecipients] = useState(null);      // مستلمو حملة (bulk أو عميل واحد)
   const [prepCampaign, setPrepCampaign] = useState(false);     // يجهّز كل المطابق للحملة
   // الموظف يفتح على «المسندة لي» افتراضياً (§1.37) — المدير يرى الكل
-  const [filters, setFilters] = useState(() => ({
-    segment: '', priority: '', integration: '', billing: '', hasBalance: false, q: '',
-    status: '', ownerId: (!isAdmin && user?.id) ? user.id : '', unassigned: false, includeExcluded: false,
-    campaign: '', page: 0,   // آخر حملة منذ: '' | none | within7 | within30 | older30
-  }));
+  const [filters, setFilters] = useState(() => {
+    const query = new URLSearchParams(location.search);
+    return {
+      segment: query.get('segment') || '', priority: query.get('priority') || '', integration: query.get('integration') || '', billing: query.get('billing') || '', hasBalance: query.get('hasBalance') === '1', q: query.get('q') || '',
+      status: query.get('status') === 'all' ? '' : query.get('status') || '', ownerId: query.get('ownerId') || ((!isAdmin && user?.id) ? user.id : ''), unassigned: query.get('unassigned') === '1', includeExcluded: query.get('includeExcluded') === '1',
+      campaign: query.get('campaign') || '', page: Math.max(0, Number(query.get('page')) || 0),
+    };
+  });
 
   const loadDash = useCallback(async () => {
     setLoading(true);
@@ -141,7 +150,34 @@ export default function Retargeting({ isActive = true }) {
   useEffect(() => { if (isActive) loadList(); }, [isActive, loadList]);
   useEffect(() => { if (isActive) loadWa(); }, [isActive, loadWa]);
 
-  const setFilter = (patch) => setFilters(prev => ({ ...prev, ...patch, page: patch.page ?? 0 }));
+  const setFilter = (patch) => setFilters(prev => {
+    const nextFilters = { ...prev, ...patch, page: patch.page ?? 0 };
+    const query = new URLSearchParams(location.search);
+    for (const [key, value] of Object.entries(nextFilters)) {
+      if (value === '' || value === false || value == null || (key === 'page' && Number(value) === 0)) query.delete(key);
+      else query.set(key, value === true ? '1' : String(value));
+    }
+    navigate(`${location.pathname}?${query.toString()}`, { replace: true });
+    return nextFilters;
+  });
+
+  const openSalesCustomer = async lead => {
+    try {
+      const results = (await searchGlobalEntities(lead.phone || lead.storeName)).filter(item => item.kind === 'merchant');
+      const exact = results.find(item => item.label === lead.storeName);
+      const customer = exact || (results.length === 1 ? results[0] : null);
+      if (!customer) {
+        toast('تعذّر تحديد متجر واحد موثوق لهذا العميل؛ افتح المتجر من دليل العملاء.', 'info');
+        return;
+      }
+      navigate(withWorkspaceReturn(customer.path, {
+        source: 'sales',
+        returnTo: `${location.pathname}${location.search}`,
+      }));
+    } catch (error) {
+      toast(`تعذّر فتح Customer 360: ${error.message}`, 'error');
+    }
+  };
 
   // تصدير كل النتائج بالفلاتر الحالية (لا الصفحة المعروضة فقط) — صفحات 500
   // (فخّ PostgREST-1000 §1.34) عبر persistAndDownloadExport (قاعدة §1.13).
@@ -481,11 +517,11 @@ export default function Retargeting({ isActive = true }) {
                 <SalesMobileCard
                   key={l.phone + i}
                   title={l.storeName}
-                  subtitle={<span dir="ltr">{l.phone || 'بلا رقم جوال'}</span>}
+                  subtitle={<PhoneNumber value={l.phone || 'بلا رقم جوال'}/>}
                   eyebrow={`${l.storeCount > 1 ? `${l.storeCount} متاجر مرتبطة` : 'فرصة استعادة'}${l.highValue ? ' · ⭐ قيمة عالية' : ''}`}
                   tone={pm.color}
-                  onClick={() => setFollowUp(l)}
-                  actionLabel="متابعة"
+                  onClick={() => openSalesCustomer(l)}
+                  actionLabel="فتح Customer 360"
                   badges={<>
                     <SalesMobileBadge color={sm.color}>{sm.icon} {sm.label}</SalesMobileBadge>
                     <SalesMobileBadge color={pm.color}>أولوية {l.priority} · {CHANNELS[l.channel] || l.channel}</SalesMobileBadge>
@@ -502,6 +538,7 @@ export default function Retargeting({ isActive = true }) {
                       <span>{l.ownerName ? `👤 ${l.ownerName}` : ''}{l.ownerName && l.nextActionAt ? ' · ' : ''}{l.nextActionAt ? `⏰ ${new Date(l.nextActionAt).toLocaleDateString('en-CA')}` : ''}</span>
                     )}
                     <span onClick={event => event.stopPropagation()} style={{ display: 'inline-flex', gap: 7, marginInlineStart: 'auto' }}>
+                      <button className="sales-mobile__icon-action" onClick={() => setFollowUp(l)} title="فتح المتابعة">متابعة</button>
                       {l.phone && <IvrCallButton phone={l.phone} name={l.storeName}
                         fields={{ name: l.storeName, shipments: l.totalShipments, last_shipment: l.lastShipment, days_since: l.daysSinceLast, wallet: l.wallet }} size={15}/>}
                       {l.phone && <button className="sales-mobile__icon-action" onClick={() => setWaRecipients([leadToRecipient(l)])} title="إرسال واتساب عبر هاتف"><Send size={15}/></button>}
@@ -513,7 +550,7 @@ export default function Retargeting({ isActive = true }) {
           </SalesMobileList>
           ) : (
           <Card style={{ padding: 0, overflow: 'hidden' }}>
-            <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <DataTable caption="فرص إعادة الاستهداف">
               <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
                 {['المتجر', 'الجوال', 'الشحنات', 'آخر شحنة', 'المحفظة', 'الربط', 'الشريحة', 'الأولوية', 'المتابعة', 'إجراء'].map(h =>
                   <th key={h} style={{ padding: '10px 12px', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>)}
@@ -522,7 +559,7 @@ export default function Retargeting({ isActive = true }) {
                 {leads.map((l, i) => {
                   const sm = segmentMeta(l.segment); const pm = priorityMeta(l.priority); const stm = statusMeta(l.status);
                   return (
-                    <tr key={l.phone + i} onClick={() => setFollowUp(l)} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}>
+                    <tr key={l.phone + i} onClick={() => openSalesCustomer(l)} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}>
                       <td data-label="المتجر" style={{ padding: '10px 12px', fontWeight: 700 }}>
                         {l.storeName}{l.highValue && <span title="قيمة عالية" style={{ marginInlineStart: 4 }}>⭐</span>}
                         {l.storeCount > 1 && (
@@ -531,7 +568,7 @@ export default function Retargeting({ isActive = true }) {
                           </div>
                         )}
                       </td>
-                      <td data-label="الجوال" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', direction: 'ltr', textAlign: 'right' }}>{l.phone || '—'}</td>
+                      <td data-label="الجوال" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', direction: 'ltr', textAlign: 'right' }}><PhoneNumber value={l.phone}/></td>
                       <td data-label="الشحنات" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)' }}>{fmt0(l.totalShipments)}</td>
                       <td data-label="آخر شحنة" style={{ padding: '10px 12px', color: 'var(--muted)' }}>{l.daysSinceLast == null ? '—' : `${l.daysSinceLast} يوم`}</td>
                       <td data-label="المحفظة" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', color: l.wallet < 0 ? 'var(--red)' : l.wallet > 0.5 ? 'var(--green)' : 'var(--muted)' }}>{fmt2(l.wallet)}</td>
@@ -556,6 +593,7 @@ export default function Retargeting({ isActive = true }) {
                         {/* «كل شي على هاتف» (2026-07-16): wa.me الحرة أُزيلت — زر الحملة
                             يظهر للجميع والمودال يوضّح الصلاحية الناقصة (لا إخفاء صامت) */}
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <Btn size="sm" onClick={e => { e.stopPropagation(); setFollowUp(l); }}>متابعة</Btn>
                           {l.phone && <IvrCallButton phone={l.phone} name={l.storeName}
                             fields={{ name: l.storeName, shipments: l.totalShipments, last_shipment: l.lastShipment, days_since: l.daysSinceLast, wallet: l.wallet }} size={15}/>}
                           {l.phone && <button onClick={e => { e.stopPropagation(); setWaRecipients([leadToRecipient(l)]); }} title="إرسال واتساب عبر هاتف (قالب معتمد — يُسجَّل)" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', padding: 0, display: 'flex' }}><Send size={15}/></button>}
@@ -565,7 +603,7 @@ export default function Retargeting({ isActive = true }) {
                   );
                 })}
               </tbody>
-            </table>
+            </DataTable>
           </Card>
           )
         )}
@@ -678,7 +716,7 @@ function CampaignView({ campaign, changes }) {
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '10px 12px', fontWeight: 700, fontSize: 12.5, background: 'var(--surface2)' }}>أداء الموظفين</div>
         {!campaign.byOwner.length ? <div style={{ padding: 16, fontSize: 12, color: 'var(--muted)' }}>لا إسنادات بعد</div> : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+          <DataTable caption="متابعة العميل">
             <thead><tr>{['الموظف', 'عُمل', 'تواصل', 'مهتم', 'عاد'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
             <tbody>{campaign.byOwner.map((o, i) => (
               <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
@@ -687,13 +725,13 @@ function CampaignView({ campaign, changes }) {
                 <td style={{ ...td, color: 'var(--green)', fontWeight: 700 }}>{fmt0(o.returned)}</td>
               </tr>
             ))}</tbody>
-          </table>
+          </DataTable>
         )}
       </Card>
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '10px 12px', fontWeight: 700, fontSize: 12.5, background: 'var(--surface2)' }}>أداء الشرائح</div>
         {!campaign.bySegment.length ? <div style={{ padding: 16, fontSize: 12, color: 'var(--muted)' }}>لا نشاط بعد</div> : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+          <DataTable caption="سجل تغيرات الحالة">
             <thead><tr>{['الشريحة', 'عُمل', 'مهتم', 'عاد'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
             <tbody>{campaign.bySegment.map((s, i) => { const m = segmentMeta(s.segment); return (
               <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
@@ -702,7 +740,7 @@ function CampaignView({ campaign, changes }) {
                 <td style={{ ...td, color: 'var(--green)', fontWeight: 700 }}>{fmt0(s.returned)}</td>
               </tr>
             ); })}</tbody>
-          </table>
+          </DataTable>
         )}
       </Card>
     </div>
@@ -710,7 +748,7 @@ function CampaignView({ campaign, changes }) {
       <div style={{ marginTop: 16 }}>
         <SectionTitle>آخر تغييرات الحالات (تبقى عبر رفعات الملفات)</SectionTitle>
         <Card style={{ padding: 0, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+          <DataTable caption="تفاصيل حملة الاستعادة">
             <thead><tr>{['المتجر', 'من', 'إلى', 'بواسطة', 'التاريخ'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
             <tbody>{changes.map((c, i) => {
               const from = c.oldStatus ? statusMeta(c.oldStatus) : { label: '—', color: 'var(--muted)' };
@@ -725,7 +763,7 @@ function CampaignView({ campaign, changes }) {
                 </tr>
               );
             })}</tbody>
-          </table>
+          </DataTable>
         </Card>
       </div>
     )}

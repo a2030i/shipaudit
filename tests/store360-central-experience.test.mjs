@@ -32,7 +32,8 @@ test('Store 360 opens scoped balance reconciliation and existing carrier center'
 
 test('Reconciliation scopes the customer view by Store ID as well as the display name', async () => {
   const page = await read('../src/pages/Reconciliation.jsx');
-  assert.match(page, /initialSearch=/);
+  assert.match(page, /search=\{resultSearch\}/);
+  assert.match(page, /readReconciliationJourneyContext\(location\.search\)/);
   assert.match(page, /\[r\.storeId, r\.storeName, r\.phone/);
 });
 

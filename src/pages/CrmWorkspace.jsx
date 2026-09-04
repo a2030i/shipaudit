@@ -9,7 +9,9 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Headset, Store, TrendingUp, CalendarClock, BarChart3, RefreshCw,
   Phone, PhoneCall, StickyNote, HandCoins, UserCog, Plus, ChevronLeft, Upload, Sliders, Trash2,
   Search, AlertTriangle, CheckCircle2, ExternalLink } from 'lucide-react';
-import { Card, Btn, Modal, Spinner, Empty, Select, Input, Badge, toast, PageHeader, DropZone } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, Select, Input, Badge, toast } from '../components/UI.jsx';
+import { DropZone } from '../design-system/EnterpriseUI.jsx';
+import { DataTable, Dialog as Modal, PageHeader } from '../design-system/EnterpriseUI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadCustomerWatch } from '../lib/customer360Service.js';
 import { loadEmployees } from '../lib/employeeService.js';
@@ -136,7 +138,7 @@ function QueueTab({ active }) {
       {enrollMsg && <div style={{ background: 'color-mix(in srgb, var(--accent3) 8%, transparent)', color: '#0891B2', padding: '8px 14px', borderRadius: 10, fontSize: 13, marginBottom: 12 }}>✅ {enrollMsg}</div>}
       {loading && !rows.length ? <Spin/> : !rows.length ? <Empty icon="✅" title="لا متابعات" sub="لا عملاء يحتاجون متابعة الآن"/> : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
-          <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <DataTable caption="قائمة متابعة العملاء">
             <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
               {['العميل', 'الدين', 'العمر', 'الخطر', 'الحالة', 'آخر تواصل', 'الإجراء التالي'].map(h =>
                 <th key={h} style={{ padding: '10px 12px', fontSize: 11.5, color: 'var(--muted)', fontWeight: 600 }}>{h}</th>)}
@@ -164,7 +166,7 @@ function QueueTab({ active }) {
                 );
               })}
             </tbody>
-          </table>
+          </DataTable>
         </Card>
       )}
       {sel && <CustomerDrawer customer={sel} onClose={() => setSel(null)} onChanged={refresh}/>}
@@ -403,7 +405,7 @@ function SalesTab({ active }) {
         ? <Empty icon="✅" title="القائمة فارغة" sub={merchants?.length ? 'لا متاجر في هذا التصنيف' : 'ارفع كشف المتاجر من صفحة العملاء ← متاجر المنصّة'}/>
         : (
           <Card style={{ padding: 0, overflow: 'hidden' }}>
-            <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <DataTable caption="قوائم المبيعات">
               <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
                 {['المتجر', 'الجوال', meta.dateLabel, 'شحناته', 'المحفظة', 'الدفع', ''].map(h =>
                   <th key={h} style={{ padding: '10px 12px', fontSize: 11.5, color: 'var(--muted)', fontWeight: 600 }}>{h}</th>)}
@@ -427,7 +429,7 @@ function SalesTab({ active }) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
             {rows.length > 300 && <div style={{ padding: '8px 12px', fontSize: 11, color: 'var(--muted)' }}>عرض أول 300 من {rows.length} — القوائم مرتّبة بالأولوية</div>}
           </Card>
         )}
@@ -876,7 +878,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
         </>
         ) : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
-          <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <DataTable caption="العملاء المحتملون خارج المنصة">
             <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
               {can('crm.assign') && (
                 <th style={{ padding: '10px 12px', width: 34 }}>
@@ -936,7 +938,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
           <div style={{ padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)' }}>
             <Btn size="sm" variant="ghost" disabled={filters.page <= 0} onClick={() => setFilter({ page: Math.max(0, filters.page - 1) })}>السابق</Btn>
             <span style={{ fontSize: 12, color: 'var(--muted)' }}>صفحة {filters.page + 1} من {totalPages}</span>
@@ -976,13 +978,13 @@ function HudhudDiscoveryModal({onClose,onPromoted}){
     {message&&<div style={{padding:10,borderRadius:9,background:'color-mix(in srgb, var(--green) 9%, var(--surface))',color:'var(--green)',fontSize:12.5,marginBottom:12}}>{message}</div>}
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><strong>بانتظار المراجعة</strong><span style={{fontSize:11,color:'var(--muted)'}}>{rows.length} نتيجة مرتبة حسب قوة التأهيل</span></div>
     <div style={{maxHeight:'52vh',overflow:'auto',border:'1px solid var(--border)',borderRadius:10}}>
-      <table className="m-cards" style={{width:'100%',borderCollapse:'collapse',fontSize:12.5}}><thead><tr style={{background:'var(--surface2)',textAlign:'right'}}>{['النشاط','الموقع','الإثبات','التقييم','الإجراء'].map(h=><th key={h} style={{padding:'9px 10px'}}>{h}</th>)}</tr></thead><tbody>{rows.map(row=><tr key={row.id} style={{borderTop:'1px solid var(--border)'}}>
+      <DataTable caption="مرشحو الاستكشاف"><thead><tr style={{background:'var(--surface2)',textAlign:'right'}}>{['النشاط','الموقع','الإثبات','التقييم','الإجراء'].map(h=><th key={h} style={{padding:'9px 10px'}}>{h}</th>)}</tr></thead><tbody>{rows.map(row=><tr key={row.id} style={{borderTop:'1px solid var(--border)'}}>
         <td data-label="النشاط" style={{padding:10}}><strong>{row.name_ar}</strong><div style={{color:'var(--muted)',fontSize:10.5,marginTop:3}}>{row.category_ar||'—'}</div></td>
         <td data-label="الموقع" style={{padding:10}}>{[row.district_ar,row.city_ar].filter(Boolean).join('، ')||'—'}</td>
         <td data-label="الإثبات" style={{padding:10}}><div>{row.website_url?'موقع ✓':'بلا موقع'}</div><div>{row.phone_normalized?'هاتف ✓':'بلا هاتف'}{row.instagram_url?' · إنستغرام ✓':''}</div></td>
         <td data-label="قوة الفرصة" style={{padding:10}}><strong style={{color:'var(--green)'}}>{row.ecommerce_score}/100</strong><div style={{fontSize:10.5,color:'var(--muted)'}}>{row.qualification_evidence?.classification==='digital_store_possible'?'نشاط رقمي محتمل':row.qualification_evidence?.classification==='social_seller_possible'?'بيع اجتماعي محتمل':'محل واعد'} · هدهد {row.rating?Number(row.rating).toFixed(1):'—'}</div></td>
         <td data-label="الإجراء" style={{padding:10}}><div style={{display:'flex',gap:6,flexWrap:'wrap'}}>{row.website_url&&<Btn size="sm" variant="ghost" onClick={()=>window.open(row.website_url,'_blank')}>فحص الموقع</Btn>}<Btn size="sm" variant="accent" disabled={busy} onClick={()=>approve(row)}>إضافة إلى CRM</Btn><Btn size="sm" variant="ghost" disabled={busy} onClick={()=>reject(row)}>استبعاد</Btn></div></td>
-      </tr>)}</tbody></table>
+      </tr>)}</tbody></DataTable>
       {!rows.length&&<div style={{padding:30,textAlign:'center',color:'var(--muted)'}}>لا توجد نتائج معلقة. شغّل أول نطاق للبدء.</div>}
     </div>
   </Modal>;
@@ -1772,7 +1774,7 @@ function BoardTab({ active }) {
             </span>
           )}
         </div>
-        <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <DataTable caption="أداء المبيعات والمتابعة">
           <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
             {['الموظف', 'الجهات', 'مفتوحة', 'لمسات أسبوعية', 'معدل التحويل', 'مهام مفتوحة', 'مهام منجزة', 'صفقات مفتوحة', 'ربح فعلي'].map(h =>
               <th key={h} style={{ padding: '10px 12px', fontSize: 11.5, color: 'var(--muted)' }}>{h}</th>)}
@@ -1798,7 +1800,7 @@ function BoardTab({ active }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </DataTable>
       </Card>
     </Pad>
   );

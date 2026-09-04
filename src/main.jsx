@@ -13,6 +13,13 @@ import './mobile-experience.css'
 // real PageSlot end spacer must win over every historical/theme stylesheet.
 import './mobile-scroll.css'
 import './navigation-hub.css'
+// Enterprise redesign foundation. This final layer intentionally adapts legacy
+// screens while the reference workspaces migrate to the new primitives.
+import './design-system/tokens.css'
+import './design-system/components.css'
+import './design-system/responsive.css'
+import './design-system/shell.css'
+import './design-system/reference-screens.css'
 
 // توقيت السعودية عالمياً: قاعدة البيانات تخزّن UTC، ونريد العرض بتوقيت الرياض مهما كان
 // جهاز المتصفّح. نحقن timeZone='Asia/Riyadh' في كل دوال Date.toLocale* حين لا يُمرَّر

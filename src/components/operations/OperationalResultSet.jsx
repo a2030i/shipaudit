@@ -1,14 +1,14 @@
 import { AlertTriangle, CheckCircle2, Clock3, Database, Info, RefreshCw, SearchX } from 'lucide-react';
-import { Btn, Spinner } from '../UI.jsx';
+import { Button as Btn, ErrorState, EmptyState, LoadingState, NumberValue, Pagination } from '../../design-system/EnterpriseUI.jsx';
 import { isOperationalDataStale } from '../../lib/operationalWorkflows.js';
 import './operational-result-set.css';
 
 const COUNT = value => Number(value || 0).toLocaleString('en-US');
 
 function ResultSetState({ state, error, empty, onRetry }) {
-  if (state === 'loading') return <div className="ors-state" role="status"><Spinner size={22}/><div><strong>جارٍ تجهيز النتائج</strong><span>نراجع المصدر والفلاتر قبل إتاحة الإجراءات.</span></div></div>;
-  if (state === 'error') return <div className="ors-state is-error" role="alert"><AlertTriangle size={22}/><div><strong>تعذر تحميل النتائج</strong><span>{error || 'المصدر غير متاح الآن. لم تُحوّل المشكلة إلى قائمة فارغة.'}</span></div>{onRetry ? <Btn size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={onRetry}>إعادة المحاولة</Btn> : null}</div>;
-  if (empty) return <div className="ors-state is-empty"><SearchX size={22}/><div><strong>لا توجد نتائج مطابقة</strong><span>راجع الفلاتر أو حدّث المصدر إذا كنت تتوقع ظهور حالات هنا.</span></div></div>;
+  if (state === 'loading') return <LoadingState compact title="جارٍ تجهيز النتائج" description="نراجع المصدر والفلاتر قبل إتاحة الإجراءات."/>;
+  if (state === 'error') return <ErrorState compact title="تعذر تحميل النتائج" description={error || 'المصدر غير متاح الآن. لم تُحوّل المشكلة إلى قائمة فارغة.'} onRetry={onRetry}/>;
+  if (empty) return <EmptyState compact title="لا توجد نتائج مطابقة" description="راجع الفلاتر أو حدّث المصدر إذا كنت تتوقع ظهور حالات هنا."/>;
   return null;
 }
 
@@ -82,10 +82,11 @@ export default function OperationalResultSet({
     {selection && state === 'available' ? <ResultSetSelection {...selection}/> : null}
     <ResultSetState state={state} error={error} empty={state === 'available' && empty} onRetry={onRetry}/>
     {showContent ? <div className="ors-results">{children}</div> : null}
-    {showContent && pagination ? <nav className="ors-pagination" aria-label="صفحات النتائج">
-      <Btn size="sm" variant="ghost" disabled={!pagination.canPrevious} onClick={pagination.onPrevious}>السابق</Btn>
-      <span>صفحة {pagination.page} من {pagination.pages} · {COUNT(pagination.total)} نتيجة</span>
-      <Btn size="sm" variant="ghost" disabled={!pagination.canNext} onClick={pagination.onNext}>التالي</Btn>
-    </nav> : null}
+    {showContent && pagination ? <Pagination
+      page={Math.max(0, Number(pagination.page || 1) - 1)}
+      pages={pagination.pages}
+      total={pagination.total}
+      onChange={next => next < Number(pagination.page || 1) - 1 ? pagination.onPrevious?.() : pagination.onNext?.()}
+    /> : null}
   </section>;
 }

@@ -20,10 +20,10 @@ import {
   RefreshCw, Lock, Unlock, Calendar, AlertTriangle,
   CheckCircle2, Info, FileText, Banknote, CreditCard, Receipt,
 } from 'lucide-react';
-import {
-  Card, Btn, Spinner, Empty, Modal, toast, PageHeader,
-} from '../components/UI.jsx';
+import { toast } from '../lib/toast.js';
 import { useAuth } from '../lib/auth.jsx';
+import { Breadcrumbs, Button as Btn, DataTable, Dialog as Modal, EmptyState as Empty, PageHeader, Panel as Card, Spinner } from '../design-system/EnterpriseUI.jsx';
+import FinanceWorkspaceNav from '../components/enterprise/FinanceWorkspaceNav.jsx';
 import {
   listPeriods, getMonthsWithActivity, closePeriod, reopenPeriod, refreshClosedSet,
 } from '../lib/periodsService.js';
@@ -127,6 +127,7 @@ export default function Periods({ isActive = true }) {
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1100, margin: '0 auto' }}>
+      <Breadcrumbs items={[{ label: 'المالية' }, { label: 'الرقابة المالية' }, { label: 'إقفال الفترات' }]}/>
       <PageHeader
         icon={<Lock size={22}/>}
         iconColor="var(--brand)"
@@ -139,6 +140,8 @@ export default function Periods({ isActive = true }) {
           </Btn>
         }
       />
+
+      <FinanceWorkspaceNav active="control"/>
 
       {/* Educational banner — explains what closing does, once */}
       <Card style={{ marginBottom: 18, background: 'color-mix(in srgb, var(--brand) 6%, transparent)', border: '1px solid color-mix(in srgb, var(--brand) 22%, transparent)' }}>
@@ -159,7 +162,7 @@ export default function Periods({ isActive = true }) {
         />
       ) : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
-          <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <DataTable className="m-cards" caption="حالة إقفال الفترات المالية">
             <thead>
               <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
                 {['الشهر', 'الحالة', 'الحركات المحاسبية', 'COD', 'مراجعات', 'دفعات', 'الإقفال / الفتح', 'إجراء'].map(h => (
@@ -236,7 +239,7 @@ export default function Periods({ isActive = true }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </Card>
       )}
 

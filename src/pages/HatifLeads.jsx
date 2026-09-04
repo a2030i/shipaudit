@@ -3,7 +3,8 @@
 // hatif-contacts-sync action=audit). الأثمن = من سمّاه موظف يدوياً (اسم فيه حروف).
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { UserPlus, RefreshCw, Phone, MessageCircle, Send, Search, Download } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, PageHeader, toast } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, toast } from '../components/UI.jsx';
+import { DataTable, PageHeader } from '../design-system/EnterpriseUI.jsx';
 import IvrCallButton from '../components/IvrCallButton.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadHatifLeads, computeLeadStats, syncHatifLeads, kindMeta } from '../lib/hatifLeadsService.js';
@@ -206,7 +207,7 @@ export default function HatifLeads({ isActive = true }) {
         {/* الجدول */}
         {!filtered.length ? <Card><Empty icon="🔍" title="لا نتائج" sub="خفّف الفلاتر"/></Card> : (
           <Card style={{ padding: 0, overflow: 'hidden' }}>
-            <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <DataTable caption="مرجع العملاء المحتملين من هاتف">
               <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
                 {['الاسم', 'الجوال', 'أول ظهور', 'الحالة', 'إجراء'].map(h =>
                   <th key={h} style={{ padding: '10px 12px', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>)}
@@ -249,7 +250,7 @@ export default function HatifLeads({ isActive = true }) {
                   );
                 })}
               </tbody>
-            </table>
+            </DataTable>
             {filtered.length > 300 && (
               <div style={{ padding: '10px 12px', fontSize: 11.5, color: 'var(--muted)', borderTop: '1px solid var(--border)' }}>
                 يُعرَض أول 300 صف — ضيّق الفلاتر أو صدّر Excel للقائمة كاملة ({fmt0(filtered.length)}).

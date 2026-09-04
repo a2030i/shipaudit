@@ -6,7 +6,12 @@ import {
   ClipboardCheck, Download, FileSpreadsheet, LockKeyhole,
   RefreshCw, Upload,
 } from 'lucide-react';
-import { Btn, Card, DropZone, PageHeader, Select, Spinner, toast } from '../components/UI.jsx';
+import { DropZone } from '../design-system/EnterpriseUI.jsx';
+import {
+  Button as Btn, Page, PageHeader, Panel as Card, Select, Spinner, StatusBadge, Tabs,
+} from '../design-system/EnterpriseUI.jsx';
+import { toast } from '../lib/toast.js';
+import OperationsWorkspaceNav from '../components/enterprise/OperationsWorkspaceNav.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
   closeAccountingCycle,
@@ -34,6 +39,8 @@ const STATUS = {
   pending: { label: 'لم يبدأ', color: 'var(--muted)', Icon: Circle },
   blocked: { label: 'ينتظر مرحلة سابقة', color: 'var(--muted2)', Icon: LockKeyhole },
 };
+
+const STATUS_TONE = { complete: 'success', ready: 'info', attention: 'warning', pending: 'neutral', blocked: 'neutral' };
 
 const REQUIREMENT_STATUS = {
   complete: { label: 'مكتمل', color: 'var(--green)', Icon: CheckCircle2 },
@@ -280,7 +287,9 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
       : selectedId && snapshot.stages.some(stage => stage.id === selectedId)
         ? selectedId
         : snapshot.stages[0]?.id;
-    const canonical = new URLSearchParams({ period });
+    const canonical = new URLSearchParams(params);
+    canonical.set('period', period);
+    canonical.delete('action');
     if (activeStage) canonical.set('stage', activeStage);
     if (params.toString() !== canonical.toString()) {
       navigate(`/accounting-cycle?${canonical.toString()}`, { replace: true });
@@ -292,6 +301,15 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
     const params = new URLSearchParams({ period: nextPeriod });
     navigate(`/accounting-cycle?${params.toString()}`, { replace: true });
   }, [navigate]);
+
+  const changeStage = useCallback((stageId) => {
+    const params = new URLSearchParams(location.search);
+    params.set('period', period);
+    params.set('stage', stageId);
+    params.delete('action');
+    setSelectedId(stageId);
+    navigate(`/accounting-cycle?${params.toString()}`, { replace: true });
+  }, [location.search, navigate, period]);
 
   useEffect(() => {
     if (!carrierId && carriers[0]?.id) setCarrierId(carriers[0].id);
@@ -597,6 +615,7 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
               carriers={carriers}
               onApproved={auditApproved}
               onNewAudit={() => { setAuditDraft(null); refresh({ advance: true }); }}
+              embedded
             />
           </div>
         );
@@ -610,7 +629,7 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
               ضبط جداول استلام الناقلين
             </Btn>
           )}
-          {allowed ? <UploadWizard key={period} carriers={carriers} onComplete={setAuditDraft} initialPeriod={period} lockPeriod/> : <NoPermission/>}
+          {allowed ? <UploadWizard key={period} carriers={carriers} onComplete={setAuditDraft} initialPeriod={period} lockPeriod embedded/> : <NoPermission/>}
         </div>
       );
     }
@@ -837,7 +856,7 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
   };
 
   return (
-    <div className="accounting-cycle-page">
+    <Page className="accounting-cycle-page enterprise-workspace enterprise-operations-page">
       <Card className="accounting-cycle-period-bar" aria-label="الفترة الموحدة لدورة المحاسبة">
         <div className="accounting-cycle-period-bar__copy">
           <CalendarDays size={19}/>
@@ -871,6 +890,7 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
                 ? 'الدورة مكتملة'
                 : 'اختر شهر العمل'}
       />
+      <OperationsWorkspaceNav active="cycle"/>
 
       {loading && !snapshot ? (
         <Card className="accounting-cycle-loading"><Spinner size={24}/><span>جارٍ جمع حالة كل المراحل…</span></Card>
@@ -908,6 +928,13 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
             <b className="accounting-cycle-summary__percent">{percent}%</b>
           </Card>
 
+          <Tabs
+            items={snapshot.stages.map((stage, index) => ({ id: stage.id, label: `${index + 1}. ${stage.label}` }))}
+            active={selected?.id}
+            onChange={changeStage}
+            label="مرحلة دورة المحاسب"
+          />
+
           <div className="accounting-cycle-layout accounting-cycle-layout--contextual">
             <Card className="accounting-cycle-detail accounting-cycle-detail--desktop">
               {selected && (
@@ -916,6 +943,7 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
                     <span>المرحلة {snapshot.stages.findIndex(stage => stage.id === selected.id) + 1}</span>
                     <h2>{selected.label}</h2>
                     <p>{selected.reason}</p>
+                    <StatusBadge tone={STATUS_TONE[selected.status] || 'neutral'}>{STATUS[selected.status]?.label || selected.status}</StatusBadge>
                   </div>
                   {renderStage(selected)}
                   <StageHistory stage={selected} busy={String(busy || '').startsWith('weight_redownload:')} onRedownload={redownloadWeights}/>
@@ -937,7 +965,7 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
           onError={settlementFailed}
         />
       )}
-    </div>
+    </Page>
   );
 }
 

@@ -3,10 +3,15 @@
 // 2 ر.س). سعر البيع يُملأ لاحقاً. تعديل التفعيل/الهامش/البيع يتطلب carriers.edit_contract.
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Truck, RefreshCw, Download, Save } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, PageHeader, toast } from '../components/UI.jsx';
+import { toast } from '../components/UI.jsx';
+import {
+  Button as Btn, DataTable, EmptyState as Empty, PageHeader,
+  Spinner, StatStrip, Surface as Card,
+} from '../design-system/EnterpriseUI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadPlatformCarriers, savePlatformCarrier, savePlatformCompetitor, loadPlatformMarkup, savePlatformMarkup } from '../lib/platformCarriersService.js';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
+import './ReportsWorkspace.css';
 
 const fmt2 = (n) => n == null ? '—' : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const cell = { padding: '10px 12px', fontSize: 12.5, whiteSpace: 'nowrap' };
@@ -191,14 +196,12 @@ export default function PlatformCarriers({ isActive = true }) {
 
       {/* عدد الشركات لكل منصّة */}
       {rows && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-          {[['لمحة', platCounts.lamha, 'var(--brand)'], ['أوتو', platCounts.auto, 'var(--gold)'], ['طرود', platCounts.torod, 'var(--accent)']].map(([lbl, n, col]) => (
-            <div key={lbl} style={{ flex: '1 1 120px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '9px 13px', borderTop: `3px solid ${col}` }}>
-              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 2 }}>{lbl}</div>
-              <div style={{ fontSize: 19, fontWeight: 800, fontFamily: 'var(--font-mono)', color: col }}>{n} <span style={{ fontSize: 11, color: 'var(--muted2)', fontWeight: 400 }}>شركة</span></div>
-            </div>
-          ))}
-        </div>
+        <StatStrip items={[
+          { key: 'lamha', label: 'شركات لمحة', value: platCounts.lamha.toLocaleString('en-US'), note: 'شركة نشطة' },
+          { key: 'auto', label: 'شركات أوتو', value: platCounts.auto.toLocaleString('en-US'), note: 'بسعر مُدخل' },
+          { key: 'torod', label: 'شركات طرود', value: platCounts.torod.toLocaleString('en-US'), note: 'بسعر مُدخل' },
+          { key: 'no-cost', label: 'تكلفة غير معروفة', value: noCostRows.length.toLocaleString('en-US'), note: 'تحتاج مراجعة', tone: noCostRows.length ? 'warning' : undefined },
+        ]}/>
       )}
 
       {/* تنبيه جامع: شركات نشطة تبيع بلا تكلفة معروفة — تظهر أعلى الصفحة
@@ -232,9 +235,8 @@ export default function PlatformCarriers({ isActive = true }) {
       {rows == null ? <div style={{ padding: 50, textAlign: 'center' }}><Spinner/></div>
         : !visible.length ? <Card><Empty icon="🚚" title="لا شركات في المقارنة" sub="فعّل الشركات الموجودة في إكسل أسعار البيع"/></Card>
         : (
-          <Card style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ overflowX: 'auto' }}>
-              <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <Card>
+            <DataTable caption="مقارنة أسعار شركات المنصات">
                 <thead><tr style={{ background: 'var(--surface2)' }}>
                   {['اسم شركة الشحن', 'الحالة في لمحة', 'تكلفة الناقل', 'رسوم لمحة', 'ربح لمحة', 'البيع في لمحة', 'البيع في أوتو', 'البيع في طرود', 'أفضل سعر'].map((h, i) => <th key={i} style={th}>{h}</th>)}
                 </tr></thead>
@@ -324,8 +326,7 @@ export default function PlatformCarriers({ isActive = true }) {
                     </tr>
                   );})}
                 </tbody>
-              </table>
-            </div>
+            </DataTable>
           </Card>
         )}
 
@@ -350,4 +351,4 @@ function recompute(r, globalMarkup) {
   return { ...r, markup: m, fuelAmt, costPrice: r.base != null ? Number((r.base + fuelAmt + m).toFixed(2)) : null };
 }
 
-function Pad({ children }) { return <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>{children}</div>; }
+function Pad({ children }) { return <div className="platform-carriers-view">{children}</div>; }

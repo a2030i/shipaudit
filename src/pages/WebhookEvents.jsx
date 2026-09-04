@@ -12,6 +12,7 @@ import {
   FileX2, FileQuestion, Upload as UploadIcon, Trash2, FileCheck2, Zap,
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, Modal, toast, PageHeader } from '../components/UI.jsx';
+import { DataTable } from '../design-system/EnterpriseUI.jsx';
 import { Inbox } from 'lucide-react';
 import {
   loadWebhookEvents, countWebhookStatuses, assignEventToCarrier,
@@ -406,7 +407,7 @@ export default function WebhookEvents({ carriers, isActive = true }) {
           />
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table className="m-cards">
+            <DataTable className="m-cards" caption="وارد ملفات التكاملات">
               <thead>
                 <tr>
                   <th style={{ width: 36, paddingInline: 8 }}>
@@ -639,7 +640,7 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                   );
                 })}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         )}
       </Card>

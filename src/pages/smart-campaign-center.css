@@ -88,6 +88,111 @@
 
 /* Keep campaign configuration and execution history in one workspace on wide
    screens; mobile actions remain in flow so they never cover campaign data. */
+
+/* Final-system remediation: campaign layout remains task-specific, while all
+   visual decisions come from the shared enterprise tokens and primitives. */
+.ds-page.smart-campaign-center {
+  padding: 0;
+  color: var(--ds-ink);
+  background: transparent;
+  font-family: var(--ds-font);
+}
+.smart-campaign-center .scc-composer,
+.smart-campaign-center .scc-campaign-list {
+  background: var(--ds-surface);
+  border-color: var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  box-shadow: none;
+}
+.smart-campaign-center .scc-section-head,
+.smart-campaign-center .scc-composer__head,
+.smart-campaign-center .scc-step-rail,
+.smart-campaign-center .scc-composer__footer {
+  border-color: var(--ds-border);
+}
+.smart-campaign-center .scc-section-head h2,
+.smart-campaign-center .scc-composer__head h2,
+.smart-campaign-center .scc-name-field input,
+.smart-campaign-center .scc-manual-audience textarea {
+  color: var(--ds-ink);
+}
+.smart-campaign-center .scc-section-head span,
+.smart-campaign-center .scc-composer__head span,
+.smart-campaign-center .scc-name-field,
+.smart-campaign-center .scc-block__title,
+.smart-campaign-center .scc-inline-field,
+.smart-campaign-center .scc-switch {
+  color: var(--ds-ink-secondary);
+}
+.smart-campaign-center :is(input, select, textarea):focus-visible,
+.smart-campaign-center button:focus-visible {
+  outline: 2px solid var(--ds-brand);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+.smart-campaign-center :is(.scc-name-field input,.scc-manual-audience textarea,.scc-inline-field select,.scc-hatif-owner select) {
+  border-color: var(--ds-border-strong);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-surface);
+  color: var(--ds-ink);
+}
+.smart-campaign-center :is(.scc-objectives button,.scc-toggle-group button,.scc-channel-grid button,.scc-file-button,.scc-row-action,.scc-audience-number) {
+  border-radius: var(--ds-radius-sm);
+  box-shadow: none;
+}
+.smart-campaign-center :is(.scc-objectives button,.scc-toggle-group button,.scc-channel-grid button,.scc-row-action) {
+  color: var(--ds-ink-secondary);
+  background: var(--ds-surface);
+  border-color: var(--ds-border);
+}
+.smart-campaign-center :is(.scc-objectives button,.scc-toggle-group button,.scc-channel-grid button).is-selected {
+  color: var(--ds-brand);
+  background: var(--ds-brand-soft);
+  border-color: var(--ds-brand);
+  box-shadow: none;
+}
+.smart-campaign-center .scc-step-rail button.is-active,
+.smart-campaign-center .scc-block__title svg,
+.smart-campaign-center .scc-hatif-owner__heading svg,
+.smart-campaign-center .scc-hatif-owner__settings {
+  color: var(--ds-brand);
+}
+.smart-campaign-center .scc-step-rail button.is-active i,
+.smart-campaign-center .scc-toggle-group button.is-selected .scc-check {
+  color: var(--ds-surface);
+  background: var(--ds-brand);
+  border-color: var(--ds-brand);
+  box-shadow: none;
+}
+.smart-campaign-center .scc-audience-number.is-source,
+.smart-campaign-center .scc-audience-number.is-ready {
+  color: var(--ds-brand);
+  border-color: var(--ds-border-strong);
+  background: var(--ds-brand-soft);
+}
+.smart-campaign-center .scc-audience-number.is-excluded {
+  color: var(--ds-danger);
+  border-color: var(--ds-danger);
+  background: var(--ds-danger-bg);
+}
+.smart-campaign-center .scc-audience-number.is-review,
+.smart-campaign-center .scc-reasons span {
+  color: var(--ds-warning);
+  border-color: var(--ds-warning);
+  background: var(--ds-warning-bg);
+}
+.smart-campaign-center .scc-audience-result-set {
+  border-color: var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface);
+}
+.smart-campaign-center .scc-composer__footer {
+  background: var(--ds-surface-subtle);
+}
+@media (max-width: 768px) {
+  .ds-page.smart-campaign-center { padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+  .smart-campaign-center .scc-composer__footer { bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+}
 @media(min-width:1101px){
   .scc-workspace{grid-template-columns:minmax(370px,430px) minmax(0,1fr);gap:14px}
   .scc-composer{grid-column:1;grid-row:1}

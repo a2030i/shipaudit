@@ -1,0 +1,36 @@
+.reports-workspace{max-width:1480px}
+.reports-workspace-nav{min-width:0}
+.reports-index{min-width:0;display:grid;gap:10px}
+.reports-index>.ds-filter-bar{border:1px solid var(--ds-border);border-radius:var(--ds-radius-sm);background:var(--ds-surface)}
+.reports-index__identity{display:grid;gap:3px;max-width:640px}
+.reports-index__identity strong{font-size:12.5px;color:var(--ds-ink)}
+.reports-index__identity small,.reports-index__source{color:var(--ds-muted);font-size:10.5px;line-height:1.55}
+.reports-index .ds-table th:first-child,.reports-index .ds-table td:first-child{position:sticky;right:0;z-index:1;background:var(--ds-surface)}
+.reports-workspace__report{min-width:0}
+.reports-workspace__report>div{max-width:none!important;margin:0!important;padding-inline:0!important}
+.internal-exports-view,.platform-carriers-view,.carrier-kpi-view,.forecast-report-view{display:grid;gap:12px;max-width:1320px;margin:0 auto;padding:24px 28px 80px}
+.reports-workspace__report>.internal-exports-view,.reports-workspace__report>.report-generator-view,.reports-workspace__report>.monthly-report-view{padding:0}
+.report-generator-view,.monthly-report-view{display:grid;gap:12px}
+.report-builder-list{display:grid;gap:8px}
+.report-builder-row{display:grid;grid-template-columns:minmax(230px,.9fr) minmax(320px,1.4fr);align-items:center;gap:14px;padding:12px 14px;border:1px solid var(--ds-border);border-radius:var(--ds-radius-sm);background:var(--ds-surface)}
+.report-builder-row__copy{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start}
+.report-builder-row__copy>svg{margin-top:2px;color:var(--ds-muted)}
+.report-builder-row__copy strong{display:block;color:var(--ds-ink);font-size:12.5px}
+.report-builder-row__copy p{margin:3px 0 0;color:var(--ds-muted);font-size:10.5px;line-height:1.55}
+.report-builder-row__controls{min-width:0;display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.report-builder-row__controls>.ds-select,.report-builder-row__controls>.ds-input{flex:1 1 180px}
+.report-builder-row__controls>.ds-button{flex:0 0 auto}
+.report-health-strip{--stat-count:4}
+.monthly-report-toolbar{display:flex;align-items:end;gap:8px;flex-wrap:wrap}
+.monthly-report-toolbar>.ds-form-field{min-width:260px}
+.monthly-report-view>.ds-stat-strip{--stat-count:4}
+.carrier-kpi-view>.ds-stat-strip,.platform-carriers-view>.ds-stat-strip{--stat-count:4}
+.report-chart-frame{border:1px solid var(--ds-border);border-radius:var(--ds-radius-sm);background:var(--ds-surface);overflow:hidden}
+.report-chart-frame>header{padding:10px 14px;border-bottom:1px solid var(--ds-border)}
+.report-chart-frame>header h2{margin:0;font-size:13px}.report-chart-frame>header p{margin:3px 0 0;color:var(--ds-muted);font-size:10.5px}
+.report-chart-frame__plot{padding:12px 14px}
+@media(max-width:768px){.report-builder-row{grid-template-columns:1fr}.report-builder-row__controls{justify-content:stretch}.report-builder-row__controls>*{flex:1 1 100%!important}.reports-index .ds-table th:first-child,.reports-index .ds-table td:first-child{position:static}.monthly-report-toolbar{display:grid;grid-template-columns:1fr 1fr}.monthly-report-toolbar>.ds-form-field{min-width:0;grid-column:1/-1}.report-chart-frame__plot{overflow-x:auto}.report-chart-frame svg{min-width:560px}}
+@media(max-width:768px){.internal-exports-view,.platform-carriers-view,.carrier-kpi-view,.forecast-report-view{padding:14px 12px 88px}.reports-workspace__report>.internal-exports-view{padding:0}.pull-everything{grid-template-columns:1fr!important}.internal-exports-view>div[style*="minmax(360px"]{grid-template-columns:1fr!important}}
+@media(max-width:768px){.monthly-report-table .ds-table tr{grid-template-columns:repeat(2,minmax(0,1fr));min-height:0}.monthly-report-table .ds-table td{min-width:0;overflow-wrap:anywhere}.monthly-report-table .ds-table td:not(:first-child){display:grid!important;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:center}.monthly-report-table .ds-table td::before{margin:0}.monthly-report-table .ds-table td:first-child{grid-column:1/-1}.monthly-report-table .ds-table tfoot{display:none}}
+@media(max-width:430px){.monthly-report-table .ds-table tr{grid-template-columns:1fr!important}.monthly-report-table .ds-table td{padding-block:5px!important}}
+@media print{.reports-workspace-nav,.monthly-report-toolbar,.reports-workspace>.ds-page-heading{display:none!important}.reports-workspace{padding:0!important}.monthly-report-view{display:block}}

@@ -17,14 +17,14 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
-  RefreshCw, TrendingUp, TrendingDown, Wallet, Calendar,
-  ArrowDownCircle, ArrowUpCircle, AlertTriangle, Info, Banknote,
+  RefreshCw, TrendingUp, Wallet, Calendar, AlertTriangle, Info, Banknote,
 } from 'lucide-react';
-import {
-  Card, Btn, Spinner, Empty, toast, PageHeader,
-} from '../components/UI.jsx';
+import { toast } from '../lib/toast.js';
 import { loadCashflowForecast } from '../lib/forecastService.js';
 import { TASK_KIND_META, CADENCE_META } from '../lib/tasksService.js';
+import FinanceWorkspaceNav from '../components/enterprise/FinanceWorkspaceNav.jsx';
+import { Breadcrumbs, Button as Btn, EmptyState as Empty, Money, PageHeader, Panel as Card, Spinner, StatStrip, Tabs } from '../design-system/EnterpriseUI.jsx';
+import './ReportsWorkspace.css';
 
 const HORIZON_OPTIONS = [
   { days: 7,  label: 'هذا الأسبوع' },
@@ -36,13 +36,6 @@ const HORIZON_OPTIONS = [
 const fmt = (n) => {
   if (n == null || Number.isNaN(n)) return '—';
   return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-};
-const fmtCompact = (n) => {
-  if (n == null || Number.isNaN(n)) return '—';
-  const a = Math.abs(n);
-  if (a >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'م';
-  if (a >= 1_000)     return (n / 1_000).toFixed(1)  + 'ك';
-  return n.toFixed(0);
 };
 const fmtDueLabel = (e) => {
   if (e.isOverdue)        return `متأخّر ${Math.abs(e.dueDays)} يوم`;
@@ -117,11 +110,11 @@ export default function Forecast({ carriers = [], isActive = true }) {
     );
   }
 
-  const netColor = data.netInHorizon >= 0 ? 'var(--green)' : 'var(--red)';
   const horizonLabel = HORIZON_OPTIONS.find(h => h.days === horizon)?.label || `${horizon} يوم`;
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1200, margin: '0 auto' }}>
+    <div className="forecast-report-view">
+      <Breadcrumbs items={[{ label: 'المالية' }, { label: 'الرقابة المالية' }, { label: 'توقع السيولة' }]}/>
       <PageHeader
         icon={<TrendingUp size={22}/>}
         iconColor="var(--accent3)"
@@ -135,57 +128,18 @@ export default function Forecast({ carriers = [], isActive = true }) {
         }
       />
 
+      <FinanceWorkspaceNav active="control"/>
+
       {/* Horizon switcher */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
-        {HORIZON_OPTIONS.map(opt => {
-          const active = horizon === opt.days;
-          return (
-            <button key={opt.days} onClick={() => setHorizon(opt.days)} style={{
-              padding: '8px 16px', borderRadius: 999,
-              border: `1.5px solid ${active ? 'var(--accent3)' : 'var(--border)'}`,
-              background: active ? 'color-mix(in srgb, var(--accent3) 12%, transparent)' : 'transparent',
-              color: active ? 'var(--accent3)' : 'var(--text2)',
-              fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-              fontFamily: 'var(--font-sans)',
-              transition: 'all .15s',
-            }}>
-              {opt.label} <span style={{ opacity: .65, fontSize: 11 }}>({opt.days}ي)</span>
-            </button>
-          );
-        })}
-      </div>
+      <Tabs label="أفق التوقع" active={String(horizon)} onChange={value => setHorizon(Number(value))}
+        items={HORIZON_OPTIONS.map(option => ({ id: String(option.days), label: `${option.label} (${option.days}ي)` }))}/>
 
       {/* Top stats — 3 big numbers */}
-      <div style={{
-        display: 'grid', gap: 12, marginBottom: 18,
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-      }}>
-        <BigStat
-          color="var(--green)"
-          icon={<ArrowDownCircle size={20}/>}
-          label="متوقّع يدخل لك"
-          value={fmt(data.inflowTotal)}
-          unit="ر.س"
-          hint={`من ${data.events.filter(e => e.direction === 'in').length} مهمة تحصيل ${horizonLabel}`}
-        />
-        <BigStat
-          color="var(--red)"
-          icon={<ArrowUpCircle size={20}/>}
-          label="متوقّع تدفعه"
-          value={fmt(data.outflowTotal)}
-          unit="ر.س"
-          hint={`من ${data.events.filter(e => e.direction === 'out').length} مهمة فاتورة ${horizonLabel}`}
-        />
-        <BigStat
-          color={netColor}
-          icon={data.netInHorizon >= 0 ? <TrendingUp size={20}/> : <TrendingDown size={20}/>}
-          label="الباقي المتوقّع"
-          value={(data.netInHorizon >= 0 ? '+' : '−') + fmt(Math.abs(data.netInHorizon))}
-          unit="ر.س"
-          hint={data.netInHorizon >= 0 ? 'فائض نقد متوقّع' : '⚠ عجز — جهّز السيولة'}
-          big
-        />
-      </div>
+      <StatStrip items={[
+        { key: 'inflow', label: 'متوقّع يدخل لك', value: <Money value={data.inflowTotal}/>, note: `من ${data.events.filter(e => e.direction === 'in').length} مهمة تحصيل ${horizonLabel}`, tone: 'success' },
+        { key: 'outflow', label: 'متوقّع تدفعه', value: <Money value={data.outflowTotal}/>, note: `من ${data.events.filter(e => e.direction === 'out').length} مهمة فاتورة ${horizonLabel}`, tone: 'danger' },
+        { key: 'net', label: 'الباقي المتوقّع', value: <Money value={data.netInHorizon}/>, note: data.netInHorizon >= 0 ? 'فائض نقد متوقّع' : 'عجز — جهّز السيولة', tone: data.netInHorizon >= 0 ? 'success' : 'danger' },
+      ]}/>
 
       {/* Side info card: current obligations */}
       <Card style={{
@@ -337,12 +291,15 @@ function CashflowChart({ dailyFlow, bankBalance }) {
   const fmtDay = (iso) => { const d = new Date(iso); return `${d.getDate()}/${d.getMonth() + 1}`; };
   const barW = Math.max(3, Math.min(16, innerW / (n * 1.6)));
   return (
-    <Card style={{ marginBottom: 18, padding: '16px 18px' }}>
+    <Card className="report-chart-frame" aria-label="مسار الرصيد المتوقع">
       <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>📈 مسار رصيدك المتوقّع</div>
       <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>
         الأعمدة = داخل (أخضر) / خارج (أحمر) كل يوم · الخط = الرصيد البنكي الجاري المتوقّع
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', overflow: 'visible' }}>
+      <div className="report-chart-frame__plot">
+      <svg role="img" aria-labelledby="cashflow-chart-title cashflow-chart-description" viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', overflow: 'visible' }}>
+        <title id="cashflow-chart-title">مسار الرصيد البنكي المتوقع</title>
+        <desc id="cashflow-chart-description">الأعمدة تمثل التدفقات اليومية الداخلة والخارجة، والخط يمثل الرصيد الجاري المتوقع.</desc>
         <line x1={padL} y1={zeroY} x2={W - padR} y2={zeroY} stroke="var(--border)" strokeWidth="1" strokeDasharray="3 3"/>
         {dailyFlow.map((d, i) => {
           const cx = x(i + 1);
@@ -359,43 +316,8 @@ function CashflowChart({ dailyFlow, bankBalance }) {
         <path d={path} fill="none" stroke="var(--accent3)" strokeWidth="2" strokeLinejoin="round"/>
         {pts.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r="2.5" fill="var(--accent3)"/>)}
       </svg>
+      </div>
     </Card>
-  );
-}
-
-function BigStat({ color, icon, label, value, unit, hint, big = false }) {
-  return (
-    <div className="stat-card" style={{
-      padding: 18,
-      background: `color-mix(in srgb, ${color} ${big ? 8 : 5}%, transparent)`,
-      border: `1px solid color-mix(in srgb, ${color} ${big ? 28 : 18}%, transparent)`,
-      borderRadius: 'var(--r-lg)',
-      boxShadow: 'var(--shadow-sm)',
-      '--sc-tone': color,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <span style={{
-          width: 32, height: 32, borderRadius: 9,
-          background: `color-mix(in srgb, ${color} 16%, transparent)`,
-          color, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>{icon}</span>
-        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', letterSpacing: .5 }}>
-          {label}
-        </span>
-      </div>
-      <div style={{
-        fontSize: big ? 30 : 24, fontWeight: 800,
-        color, fontFamily: 'var(--font-mono)', letterSpacing: -0.6,
-      }}>
-        {value}
-        <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 500, marginInlineStart: 6 }}>{unit}</span>
-      </div>
-      {hint && (
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>
-          {hint}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -476,7 +398,7 @@ function EventRow({ e, last }) {
             fontSize: 16, fontWeight: 700,
             color: directionColor, fontFamily: 'var(--font-mono)', letterSpacing: -0.3,
           }}>
-            {sign}{fmtCompact(e.estimatedAmount)}
+            {sign}{fmt(e.estimatedAmount)}
             <span style={{ fontSize: 10, color: 'var(--muted)', marginInlineStart: 3, fontWeight: 500 }}> ر.س</span>
           </div>
         )}

@@ -26,7 +26,7 @@ test('customer support ticket system is retired without touching carrier claims'
   assert.doesNotMatch(migration, /drop table if exists public\.audit_claims/);
 });
 
-test('navigation hub is the final shell layer after the Safari scroll contract', async () => {
+test('enterprise design system is the final shell layer after the Safari and navigation contracts', async () => {
   const main = await read('src/main.jsx');
   const layoutIndex = main.indexOf("import './workspace-layout.css'");
   const scrollIndex = main.indexOf("import './mobile-scroll.css'");
@@ -37,7 +37,10 @@ test('navigation hub is the final shell layer after the Safari scroll contract',
   assert.ok(layoutIndex > -1, 'workspace layout stylesheet must be imported');
   assert.ok(scrollIndex > layoutIndex, 'mobile scroll contract must remain the final stylesheet');
   assert.ok(navigationIndex > scrollIndex, 'navigation shell must override historical sidebar layers');
-  assert.equal(navigationIndex, finalStyleIndex, 'navigation hub must be the last stylesheet in the cascade');
+  const tokensIndex = main.indexOf("import './design-system/tokens.css'");
+  const referenceIndex = main.indexOf("import './design-system/reference-screens.css'");
+  assert.ok(tokensIndex > navigationIndex, 'enterprise tokens must override historical navigation styling');
+  assert.equal(referenceIndex, finalStyleIndex, 'reference-screen migration layer must be last in the cascade');
 });
 
 test('mobile PageSlot uses normal flow and a real safe-area end spacer', async () => {
@@ -129,12 +132,12 @@ test('V2 shell keeps one direct desktop navigation and one compact mobile direct
   assert.match(app, /<NavigationHub/);
   assert.match(app, /<ExecutiveSidebar/);
   assert.match(sidebar, /<aside className="sidebar" aria-label="التنقل الرئيسي">/);
-  assert.match(sidebar, /SECTION_ORDER = \['sales', 'customers', 'finance', 'shipping', 'reports', 'settings'\]/);
+  assert.match(sidebar, /SECTION_ORDER = \['customers', 'sales', 'campaigns', 'finance', 'shipping', 'reports', 'settings'\]/);
   assert.doesNotMatch(sidebar, /<strong>المزيد<\/strong>/);
-  assert.match(sidebar, /<strong>الحملات<\/strong><small>الجمهور · الإطلاق · النتائج<\/small>/);
-  assert.match(app, /path: '\/workspace\/sales',\s+label: 'المبيعات'/);
-  assert.match(app, /path: '\/campaigns',\s+label: 'الحملات'/);
-  assert.match(app, /<StoreActivation isActive=\{pathname === section\.path\}/);
+  assert.doesNotMatch(sidebar, /<strong>الحملات<\/strong><small>الجمهور · الإطلاق · النتائج<\/small>/);
+  assert.match(sidebar, /'campaigns'/);
+  assert.match(app, /<SalesHub isActive=\{SALES_HUB_PATHS\.includes\(pathname\)\}/);
+  assert.match(app, /<SmartCampaignCenter isActive=\{campaignActionActive\}/);
   assert.match(app, /<CustomerWatch isActive=\{pathname === section\.path\}/);
   assert.doesNotMatch(app, /<CenterLanding/);
   assert.match(css, /\.navigation-hub__catalog\s*\{/);
@@ -192,25 +195,28 @@ test('dense financial actions expose a named secondary action menu', async () =>
   assert.match(css, /\.page-action-menu__panel\s*\{/);
 });
 
-test('contracts use the mobile card table contract without hiding pricing fields', async () => {
+test('contracts use the central responsive DataTable without hiding pricing fields', async () => {
   const contracts = await read('src/pages/ContractsOverview.jsx');
 
-  assert.match(contracts, /className="m-cards contracts-overview-table"/);
-  assert.match(contracts, /data-label="السعر الأساسي"/);
-  assert.match(contracts, /data-label="كل كيلو زائد"/);
-  assert.match(contracts, /data-label="رسوم COD"/);
-  assert.match(contracts, /data-label="الحالة"/);
+  assert.match(contracts, /<DataTable[\s\S]*className="contracts-overview-table"/);
+  assert.match(contracts, /label: 'السعر الأساسي'/);
+  assert.match(contracts, /label: 'كل كيلو زائد'/);
+  assert.match(contracts, /label: 'رسوم COD'/);
+  assert.match(contracts, /label: 'الحالة'/);
+  assert.doesNotMatch(contracts, /<table/);
 });
 
-test('carrier hub owns one summary surface with navigation actions', async () => {
+test('carrier hub uses the enterprise header, DataTable and consolidated actions', async () => {
   const hub = await read('src/pages/CarriersHub.jsx');
 
-  assert.doesNotMatch(hub, /PageHeader/);
+  assert.match(hub, /PageHeader/);
+  assert.match(hub, /DataTable/);
+  assert.match(hub, /OperationsWorkspaceNav/);
   assert.match(hub, /title="شركات الشحن"/);
   assert.match(hub, /\+ رفع فاتورة شركة شحن/);
   assert.match(hub, /فتح الوارد/);
   assert.match(hub, /إدارة الشركات/);
-  assert.match(hub, /تحديث الحالة/);
+  assert.match(hub, />تحديث</);
 });
 
 test('mobile page filters can share the action row with their primary action', async () => {
@@ -254,16 +260,15 @@ test('overview does not use carrier-only missions ahead of the customer command 
   assert.match(overview, /<CustomerPortfolioFocus[\s\S]*?<OperationsCommand/);
 });
 
-test('store activation hero keeps readable contrast and a compact mobile metric grid', async () => {
+test('store activation uses the shared compact stat strip without a marketing hero', async () => {
   const page = await read('src/pages/StoreActivation.jsx');
-  const css = await read('src/pages/StoreActivation.css');
+  const css = await read('src/components/enterprise/batch4-workspaces.css');
 
-  assert.match(page, /className="activation-hero-card"/);
-  assert.match(page, /className="activation-hero-stats"/);
-  assert.match(page, /activation-hero-stat-label/);
-  assert.match(css, /\.activation-hero-card\.ui-card\s*\{[\s\S]*background:[\s\S]*!important/);
-  assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.activation-hero-stats\s*\{[\s\S]*repeat\(2,/);
-  assert.match(css, /\.activation-hero-stat--wide\s*\{[\s\S]*grid-column:\s*1 \/ -1\s*!important/);
+  assert.match(page, /<StatStrip items=/);
+  assert.doesNotMatch(page, /className="activation-hero-card"/);
+  assert.doesNotMatch(page, /linear-gradient\(135deg, #162a53/);
+  assert.match(css, /\.sales-workspace \.store-activation>\.ds-stat-strip/);
+  assert.match(css, /@media\(max-width:768px\)[\s\S]*\.sales-workspace/);
 });
 
 test('customer debt cards bridge to an owned collection task and next action', async () => {
@@ -385,8 +390,7 @@ test('stable work areas use one permission-aware direct catalog', async () => {
   }
   for (const id of [
     'hub', 'platform-carriers', 'accounting-cycle', 'customer-watch',
-    'collections-hub', 'bank', 'zoho-data', 'operations', 'uploads',
-    'hatif-settings', 'carriers', 'contracts', 'app-settings', 'campaign-center',
+    'collections-hub', 'bank', 'zoho-data', 'admin-workspace', 'campaign-center',
   ]) {
     assert.match(navigation, new RegExp(`(?:^|\\n)\\s*'?${id}'?:\\s*\\{[^}]*visible: true`));
   }
@@ -398,7 +402,7 @@ test('stable work areas use one permission-aware direct catalog', async () => {
   assert.doesNotMatch(app, /<CenterLanding/);
   assert.match(app, /<NavigationHub/);
   assert.match(app, /firstSectionDestination/);
-  assert.match(hub, /CENTER_ORDER = \['customers', 'sales', 'finance', 'shipping', 'reports', 'settings'\]/);
+  assert.match(hub, /CENTER_ORDER = \['customers', 'sales', 'campaigns', 'finance', 'shipping', 'reports', 'settings'\]/);
   assert.match(hub, /sectionDestinations/);
   assert.doesNotMatch(hub, /promoteDestinationLeaves/);
   assert.match(hub, /الوجهات الأساسية فقط/);
@@ -431,7 +435,7 @@ test('approved workspaces live in the navigation hub without removing legacy rou
   assert.match(navigation, /label: 'النقد والتسويات'/);
   assert.match(navigation, /id: 'cash-settlements'[\s\S]*memberIds: \['money'\]/);
   assert.match(hub, /sectionDestinations/);
-  assert.match(hub, /اختر مهمتك الأساسية/);
+  assert.match(hub, /<h2 id="navigation-hub-title">المزيد<\/h2>/);
   assert.doesNotMatch(hub, /طريقة العرض/);
   assert.doesNotMatch(hub, /const \[trail, setTrail\]/);
   assert.doesNotMatch(hub, /destination\.children\?\.length/);
@@ -443,7 +447,8 @@ test('approved workspaces live in the navigation hub without removing legacy rou
     assert.doesNotMatch(source, /workspace-saved-views/);
   }
   assert.doesNotMatch(customers, /customer-view-select/);
-  assert.doesNotMatch(store, /s360-view-nav/);
+  assert.match(store, /className="s360-view-navigation"/);
+  assert.match(store, /\['overview', 'نظرة عامة'\][\s\S]*\['alerts', 'المشاكل والتنبيهات'\]/);
   assert.doesNotMatch(carrier, /CarrierViewNav/);
   assert.doesNotMatch(zoho, /zoho-subtabs/);
   assert.doesNotMatch(communications, /hatif-subtabs/);
@@ -510,12 +515,14 @@ test('phase one financial and work-list contracts expose source truth and URL st
 test('phase two groups operations reports and admin into approved workspaces', async () => {
   const app = await read('src/App.jsx');
   const navigation = await read('src/lib/navigation.js');
-  const centerWorkspace = await read('src/components/CenterWorkspace.jsx');
 
   assert.match(navigation, /shipping:\s*\[[\s\S]*label: 'شركات الشحن'[\s\S]*label: 'المهام والاستثناءات'[\s\S]*label: 'دورة الشهر'[\s\S]*label: 'فوترة الخدمات والأوزان'/);
-  assert.match(navigation, /reports:\s*\[[\s\S]*label: 'مكتبة التقارير'[\s\S]*label: 'أداء شركات الشحن'[\s\S]*label: 'التواصل والحملات'[\s\S]*label: 'الملفات المصدّرة'/);
+  assert.match(navigation, /reports:\s*\[[\s\S]*id: 'reports-workspace'[\s\S]*label: 'مركز التقارير والتحليلات'[\s\S]*path: '\/workspace\/reports'/);
   assert.doesNotMatch(navigation, /label: 'أداء التحصيل'/);
-  assert.match(navigation, /settings:\s*\[[\s\S]*label: 'الفريق والصلاحيات'[\s\S]*label: 'شركات الشحن والعقود'[\s\S]*label: 'مزامنة لمحة والتكاملات'[\s\S]*label: 'مركز الأتمتة'[\s\S]*label: 'القنوات والاتصال'[\s\S]*label: 'إعدادات النظام'/);
+  assert.match(navigation, /settings:\s*\[[\s\S]*id: 'admin-workspace'[\s\S]*label: 'مركز الإدارة والإعدادات'[\s\S]*path: '\/workspace\/admin'/);
+  for (const id of ['employees', 'carriers', 'contracts', 'operations', 'uploads', 'webhook', 'integrity', 'work-agents', 'hatif-settings', 'activity-log', 'app-settings']) {
+    assert.match(navigation, new RegExp(`'?${id}'?:\\s*\\{[^}]*visible: false`));
+  }
   assert.match(navigation, /'work-agents':\s*\{[^}]*section: 'settings'/);
   assert.match(navigation, /integrity:\s*\{[^}]*section: 'settings'/);
   assert.match(navigation, /'activity-log':\s*\{[^}]*section: 'settings'/);
@@ -524,9 +531,8 @@ test('phase two groups operations reports and admin into approved workspaces', a
   for (const path of ['/hub', '/carrier-kpi', '/claims', '/platform-carriers', '/tasks', '/drop', '/audits', '/aramex-statements', '/ledger', '/fulfillment', '/weight-billing', '/reports', '/monthly-report', '/internal-exports', '/activity-log', '/integrity', '/operations', '/uploads', '/webhook', '/work-agents', '/settings/hatif']) {
     assert.ok(app.includes(`'${path}'`), `legacy path ${path} must remain registered`);
   }
-  assert.doesNotMatch(centerWorkspace, /WorkspaceTabs/);
-  assert.doesNotMatch(centerWorkspace, /onNavigate/);
-  assert.match(centerWorkspace, /role="tabpanel"/);
+  assert.doesNotMatch(app, /CenterWorkspace/);
+  assert.match(app, /const renderWorkspaceView = \(tabs, activePath\)/);
 });
 
 test('center view menus stay task-oriented and never exceed six entries', async () => {
@@ -536,19 +542,20 @@ test('center view menus stay task-oriented and never exceed six entries', async 
   const decisions = await read('src/pages/DecisionsBoard.jsx');
   const campaigns = await read('src/pages/SmartCampaignCenter.jsx');
   const expected = {
-    sales: ['مركز المبيعات', 'العملاء خارج المنصة', 'المكالمات وIVR', 'مركز الإعلانات والحملات'],
+    sales: ['مركز المبيعات'],
+    campaigns: ['مساحة الحملات', 'النتائج والقنوات'],
     finance: ['مركز العملاء المالي', 'النقد والتسويات', 'الحسابات والمطابقة', 'الربحية والسيولة'],
     shipping: ['شركات الشحن', 'المهام والاستثناءات', 'دورة الشهر', 'فوترة الخدمات والأوزان'],
-    reports: ['مكتبة التقارير', 'أداء شركات الشحن', 'التواصل والحملات', 'الملفات المصدّرة'],
-    settings: ['الفريق والصلاحيات', 'شركات الشحن والعقود', 'مزامنة لمحة والتكاملات', 'مركز الأتمتة', 'القنوات والاتصال', 'إعدادات النظام'],
+    reports: ['مركز التقارير والتحليلات'],
+    settings: ['مركز الإدارة والإعدادات'],
   };
   for (const [center, labels] of Object.entries(expected)) {
     assert.deepEqual(CENTER_WORKSPACES[center].map(item => item.label), labels);
     assert.ok(CENTER_WORKSPACES[center].length <= 6, `${center} exceeds six center views`);
   }
 
-  const communications = CENTER_WORKSPACES.sales.find(item => item.id === 'communications');
-  assert.equal(communications.path, '/whatsapp-settings?tab=ivr');
+  const communications = CENTER_WORKSPACES.campaigns.find(item => item.id === 'performance');
+  assert.equal(communications.path, '/whatsapp-settings?tab=campaigns&source=campaigns-workspace');
   const accounting = CENTER_WORKSPACES.finance.find(item => item.id === 'accounting');
   assert.equal(accounting.entryId, 'reconciliation');
   assert.equal(accounting.path, '/reconciliation?tab=customers');
@@ -570,10 +577,10 @@ test('center redirects unmount after leaving the center route', async () => {
 
 test('legacy entity and action routes resolve to canonical homes without removing route guards', async () => {
   const app = await read('src/App.jsx');
-  assert.match(app, /rawPath === '\/upload'[\s\S]*navigate\('\/hub\?action=upload-invoice'/);
+  assert.match(app, /rawPath === '\/upload'[\s\S]*next\.set\('action', 'upload-invoice'\)[\s\S]*navigate\(`\/hub\?\$\{next\.toString\(\)\}`/);
   assert.match(app, /rawPath === '\/merchants'[\s\S]*navigate\(`\/customer-360\?/);
-  assert.match(app, /rawPath === '\/sales' \|\| rawPath === '\/crm'[\s\S]*\/retargeting\?view=today/);
-  assert.match(app, /rawPath === '\/marketers'[\s\S]*\/workspace\/sales\?source=legacy-marketers/);
+  assert.match(app, /rawPath === '\/sales' \|\| rawPath === '\/crm'[\s\S]*next\.set\('view',[\s\S]*\/workspace\/sales\?/);
+  assert.match(app, /rawPath === '\/marketers'[\s\S]*next\.set\('source',[\s\S]*\/workspace\/sales\?/);
   assert.match(app, /id: 'campaign-center'[\s\S]*path: '\/campaigns'[\s\S]*campaigns\.send[\s\S]*campaigns\.ivr/);
   assert.doesNotMatch(app, /rawPath === '\/campaigns'[\s\S]*!params\.get\('audienceContext'\)[\s\S]*\/whatsapp-settings\?tab=campaigns/);
   assert.doesNotMatch(app, /<Marketers /);
@@ -582,7 +589,8 @@ test('legacy entity and action routes resolve to canonical homes without removin
     assert.ok(app.includes(`'${path}':`), `${path} must keep a Carrier 360 legacy mapping`);
   }
   assert.match(app, /rawPath === '\/zoho-data'[\s\S]*forcedSectionId/);
-  assert.match(app, /rawPath === '\/carrier-kpi'[\s\S]*forcedSectionId/);
+  assert.match(app, /const routeWorkspaceId = resolveWorkspace\(rawPath, NAV_ITEMS\)/);
+  assert.doesNotMatch(app, /rawPath === '\/carrier-kpi'[\s\S]{0,120}forcedSectionId/);
 });
 
 test('phase two important filters and unavailable sources are explicit', async () => {

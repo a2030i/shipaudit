@@ -15,8 +15,9 @@ import {
   CheckCircle2, AlertTriangle, Calendar, ChevronLeft, Building2, FileText, Banknote, Sparkles, HelpCircle, Layers,
 } from 'lucide-react';
 import {
-  Card, Btn, Spinner, Empty, Modal, toast, PageHeader, DropZone,
+  Card, Btn, Spinner, Empty, Modal, toast, PageHeader,
 } from '../components/UI.jsx';
+import { DataTable, DropZone } from '../design-system/EnterpriseUI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
   UPLOAD_SOURCES, ORIGIN_BADGES, loadLamhaDirectorySyncState,
@@ -394,7 +395,7 @@ export default function UploadsHub({ isActive = true }) {
                   ✅ <b>تم التوصيل:</b> {stats.delivered} · 🔁 <b>مرتجع متجاهَل:</b> {stats.notDelivered}<br/>
                   ➕ <b>أُضيف جديد:</b> {totalAdded} · ⏭ <b>مكرّر متخطّى:</b> {totalDups}
                 </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                <DataTable caption="معاينة صفوف الملف الموحد">
                   <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
                     {['الناقل', 'مُسلَّم', 'أُضيف', 'مكرّر', 'القيمة'].map(h => <th key={h} style={{ padding: '8px 10px', fontSize: 11, color: 'var(--muted)' }}>{h}</th>)}
                   </tr></thead>
@@ -409,7 +410,7 @@ export default function UploadsHub({ isActive = true }) {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
                 {unmapped.length > 0 && (
                   <div style={{ background: '#F59E0B15', color: '#B45309', borderRadius: 8, padding: '8px 12px', fontSize: 12, marginTop: 10 }}>
                     🏷️ شركات بلا ناقل مطابق (تُجوهلت): {unmapped.map(u => `${u.name} (${u.n})`).join(' · ')}

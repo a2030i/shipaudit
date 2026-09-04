@@ -21,9 +21,10 @@ import {
   Download, Activity, Calendar, Hash, Send,
 } from 'lucide-react';
 import {
-  Card, Btn, Spinner, Empty, Modal, toast,
+  Card, Btn, Spinner, Empty, Modal,
   PageHeader, SectionTitle, AreaChart,
 } from '../components/UI.jsx';
+import { toast } from '../lib/toast.js';
 import IvrCallButton from '../components/IvrCallButton.jsx';
 import CustomerCommTimeline from '../components/CustomerCommTimeline.jsx';
 import DataConfidenceBar from '../components/DataConfidenceBar.jsx';
@@ -33,6 +34,7 @@ import InteractionsLog from '../components/InteractionsLog.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import { normalizeSaudiPhone } from '../lib/whatsappService.js';
 import { useAuth } from '../lib/auth.jsx';
+import EnterpriseCustomerDirectory from '../components/enterprise/EnterpriseCustomerDirectory.jsx';
 
 const Store360Page = lazy(() => import('./Store360Page.jsx'));
 
@@ -220,6 +222,7 @@ export default function CustomerWatch({ isActive = true }) {
     : '';
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [syncingZoho, setSyncingZoho] = useState(false);
   const [search, setSearch] = useState(() => {
     const params = new URLSearchParams(location.search);
@@ -262,10 +265,12 @@ export default function CustomerWatch({ isActive = true }) {
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const d = await loadCustomerWatch();
       setData(d);
     } catch (e) {
+      setLoadError(e);
       toast(`فشل التحميل: ${e.message}`, 'error');
     }
     setLoading(false);
@@ -500,6 +505,30 @@ export default function CustomerWatch({ isActive = true }) {
     </Suspense>;
   }
 
+  return <EnterpriseCustomerDirectory
+    data={data}
+    loading={loading}
+    error={loadError}
+    query={search}
+    onQueryChange={value => updateSearch(value, { open: false })}
+    view={view}
+    onViewChange={nextView => {
+      setView(nextView);
+      const params = new URLSearchParams(location.search);
+      if (nextView === 'overview') params.delete('view'); else params.set('view', nextView);
+      navigate(`${location.pathname}${params.size ? `?${params.toString()}` : ''}`, { replace: true });
+    }}
+    onOpenCustomer={openCustomer360}
+    onReload={refresh}
+    onSync={syncZohoAndRefresh}
+    syncing={syncingZoho}
+    onNavigate={navigate}
+    onExport={rows => handleExport('دليل_العملاء', rows, (kind, row) => kind === 'headers'
+      ? ['العميل', 'المتجر', 'رقم المتجر', 'الجوال', 'حالة الحساب', 'نمط الدفع', 'آخر شحنة', 'عدد الشحنات', 'الذمم', 'المحفظة', 'التنبيه']
+      : [row.name, row.storeName, row.storeId, row.phone, row.platformStatus, row.billingType, row.lastShipmentAt, row.shipments, row.debt, row.wallet, ANOMALY_META[row.risk]?.label || row.risk || ''])}
+  />;
+
+  /* الواجهة السابقة محفوظة مؤقتًا كفرع غير قابل للوصول حتى تنتهي مرحلة الترحيل. */
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import {
   Activity, AlertTriangle, CalendarClock, CheckCircle2, Clock3,
@@ -7,9 +7,8 @@ import {
   Search, ShieldAlert, Store, Target, TrendingUp, UserRoundCheck, UserRoundX,
   UserRoundPlus, UsersRound, WalletCards, Zap,
 } from 'lucide-react';
-import {
-  Btn, Card, Empty, Input, Modal, PageHeader, Select, Spinner, toast,
-} from '../components/UI.jsx';
+import { Btn, Card, Empty, Input, Select, Spinner, toast } from '../components/UI.jsx';
+import { DataTable, Dialog as Modal, PageHeader, StatStrip } from '../design-system/EnterpriseUI.jsx';
 import WaActions from '../components/WaActions.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadEmployees } from '../lib/employeeService.js';
@@ -22,6 +21,7 @@ import {
 } from '../lib/retargetingService.js';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import { rtl } from '../lib/xlsxRtl.js';
+import { buildStore360Url } from '../lib/store360Navigation.js';
 import {
   hatifInboxUrl,
   loadCustomerCommTimeline,
@@ -247,24 +247,6 @@ const lifecycleLabels = {
   reactivated: 'عاد حسابه للنشاط',
 };
 
-function SummaryCard({ icon, label, value, tone, active, onClick, hint }) {
-  return (
-    <button
-      type="button"
-      className={`psc-summary-card${active ? ' active' : ''}`}
-      style={{ '--psc-tone': tone }}
-      onClick={onClick}
-    >
-      <span className="psc-summary-icon">{icon}</span>
-      <span>
-        <small>{label}</small>
-        <strong>{fmtNumber(value)}</strong>
-        {hint && <em>{hint}</em>}
-      </span>
-    </button>
-  );
-}
-
 function BucketTabs({ items, current, summary, onPick }) {
   return (
     <div className="psc-bucket-tabs" role="tablist">
@@ -315,6 +297,8 @@ function TimelineItem({ item }) {
 }
 
 function AccountDrawer({ phone, employees, onClose, onSaved }) {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { user, can, isAdmin } = useAuth();
   const [payload, setPayload] = useState(null);
   const [hatif, setHatif] = useState([]);
@@ -448,6 +432,11 @@ function AccountDrawer({ phone, employees, onClose, onSaved }) {
     live_inactive: account.live_inactive,
   });
   const signal = signalMeta(account);
+  const customer360Url = buildStore360Url({
+    storeId: account.store_id || account.primary_store_id || account.storeId,
+    source: 'sales_pipeline',
+    returnTo: `${location.pathname}${location.search}`,
+  });
 
   return (
     <Modal title="ملف متابعة العميل" onClose={onClose} width={1160}>
@@ -463,6 +452,7 @@ function AccountDrawer({ phone, employees, onClose, onSaved }) {
             </div>
             <div className="psc-account-actions">
               <span style={{ '--pill-tone': state.color }}>{state.label}</span>
+              {customer360Url ? <Btn variant="ghost" onClick={() => navigate(customer360Url)}>فتح Customer 360</Btn> : null}
               <WaActions phone={phone} name={account.primary_store} campaignLabel="متابعة مبيعات" size={18} salesAudience/>
             </div>
           </section>
@@ -926,53 +916,44 @@ export default function PlatformSalesCrm({ isActive = true }) {
         </button>
       </section>
 
-      <div className="psc-summary-grid">
-        <SummaryCard
-          icon={<Zap size={18}/>}
-          label="لايف جديد عالي النية"
-          value={summary.hot_live_new}
-          tone="var(--brand)"
-          active={bucket === 'hot_live_new'}
-          onClick={() => { setLens('pipeline'); chooseBucket('hot_live_new'); }}
-          hint="ربط مباشر خلال 5 أيام"
-        />
-        <SummaryCard
-          icon={<PhoneCall size={18}/>}
-          label="توقف أكثر من 5 أيام"
-          value={summary.recent_stop}
-          tone="var(--gold)"
-          active={bucket === 'recent_stop'}
-          onClick={() => { setLens('pipeline'); chooseBucket('recent_stop'); }}
-          hint="سبق له الشحن · يبدأ من اليوم السادس"
-        />
-        <SummaryCard
-          icon={<WalletCards size={18}/>}
-          label="رصيد يحتاج حلًا"
-          value={summary.wallet_stranded}
-          tone="var(--accent3)"
-          active={bucket === 'wallet_stranded'}
-          onClick={() => { setLens('pipeline'); chooseBucket('wallet_stranded'); }}
-          hint="رصيد موجب بلا شحن حديث"
-        />
-        <SummaryCard
-          icon={<Link2Off size={18}/>}
-          label="ربط لايف غير نشط"
-          value={summary.live_inactive}
-          tone="var(--purple)"
-          active={bucket === 'live_inactive'}
-          onClick={() => { setLens('pipeline'); chooseBucket('live_inactive'); }}
-          hint="يحتاج فهم سبب فك الربط"
-        />
-        <SummaryCard
-          icon={<ShieldAlert size={18}/>}
-          label="محوّلون للتحصيل"
-          value={summary.collections_hold}
-          tone="var(--red)"
-          active={false}
-          onClick={() => navigate('/customer-money')}
-          hint="لا يظهرون لقوائم المبيعات"
-        />
-      </div>
+      <StatStrip items={[
+        {
+          key: 'hot_live_new',
+          label: 'لايف جديد عالي النية',
+          value: fmtNumber(summary.hot_live_new),
+          note: 'ربط مباشر خلال 5 أيام',
+          onClick: () => { setLens('pipeline'); chooseBucket('hot_live_new'); },
+        },
+        {
+          key: 'recent_stop',
+          label: 'توقف أكثر من 5 أيام',
+          value: fmtNumber(summary.recent_stop),
+          note: 'سبق له الشحن · يبدأ من اليوم السادس',
+          onClick: () => { setLens('pipeline'); chooseBucket('recent_stop'); },
+        },
+        {
+          key: 'wallet_stranded',
+          label: 'رصيد يحتاج حلًا',
+          value: fmtNumber(summary.wallet_stranded),
+          note: 'رصيد موجب بلا شحن حديث',
+          onClick: () => { setLens('pipeline'); chooseBucket('wallet_stranded'); },
+        },
+        {
+          key: 'live_inactive',
+          label: 'ربط لايف غير نشط',
+          value: fmtNumber(summary.live_inactive),
+          note: 'يحتاج فهم سبب فك الربط',
+          onClick: () => { setLens('pipeline'); chooseBucket('live_inactive'); },
+        },
+        {
+          key: 'collections_hold',
+          label: 'محوّلون للتحصيل',
+          value: fmtNumber(summary.collections_hold),
+          note: 'لا يظهرون لقوائم المبيعات',
+          tone: summary.collections_hold ? 'danger' : undefined,
+          onClick: () => navigate('/customer-money'),
+        },
+      ]}/>
 
       <div className="psc-workspace">
       <Card style={{ padding: 0 }}>
@@ -1085,7 +1066,7 @@ export default function PlatformSalesCrm({ isActive = true }) {
           />
         ) : (
           <div className="psc-table-wrap">
-            <table className="m-cards psc-table">
+            <DataTable caption="قائمة عملاء مسار المبيعات" className="psc-table">
               <thead>
                 <tr>
                   <th>العميل</th>
@@ -1173,7 +1154,7 @@ export default function PlatformSalesCrm({ isActive = true }) {
                   );
                 })}
               </tbody>
-            </table>
+            </DataTable>
           </div>
         )}
 

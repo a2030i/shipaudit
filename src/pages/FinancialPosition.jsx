@@ -11,7 +11,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { RefreshCw, TrendingUp, TrendingDown, Wallet, AlertTriangle, ChevronLeft, Receipt, FileSpreadsheet } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
+import { toast } from '../lib/toast.js';
 import { useAuth } from '../lib/auth.jsx';
 import {
   loadPnlSnapshots, refreshPnlMonth, currentPnlPeriod, prevPnlPeriod, quarterTotals,
@@ -19,6 +19,8 @@ import {
   syncZohoDocs, loadInvoicedVsCollected, loadSyncState, loadZohoEvents,
 } from '../lib/pnlService.js';
 import { loadMonthlyReport } from '../lib/monthlyReportService.js';
+import FinanceWorkspaceNav from '../components/enterprise/FinanceWorkspaceNav.jsx';
+import { Breadcrumbs, Button as Btn, EmptyState as Empty, PageHeader, Panel as Card, Spinner } from '../design-system/EnterpriseUI.jsx';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -210,6 +212,7 @@ export default function FinancialPosition({ isActive = true }) {
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
+      <Breadcrumbs items={[{ label: 'المالية' }, { label: 'الرقابة المالية' }, { label: 'قائمة الدخل' }]}/>
       <PageHeader
         icon={<Wallet size={22}/>} iconColor="var(--green)"
         title="الوضع المالي"
@@ -231,6 +234,8 @@ export default function FinancialPosition({ isActive = true }) {
           </Btn>
         </>}
       />
+
+      <FinanceWorkspaceNav active="control"/>
 
       {/* ضريبة الربع الجاري — التزام قادم يُرى فوراً بلا سحب تقرير.
           المصدر كاش زوهو (كرون كل 30د) + زر تحديث فوري. */}

@@ -7,7 +7,8 @@ import {
   CheckCircle2, CircleDollarSign, Clock3, PlugZap, RefreshCw, Save,
   ShieldAlert, Target as TargetIcon, TrendingUp, UserRoundCheck, UsersRound,
 } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, PageHeader, toast } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, toast } from '../components/UI.jsx';
+import { PageHeader, StatStrip } from '../design-system/EnterpriseUI.jsx';
 import LamhaStorePerformance from '../components/LamhaStorePerformance.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
@@ -34,16 +35,15 @@ const fmtAge = minutes => {
 function Metric({ icon, label, value, sub, color = 'var(--accent3)', tone = 'blue' }) {
   return (
     <div style={{
-      padding: '15px 16px', borderRadius: 16,
-      border: `1px solid color-mix(in srgb, ${color} 22%, var(--border))`,
-      background: `linear-gradient(145deg, color-mix(in srgb, ${color} 9%, var(--surface)) 0%, var(--surface) 72%)`,
+      padding: '13px 14px', borderRadius: 'var(--ds-radius-sm)',
+      border: '1px solid var(--ds-border)', background: 'var(--ds-surface)',
       minWidth: 0,
     }} data-tone={tone}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--muted)', fontSize: 12.5, marginBottom: 9 }}>
-        <span style={{ display: 'grid', placeItems: 'center', color }}>{icon}</span>
+        <span style={{ display: 'grid', placeItems: 'center', color: 'var(--ds-muted)' }}>{icon}</span>
         <span>{label}</span>
       </div>
-      <div style={{ fontSize: 25, fontWeight: 800, fontFamily: 'var(--font-mono)', color, lineHeight: 1.15 }}>{fmt(value)}</div>
+      <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--ds-ink)', lineHeight: 1.15 }}>{fmt(value)}</div>
       {sub && <div style={{ color: 'var(--muted)', fontSize: 11.5, lineHeight: 1.7, marginTop: 5 }}>{sub}</div>}
     </div>
   );
@@ -53,17 +53,16 @@ function QueueRow({ label, value, hint, color, icon, onClick }) {
   return (
     <button type="button" onClick={onClick} style={{
       width: '100%', display: 'grid', gridTemplateColumns: '40px minmax(0,1fr) auto',
-      alignItems: 'center', gap: 10, padding: '11px 12px', borderRadius: 13,
-      border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)',
+      alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 'var(--ds-radius-sm)',
+      border: '1px solid var(--ds-border)', background: 'var(--ds-surface)', color: 'var(--ds-ink)',
       cursor: onClick ? 'pointer' : 'default', textAlign: 'start', fontFamily: 'inherit',
     }}>
-      <span style={{ width: 36, height: 36, borderRadius: 11, display: 'grid', placeItems: 'center', color,
-        background: `color-mix(in srgb, ${color} 11%, var(--surface))` }}>{icon}</span>
+      <span style={{ width: 30, height: 30, display: 'grid', placeItems: 'center', color: 'var(--ds-muted)' }}>{icon}</span>
       <span style={{ minWidth: 0 }}>
         <strong style={{ display: 'block', fontSize: 13 }}>{label}</strong>
         <small style={{ color: 'var(--muted)', lineHeight: 1.6 }}>{hint}</small>
       </span>
-      <strong style={{ color, fontFamily: 'var(--font-mono)', fontSize: 18 }}>{fmt(value)}</strong>
+      <strong style={{ color: 'var(--ds-ink)', fontFamily: 'var(--font-mono)', fontSize: 17 }}>{fmt(value)}</strong>
     </button>
   );
 }
@@ -159,48 +158,17 @@ export default function StoreActivation({ isActive = true }) {
 
       <LamhaStorePerformance/>
 
-      <Card className="activation-hero-card" style={{
-        overflow: 'hidden', marginBottom: 14,
-        border: '1px solid color-mix(in srgb, var(--brand) 24%, var(--border))',
-        background: 'linear-gradient(135deg, #162a53 0%, #244da0 100%)',
-        color: '#fff',
-      }}>
-        <div className="activation-hero-grid" style={{ padding: '22px 24px 18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(260px,100%),1fr))', gap: 24 }}>
-          <div className="activation-hero-summary">
-            <div className="activation-hero-kicker" style={{ color: 'rgba(255,255,255,.7)', fontSize: 12.5, marginBottom: 7 }}>العملاء النشطون الآن</div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-              <strong style={{ fontSize: 50, lineHeight: 1, fontFamily: 'var(--font-mono)' }}>{fmt(current.active)}</strong>
-              <span style={{ color: 'rgba(255,255,255,.72)', fontSize: 15 }}>من {fmt(current.target)}</span>
-            </div>
-            <div className="activation-progress-track" style={{ height: 12, marginTop: 18, borderRadius: 999, background: 'rgba(255,255,255,.16)', overflow: 'hidden' }}>
-              <div className="activation-progress-fill" style={{ width: `${progress}%`, height: '100%', background: 'linear-gradient(90deg,#2DD4BF,#A7F3D0)', borderRadius: 999 }}/>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 8, fontSize: 12.5, color: 'rgba(255,255,255,.76)', flexWrap: 'wrap' }}>
-              <span>{pct(progress)} من الهدف</span>
-              <span>الفجوة: <strong style={{ color: '#fff' }}>{fmt(current.gap)} عميل</strong></span>
-            </div>
-          </div>
-
-          <div className="activation-hero-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 10 }}>
-            <div className="activation-hero-stat" style={{ padding: 13, borderRadius: 14, background: 'rgba(255,255,255,.10)', border: '1px solid rgba(255,255,255,.14)' }}>
-              <div className="activation-hero-stat-label" style={{ color: 'rgba(255,255,255,.7)', fontSize: 11.5 }}>دخلوا النشاط أسبوعيًا</div>
-              <strong className="activation-hero-stat-value activation-hero-stat-value--positive" style={{ display: 'block', fontSize: 25, color: '#A7F3D0', marginTop: 5, fontFamily: 'var(--font-mono)' }}>+{fmt(entered)}</strong>
-            </div>
-            <div className="activation-hero-stat" style={{ padding: 13, borderRadius: 14, background: 'rgba(255,255,255,.10)', border: '1px solid rgba(255,255,255,.14)' }}>
-              <div className="activation-hero-stat-label" style={{ color: 'rgba(255,255,255,.7)', fontSize: 11.5 }}>خرجوا من النشاط</div>
-              <strong className="activation-hero-stat-value activation-hero-stat-value--negative" style={{ display: 'block', fontSize: 25, color: '#FECACA', marginTop: 5, fontFamily: 'var(--font-mono)' }}>−{fmt(exited)}</strong>
-            </div>
-            <div className="activation-hero-stat activation-hero-stat--wide" style={{ gridColumn: '1 / -1', padding: 13, borderRadius: 14, background: 'rgba(255,255,255,.10)', border: '1px solid rgba(255,255,255,.14)', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-              <span className="activation-hero-stat-label" style={{ color: 'rgba(255,255,255,.78)', fontSize: 12 }}>صافي الأسبوع</span>
-              <strong className={`activation-hero-stat-value ${net >= 0 ? 'activation-hero-stat-value--positive' : 'activation-hero-stat-value--negative'}`} style={{ color: net >= 0 ? '#A7F3D0' : '#FECACA', fontFamily: 'var(--font-mono)', fontSize: 20 }}>{net >= 0 ? '+' : ''}{fmt(net)}</strong>
-            </div>
-          </div>
-        </div>
-        <div className="activation-hero-footer" style={{ padding: '11px 24px', background: 'rgba(0,0,0,.13)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', fontSize: 11.5, color: 'rgba(255,255,255,.72)' }}>
-          <span>آخر بيانات: {fmtAge(sync.age_minutes)} · {sync.source === 'webhook' ? 'تحديث آلي عبر API' : 'رفع Excel يدوي'}</span>
-          <span>{fmt(current.total_customers)} عميل فريد · {fmt(current.total_stores)} متجر</span>
-        </div>
-      </Card>
+      <StatStrip items={[
+        { key: 'active', label: 'العملاء النشطون الآن', value: fmt(current.active), note: `من هدف ${fmt(current.target)} · ${pct(progress)}` },
+        { key: 'gap', label: 'الفجوة إلى الهدف', value: fmt(current.gap), note: 'عميل فريد' },
+        { key: 'entered', label: 'دخلوا النشاط أسبوعيًا', value: `+${fmt(entered)}`, tone: 'success' },
+        { key: 'exited', label: 'خرجوا من النشاط', value: `−${fmt(exited)}`, tone: exited ? 'danger' : 'neutral' },
+        { key: 'net', label: 'صافي الأسبوع', value: `${net >= 0 ? '+' : ''}${fmt(net)}`, tone: net >= 0 ? 'success' : 'danger' },
+      ]}/>
+      <div className="activation-source-line">
+        <span>آخر بيانات: {fmtAge(sync.age_minutes)} · {sync.source === 'webhook' ? 'تحديث آلي عبر API' : 'رفع Excel يدوي'}</span>
+        <span>{fmt(current.total_customers)} عميل فريد · {fmt(current.total_stores)} متجر</span>
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 12, marginBottom: 14 }}>
         <Metric icon={<TargetIcon size={17}/>} label="المطلوب إدخالهم أسبوعيًا" value={current.required_weekly_entrants}

@@ -508,9 +508,6 @@ button:active { transform: scale(.97); }
   font-weight: 800; background: color-mix(in srgb, var(--green) 10%, transparent);
 }
 
-.center-workspace { width: 100%; min-height: 100%; }
-.center-workspace__panel { min-width: 0; }
-
 @media (max-width: 768px) {
   .zoho-invoice-selection { position: sticky; top: 0; z-index: 3; }
   .zoho-invoice-selection .ui-btn { flex: 1 1 auto; }

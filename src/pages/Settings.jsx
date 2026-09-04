@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import CarrierTabs from '../components/CarrierTabs.jsx';
+import OperationsWorkspaceNav from '../components/enterprise/OperationsWorkspaceNav.jsx';
 import {
   ExternalLink, Package, History, Search, Filter, Trash2,
   CheckCircle2, AlertTriangle, Calendar, FileText, Truck, X,
@@ -286,15 +286,13 @@ export function AuditsHistory({ onOpen, isActive = true }) {
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
-      {scopedCarrierId && (
-        <CarrierTabs carrierId={scopedCarrierId} carrierName={scopedCarrierName} active="audits"/>
-      )}
       <PageHeader
         icon={<HistoryIcon size={22}/>}
         title="سجل المراجعات"
         subtitle="كل فاتورة تم تدقيقها — بحث، فلترة، فتح، ودمج للأوزان الإضافية"
         meta={`${scopedAudits.length} مراجعة في السجل`}
       />
+      <OperationsWorkspaceNav active="invoices"/>
 
       {legacyCount > 0 && (
         <div style={{

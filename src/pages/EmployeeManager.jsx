@@ -6,7 +6,11 @@ import {
   Store, Wallet, BookOpenCheck, Send, GitMerge, Settings, History,
   FileBarChart,
 } from 'lucide-react';
-import { Card, Btn, Modal, Spinner, toast, PageHeader } from '../components/UI.jsx';
+import { Card, Btn, Modal, Spinner, toast } from '../components/UI.jsx';
+import {
+  DataTable, FilterBar, OverflowMenu, Page, PageHeader, SearchInput,
+  StatStrip, StatusBadge,
+} from '../design-system/EnterpriseUI.jsx';
 import {
   loadEmployees, createEmployee, updateEmployee, deleteEmployee, updateEmployeePermissions,
   loadEmployeeActivitySummary, loadEmployeeActivity,
@@ -698,12 +702,13 @@ function ActivityModal({ employee, onClose }) {
   );
 }
 
-export default function EmployeeManager() {
+export default function EmployeeManager({ embedded = false }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const { profile: myProfile, can } = useAuth();
   const [employees, setEmployees] = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [modal,     setModal]     = useState(null);
+  const [query,     setQuery]     = useState('');
   // modal: { type: 'add'|'edit'|'delete'|'perms', employee? }
 
   const canManageEmployees   = can('system.manage_employees');
@@ -777,9 +782,39 @@ export default function EmployeeManager() {
     () => TEAM_CUTOVER_ROLES.map(role => ({ ...role, match: closestEmployeeForRole(employees, role) })),
     [employees],
   );
+  const visibleEmployees = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase('ar');
+    return needle ? employees.filter(employee => `${employee.name} ${employee.email}`.toLocaleLowerCase('ar').includes(needle)) : employees;
+  }, [employees, query]);
+  const employeeColumns = [
+    {
+      key: 'employee', label: 'المستخدم', className: 'mobile-identity', render: emp => (
+        <div className="employee-table-identity"><Avatar name={emp.name} color={emp.avatar_color} size={34}/><span><strong>{emp.name}{emp.id === myProfile?.id ? ' · أنت' : ''}</strong><small>{emp.email}</small></span></div>
+      ),
+    },
+    { key: 'role', label: 'الدور والحالة', render: emp => <StatusBadge tone={emp.role === 'admin' ? 'info' : 'neutral'} dot={false}>{ROLES.find(role => role.value === emp.role)?.label || emp.role}</StatusBadge> },
+    { key: 'permissions', label: 'الصلاحيات', render: emp => {
+      const count = Object.values(emp.permissions || {}).filter(Boolean).length;
+      return emp.role === 'admin' ? <span>وصول إداري كامل</span> : <StatusBadge tone={count ? 'success' : 'danger'} dot={false}>{count ? `${count} صلاحية` : 'بدون صلاحيات'}</StatusBadge>;
+    } },
+    { key: 'activity', label: 'آخر نشاط', className: 'mobile-wide', render: emp => {
+      const activity = actSummary.get(emp.id);
+      return <div><bdi>{activity?.lastSignIn ? new Date(activity.lastSignIn).toLocaleString('ar-SA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}</bdi><small>{activity?.actions7d ? `${activity.actions7d} حركة آخر 7 أيام` : 'لا حركة مسجّلة'}{activity?.denied7d > 0 ? ` · ${activity.denied7d} محاولة ممنوعة` : ''}</small></div>;
+    } },
+    { key: 'actions', label: 'الإجراءات', render: emp => {
+      const isMe = emp.id === myProfile?.id;
+      const items = [
+        { key: 'activity', label: 'سجل التحركات', icon: <History size={13}/>, onClick: () => setModal({ type: 'activity', employee: emp }) },
+        ...(emp.role === 'accountant' && canManagePermissions ? [{ key: 'permissions', label: 'إدارة الصلاحيات', icon: <Shield size={13}/>, onClick: () => setModal({ type: 'perms', employee: emp }) }] : []),
+        ...(canManageEmployees ? [{ key: 'edit', label: 'تعديل المستخدم', icon: <Pencil size={13}/>, onClick: () => setModal({ type: 'edit', employee: emp }) }] : []),
+        ...(canManageEmployees ? [{ key: 'delete', label: 'حذف المستخدم', icon: <Trash2 size={13}/>, variant: 'danger', disabled: isMe, onClick: () => !isMe && setModal({ type: 'delete', employee: emp }) }] : []),
+      ];
+      return <OverflowMenu label={`إجراءات ${emp.name}`} items={items}/>;
+    } },
+  ];
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 920, margin: '0 auto' }}>
+    <Page className={`employee-manager enterprise-workspace${embedded ? ' is-embedded' : ''}`}>
 
       <PageHeader
         icon={<Users size={22}/>}
@@ -797,26 +832,7 @@ export default function EmployeeManager() {
         </>}
       />
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
-        {ROLES.map(r => (
-          <div key={r.value} className="stat-card" style={{
-            flex: 1, padding: '12px 16px', borderRadius: 10,
-            background: 'var(--card)', border: `1px solid var(--border)`,
-            '--sc-tone': r.color,
-          }}>
-            <div style={{ color: 'var(--muted)', fontSize: 10, fontFamily: 'var(--font-mono)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span className="stat-icon-tile">{r.value === 'admin' ? <ShieldCheck size={14}/> : <Shield size={14}/>}</span>
-              {r.label}
-            </div>
-            <div style={{ color: r.color, fontSize: 22, fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
-              {roleCounts[r.value] ?? 0}
-            </div>
-            <div style={{ fontSize: 10.5, color: 'var(--muted2)', marginTop: 4 }}>
-              {r.desc}
-            </div>
-          </div>
-        ))}
-      </div>
+      <StatStrip items={ROLES.map(role => ({ label: role.label, value: roleCounts[role.value] ?? 0, note: role.desc }))}/>
 
       {!loading && employees.length > 0 ? (
         <section className="team-cutover-recommendations" aria-labelledby="team-cutover-title">
@@ -917,111 +933,10 @@ export default function EmployeeManager() {
             لا يوجد موظفون بعد
           </div>
         </Card>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {employees.map(emp => {
-            const isMe = emp.id === myProfile?.id;
-            const permCount = Object.values(emp.permissions || {}).filter(Boolean).length;
-            return (
-              <Card key={emp.id} style={{ padding: '14px 18px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-
-                  <Avatar name={emp.name} color={emp.avatar_color}/>
-
-                  <div style={{ flex: 1, minWidth: 200 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: 600, fontSize: 14 }}>{emp.name}</span>
-                      <RoleBadge role={emp.role}/>
-                      {emp.role === 'accountant' && (
-                        <span style={{
-                          fontSize: 10, padding: '2px 7px', borderRadius: 4,
-                          background: permCount === 0
-                            ? 'rgba(248,113,113,.12)'
-                            : 'color-mix(in srgb, var(--accent) 12%, transparent)',
-                          color: permCount === 0 ? 'var(--red)' : 'var(--accent)',
-                          fontFamily: 'var(--font-mono)', fontWeight: 600,
-                        }}>
-                          {permCount === 0 ? 'بدون صلاحيات' : `${permCount} صلاحية`}
-                        </span>
-                      )}
-                      {isMe && (
-                        <span style={{
-                          fontSize: 10, color: 'var(--accent)',
-                          fontFamily: 'var(--font-mono)', opacity: 0.7,
-                        }}>
-                          أنت
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ color: 'var(--muted)', fontSize: 12 }}>{emp.email}</div>
-                  </div>
-
-                  {/* آخر دخول + آخر حركة + محاولات ممنوعة (من سجل التحركات §1.36) */}
-                  {(() => {
-                    const a = actSummary.get(emp.id);
-                    return (
-                      <div style={{ fontSize: 10.5, flexShrink: 0, textAlign: 'start', minWidth: 150 }}>
-                        <div style={{ color: 'var(--muted)' }}>
-                          آخر دخول: <b style={{ color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>
-                            {a?.lastSignIn ? new Date(a.lastSignIn).toLocaleString('ar-SA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
-                          </b>
-                        </div>
-                        <div style={{ color: 'var(--muted2)', marginTop: 2 }}>
-                          {a?.actions7d ? `${a.actions7d} حركة آخر 7 أيام` : 'لا حركة مسجَّلة'}
-                          {a?.lastCountry ? ` · ${a.lastCountry}` : ''}
-                        </div>
-                        {a?.denied7d > 0 && (
-                          <div style={{ color: 'var(--red)', fontWeight: 700, marginTop: 2 }}>
-                            ⛔ {a.denied7d} محاولة بلا صلاحية
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-
-                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                    <Btn
-                      variant="ghost" size="sm"
-                      title="سجل التحركات التفصيلي"
-                      icon={<History size={12}/>}
-                      onClick={() => setModal({ type: 'activity', employee: emp })}
-                    >
-                      السجل
-                    </Btn>
-                    {emp.role === 'accountant' && canManagePermissions && (
-                      <Btn
-                        variant="ghost" size="sm"
-                        title="إدارة الصلاحيات"
-                        icon={<Shield size={12}/>}
-                        onClick={() => setModal({ type: 'perms', employee: emp })}
-                      >
-                        صلاحيات
-                      </Btn>
-                    )}
-                    {canManageEmployees && (
-                      <Btn
-                        variant="ghost" size="sm"
-                        title="تعديل"
-                        icon={<Pencil size={13}/>}
-                        onClick={() => setModal({ type: 'edit', employee: emp })}
-                      />
-                    )}
-                    {canManageEmployees && (
-                      <Btn
-                        variant="danger" size="sm"
-                        title={isMe ? 'لا يمكنك حذف حسابك' : 'حذف'}
-                        icon={<Trash2 size={13}/>}
-                        disabled={isMe}
-                        onClick={() => !isMe && setModal({ type: 'delete', employee: emp })}
-                      />
-                    )}
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+      ) : <>
+        <FilterBar><SearchInput aria-label="البحث في المستخدمين" placeholder="الاسم أو البريد الإلكتروني" value={query} onChange={event => setQuery(event.target.value)}/></FilterBar>
+        <DataTable caption="المستخدمون والصلاحيات" columns={employeeColumns} rows={visibleEmployees} getRowKey={employee => employee.id} loading={loading} empty="لا يوجد مستخدمون يطابقون البحث"/>
+      </>}
 
       {modal?.type === 'activity' && (
         <ActivityModal employee={modal.employee} onClose={() => setModal(null)}/>
@@ -1049,6 +964,6 @@ export default function EmployeeManager() {
           recommendedPresetId={modal.recommendedPresetId}
         />
       )}
-    </div>
+    </Page>
   );
 }

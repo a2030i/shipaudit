@@ -8,7 +8,8 @@ import {
   RefreshCw, Phone, Eye, ShieldCheck, ListChecks, Activity, Target,
   Link2, CalendarClock, User, ExternalLink, CircleDollarSign,
 } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, Modal, PageHeader, toast } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, toast } from '../components/UI.jsx';
+import { Dialog as Modal, PageHeader } from '../design-system/EnterpriseUI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
   loadNextBestActionsPage, loadAllNextBestActions, loadCustomerGrowthSnapshot, loadCustomerGrowthProfile,

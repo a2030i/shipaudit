@@ -1,0 +1,25 @@
+.sales-workspace,.campaign-workspace{width:min(100%,1480px);margin:0 auto;padding:20px 24px 48px;display:grid;gap:14px;min-width:0}
+.sales-workspace-nav,.campaign-workspace-nav{min-width:0;padding-inline:4px;background:var(--ds-surface);border:1px solid var(--ds-border);border-radius:var(--ds-radius-sm)}
+.sales-workspace-nav .ds-tabs,.campaign-workspace-nav .ds-tabs{border-bottom:0}
+.sales-workspace__context{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;background:var(--ds-surface-subtle);border:1px solid var(--ds-border);border-radius:var(--ds-radius-sm)}
+.sales-workspace__context>span{color:var(--ds-muted);font-size:10.5px;font-weight:700}
+.sales-workspace__context .ds-tabs{min-height:36px;border:0}.sales-workspace__context .ds-tabs button{min-height:36px}
+.sales-workspace__panel{min-width:0}.sales-workspace__panel>.workspace-page,.sales-workspace__panel>.page-shell,.sales-workspace__panel>div{max-width:none!important;margin:0!important;padding-inline:0!important}
+.sales-workspace__panel .page-hero-band,.sales-workspace__panel>.workspace-page>header:first-child{display:none!important}
+.sales-workspace__panel>* > .ds-page-heading:first-child{display:none}
+.sales-workspace .store-activation>.ds-stat-strip{--stat-count:5;margin-bottom:0}.activation-source-line{display:flex;justify-content:space-between;gap:12px;padding:7px 10px;color:var(--ds-muted);font-size:10px;border:1px solid var(--ds-border);border-top:0;background:var(--ds-surface-subtle)}
+.campaign-workspace.smart-campaign-center{max-width:1480px}.campaign-workspace>.campaign-workspace-nav{margin-bottom:0}
+.campaign-workspace .scc-header{margin:0;padding:0 0 14px;border-bottom:1px solid var(--ds-border);background:transparent;box-shadow:none}
+.campaign-workspace .scc-header h1{color:var(--ds-ink);font-size:23px}.campaign-workspace .scc-header p{color:var(--ds-muted)}
+.campaign-workspace .scc-composer,.campaign-workspace .scc-campaign-list{border-color:var(--ds-border);border-radius:var(--ds-radius-sm);box-shadow:none;background:var(--ds-surface)}
+.campaign-workspace .scc-objective-grid button,.campaign-workspace .scc-channel-grid button,.campaign-workspace .scc-step{border-radius:var(--ds-radius-sm);box-shadow:none}
+.campaign-workspace .scc-equation{border-radius:var(--ds-radius-sm);background:var(--ds-surface-subtle)}
+.campaign-workspace .scc-equation{grid-template-columns:minmax(0,1fr) 16px minmax(0,1fr) 16px minmax(0,1fr) 16px minmax(0,1fr)}
+.campaign-workspace .scc-audience-number{font-family:var(--ds-font);cursor:pointer}.campaign-workspace .scc-audience-number.is-review{color:var(--ds-warning);border-color:color-mix(in srgb,var(--ds-warning) 22%,var(--ds-border));background:var(--ds-warning-bg)}
+.campaign-workspace .scc-audience-result-set{margin:10px 16px 0;border:1px solid var(--ds-border);border-radius:var(--ds-radius-sm);overflow:hidden}.campaign-workspace .scc-audience-result-set .scc-section-head{padding:10px 12px}
+.campaign-workspace .scc-integration-alert,.campaign-workspace .scc-audience-handoff{border-radius:var(--ds-radius-sm);box-shadow:none}
+.campaign-workspace .ds-table-shell{max-height:520px}
+.campaign-workspace .scc-campaign-list .ds-table th:first-child,.campaign-workspace .scc-campaign-list .ds-table td:first-child{position:sticky;inset-inline-start:0;z-index:3;min-width:210px;background:var(--ds-surface)}
+.campaign-workspace .scc-campaign-list .ds-table th{background:var(--ds-surface-subtle)}
+.campaign-results-workspace{width:min(100%,1480px);margin:0 auto;padding:20px 24px 48px;display:grid;gap:14px}.campaign-results-workspace>.campaign-workspace-nav{margin:0}.campaign-results-workspace .hatif-center__body{min-width:0}
+@media(max-width:768px){.sales-workspace,.campaign-workspace,.campaign-results-workspace{padding:12px 12px 96px}.sales-workspace__context{align-items:stretch;flex-direction:column}.sales-workspace__context>span{padding-inline:4px}.campaign-workspace .scc-campaign-list .ds-table td:first-child{position:static;inset:auto;min-width:0}.campaign-workspace .scc-equation{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.campaign-workspace .scc-equation__operator{display:none}.campaign-workspace .scc-audience-result-set{margin-inline:10px}}

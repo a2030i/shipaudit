@@ -2,7 +2,7 @@ import { ChevronLeft, LayoutDashboard, LogOut } from 'lucide-react';
 import { LamhaLogo } from './BrandLogo.jsx';
 
 const HOME_PATHS = new Set(['/overview', '/decisions']);
-const SECTION_ORDER = ['sales', 'customers', 'finance', 'shipping', 'reports', 'settings'];
+const SECTION_ORDER = ['customers', 'sales', 'campaigns', 'finance', 'shipping', 'reports', 'settings'];
 
 export default function ExecutiveSidebar({
   sections,
@@ -18,15 +18,13 @@ export default function ExecutiveSidebar({
   const visibleSections = SECTION_ORDER
     .map(id => sections.find(section => section.id === id))
     .filter(section => section && navItems.some(item => item.section === section.id));
-  const campaignItem = navItems.find(item => item.id === 'campaign-center');
-  const campaignActive = pathname === campaignItem?.path;
 
   return (
     <aside className="sidebar" aria-label="التنقل الرئيسي">
       <header className="sidebar-logo">
         <div className="sidebar-brand-lockup">
-          <span className="sidebar-brand-logo sidebar-brand-logo--desktop"><LamhaLogo height={29} variant="white"/></span>
-          <span className="sidebar-brand-logo sidebar-brand-logo--mobile"><LamhaLogo height={29} variant="white"/></span>
+          <span className="sidebar-brand-logo sidebar-brand-logo--desktop"><LamhaLogo height={29} variant="color"/></span>
+          <span className="sidebar-brand-logo sidebar-brand-logo--mobile"><LamhaLogo height={29} variant="color"/></span>
           <span className="sidebar-product-label"><i className="live-dot"/> نظام تشغيل الشركة</span>
         </div>
       </header>
@@ -48,32 +46,19 @@ export default function ExecutiveSidebar({
 
           {visibleSections.map(section => {
             const Icon = section.icon;
-            const active = currentSectionId === section.id && !(section.id === 'sales' && campaignActive);
+            const active = currentSectionId === section.id;
             return (
-              <div className="primary-center-entry" key={section.id}>
-                <button
-                  type="button"
-                  className={`primary-center-item${active ? ' active' : ''}`}
-                  aria-current={active ? 'page' : undefined}
-                  onClick={() => onNavigate(section.path)}
-                >
-                  <span className="primary-center-item__icon"><Icon size={19}/></span>
-                  <span><strong>{section.label}</strong><small>{section.hint}</small></span>
-                  <ChevronLeft size={15}/>
-                </button>
-                {section.id === 'sales' && campaignItem ? (
-                  <button
-                    type="button"
-                    className={`primary-center-item primary-center-item--shortcut${campaignActive ? ' active' : ''}`}
-                    aria-current={campaignActive ? 'page' : undefined}
-                    onClick={() => onNavigate(campaignItem.path)}
-                  >
-                    <span className="primary-center-item__icon"><campaignItem.icon size={18}/></span>
-                    <span><strong>الحملات</strong><small>الجمهور · الإطلاق · النتائج</small></span>
-                    <ChevronLeft size={15}/>
-                  </button>
-                ) : null}
-              </div>
+              <button
+                type="button"
+                className={`primary-center-item${active ? ' active' : ''}`}
+                aria-current={active ? 'page' : undefined}
+                onClick={() => onNavigate(section.path)}
+                key={section.id}
+              >
+                <span className="primary-center-item__icon"><Icon size={18}/></span>
+                <span><strong>{section.label}</strong></span>
+                <ChevronLeft size={14}/>
+              </button>
             );
           })}
         </div>
