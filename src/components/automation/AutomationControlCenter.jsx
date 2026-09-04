@@ -26,6 +26,10 @@ const STATUS = {
   active: ['نشطة', 'success'], paused: ['متوقفة', 'warning'], error: ['تحتاج تدخلًا', 'danger'], archived: ['مؤرشفة', 'neutral'],
 };
 const MODE = { preview: 'معاينة فقط', review: 'مراجعة قبل التنفيذ', automatic: 'تنفيذ تلقائي' };
+const DEDUPE_MODE = {
+  once_per_snapshot_phone: 'مرة واحدة للجوال في كل فحص مزامنة',
+  within_hours: 'منع تكرار الجوال خلال مدة محددة',
+};
 const STEPS = [
   ['identity', 'التعريف', 'اسم الوكيل وهدفه'],
   ['trigger', 'المحفز والشروط', 'متى يظهر العميل'],
@@ -49,7 +53,7 @@ const EMPTY_RULE = {
   template_name: '', template_language: 'ar',
   template_variables: [{ position: 1, mode: 'fixed', value: '' }, { position: 2, mode: 'fixed', value: '' }],
   schedule_config: { afterSuccessfulSync: true, delayMinutes: 10, sendWindowStart: '09:00', sendWindowEnd: '20:00' },
-  safeguards: { audienceIdentity: 'normalized_phone', dedupeHours: 336, maxMessagesPerPhonePerDay: 1, maxRecipientsPerRun: 500, requireFreshSources: true, retryConfirmedFailures: 1, blockUnknownDeliveryRetry: true },
+  safeguards: { audienceIdentity: 'normalized_phone', dedupeMode: 'within_hours', dedupeHours: 336, maxMessagesPerPhonePerDay: 1, maxRecipientsPerRun: 500, requireFreshSources: true, retryConfirmedFailures: 1, blockUnknownDeliveryRetry: true },
 };
 
 const dateTime = value => value ? new Date(value).toLocaleString('ar-SA', { dateStyle: 'short', timeStyle: 'short' }) : 'لم يعمل بعد';
@@ -84,7 +88,7 @@ function RuleRow({ rule, onOpen }) {
     <span><b>{EVENT[rule.event_type] || rule.event_type}</b><small>{SOURCE[rule.trigger_source] || rule.trigger_source}</small></span>
     <span className="rule-audience"><strong>{rule.last_preview_count == null ? '—' : number(rule.last_preview_count)}</strong><small>{rule.last_preview_at ? `معاينة ${dateTime(rule.last_preview_at)}` : 'لم تُعاين'}</small></span>
     <span><b dir="ltr">{rule.template_name || 'غير محدد'}</b><small>{MODE[rule.execution_mode]}</small></span>
-    <span><b>{dateTime(rule.last_run_at)}</b><small>{rule.next_run_at ? `القادم ${dateTime(rule.next_run_at)}` : 'لا يوجد موعد معتمد'}</small></span>
+    <span><b>{dateTime(rule.last_run_at)}</b><small>{rule.next_run_at ? `القادم ${dateTime(rule.next_run_at)}` : rule.schedule_config?.afterSuccessfulSync ? 'بعد مزامنة المصدر الناجحة' : 'لا يوجد موعد معتمد'}</small></span>
     <span className="rule-open"><MoreVertical size={18}/></span>
   </button>;
 }
@@ -93,7 +97,7 @@ function Field({ label, hint, children }) {
   return <label className="automation-field"><span>{label}</span>{children}{hint ? <small>{hint}</small> : null}</label>;
 }
 
-function VariableEditor({ variables, onChange }) {
+function VariableEditor({ variables, onChange, minimum = 1, maximum = Number.POSITIVE_INFINITY }) {
   const update = (index, patch) => onChange(variables.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
   const add = () => onChange([...variables, { position: variables.length + 1, mode: 'fixed', value: '' }]);
   const remove = index => onChange(variables.filter((_, itemIndex) => itemIndex !== index).map((item, itemIndex) => ({ ...item, position: itemIndex + 1 })));
@@ -101,9 +105,9 @@ function VariableEditor({ variables, onChange }) {
     {variables.map((item, index) => <div className="automation-var" key={`${item.position}-${index}`}>
       <code>{`{{${index + 1}}}`}</code>
       <input value={item.value || ''} onChange={event => update(index, { value: event.target.value, mode: 'fixed' })} placeholder={index === 0 ? 'مثال: أحمد من قسم المبيعات' : 'اكتب قيمة المتغير'}/>
-      <button type="button" onClick={() => remove(index)} aria-label={`حذف المتغير ${index + 1}`} disabled={variables.length === 1}><X size={15}/></button>
+      <button type="button" onClick={() => remove(index)} aria-label={`حذف المتغير ${index + 1}`} disabled={variables.length <= minimum}><X size={15}/></button>
     </div>)}
-    <button type="button" className="automation-inline-action" onClick={add}><Plus size={15}/> إضافة متغير</button>
+    {variables.length < maximum ? <button type="button" className="automation-inline-action" onClick={add}><Plus size={15}/> إضافة متغير</button> : null}
     <p className="automation-note">تُرسل القيم المكتوبة كما هي لكل مستلم. لا يستنتج النظام اسم موظف أو متجر دون اختيارك.</p>
   </div>;
 }
@@ -178,7 +182,7 @@ function RuleDrawer({ rule, templates, canManage, onClose, onSaved }) {
             <h3>تعريف الوكيل</h3><p>اجعل الاسم يصف النتيجة التي يملكها الوكيل، لا التقنية المستخدمة.</p>
             <Field label="اسم القاعدة"><input value={draft.name} onChange={event => patch({ name: event.target.value })} placeholder="مثال: ترحيب العميل الجديد"/></Field>
             <Field label="الهدف التشغيلي"><textarea rows="3" value={draft.objective} onChange={event => patch({ objective: event.target.value })} placeholder="ما النتيجة التي يجب أن يحققها الوكيل؟"/></Field>
-            <div className="automation-form-grid"><Field label="الفريق المسؤول"><select value={draft.category} onChange={event => patch({ category: event.target.value })}>{Object.entries(CATEGORY).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field><Field label="طريقة العمل"><select value={draft.execution_mode} onChange={event => patch({ execution_mode: event.target.value })}>{Object.entries(MODE).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field></div>
+            <div className="automation-form-grid"><Field label="الفريق المسؤول"><select value={draft.category} onChange={event => patch({ category: event.target.value })}>{Object.entries(CATEGORY).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field><Field label="طريقة العمل"><select value={draft.execution_mode} onChange={event => patch({ execution_mode: event.target.value })}>{Object.entries(MODE).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field><Field label="حالة القاعدة" hint="نشطة + تنفيذ تلقائي يعني العمل بعد المزامنة القادمة."><select value={draft.status || 'draft'} onChange={event => patch({ status: event.target.value })}><option value="draft">مسودة</option><option value="preview">معاينة</option><option value="review">تحتاج مراجعة</option><option value="active">نشطة</option><option value="paused">متوقفة</option></select></Field></div>
             <div className="automation-info"><Bot size={18}/><span><b>حدود الوكيل</b> يقرأ ويجهز الجمهور ويطبق الحماية. هذه الصفحة لا تمنحه صلاحية إيقاف حساب أو تعديل Zoho.</span></div>
           </section> : null}
           {current === 'trigger' ? <section>
@@ -188,29 +192,31 @@ function RuleDrawer({ rule, templates, canManage, onClose, onSaved }) {
             <div className="automation-condition-list"><h4>الشروط الحالية</h4>{(draft.conditions || []).length ? draft.conditions.map((condition, index) => <div key={`${condition.field}-${index}`}><SlidersHorizontal size={15}/><code>{condition.field}</code><span>{condition.operator}</span><b>{String(condition.value ?? '')}</b></div>) : <p>تُبنى الشروط من المحفز المختار عند الحفظ.</p>}</div>
           </section> : null}
           {current === 'audience' ? <section>
-            <h3>الجمهور والاستثناءات</h3><p>هوية الجمهور هي رقم الجوال السعودي المطبّع؛ تعدد المتاجر لا يصنع رسائل مكررة.</p>
-            <div className="automation-identity-rule"><Users size={18}/><span><b>رسالة واحدة لكل جوال</b><small>المتاجر المشتركة في رقم واحد تُدمج قبل الإرسال.</small></span></div>
+            <h3>الجمهور والاستثناءات</h3><p>هوية الجمهور هي رقم الجوال السعودي المطبّع، ويحدد نطاق المنع متى يسمح برسالة جديدة.</p>
+            <div className="automation-identity-rule"><Users size={18}/><span><b>{draft.safeguards?.dedupeMode === 'once_per_snapshot_phone' ? 'رسالة واحدة للجوال داخل الفحص نفسه' : 'رسالة واحدة للجوال خلال مدة الحماية'}</b><small>{draft.safeguards?.dedupeMode === 'once_per_snapshot_phone' ? 'متجر جديد في فحص لاحق يستحق ترحيبًا جديدًا، ولو كان جواله مرتبطًا بمتجر سابق.' : 'تُدمج المتاجر المشتركة في رقم واحد خلال مدة الحماية المحددة.'}</small></span></div>
             <div className="automation-exclusions">{Object.entries(EXCLUSION_LABELS).map(([key, label]) => <label key={key}><input type="checkbox" checked={draft.exclusions.includes(key)} onChange={() => toggleExclusion(key)}/><span>{label}</span></label>)}</div>
-            <div className="automation-warning"><AlertTriangle size={17}/><span>إذا كان للجوال عدة متاجر والقالب يذكر متجرًا بعينه، تنتقل الحالة للمراجعة بدل اختيار اسم قد يكون مضللًا.</span></div>
+            <div className="automation-warning"><AlertTriangle size={17}/><span>{draft.safeguards?.dedupeMode === 'once_per_snapshot_phone' ? 'إذا ظهر متجران جديدان بالجوال نفسه في لقطة المزامنة نفسها، يرسل النظام رسالة واحدة فقط. ظهور متجر جديد بالجوال نفسه في لقطة لاحقة يسمح برسالة جديدة.' : 'إذا كان للجوال عدة متاجر والقالب يذكر متجرًا بعينه، تنتقل الحالة للمراجعة بدل اختيار اسم قد يكون مضللًا.'}</span></div>
           </section> : null}
           {current === 'template' ? <section>
             <h3>القالب والمتغيرات</h3><p>كل قالب ظاهر هنا مسجل ضمن القوالب المعتمدة في إعدادات هاتف.</p>
             <Field label="قالب هاتف"><select value={draft.template_name || ''} onChange={event => patch({ template_name: event.target.value })}><option value="">اختر القالب</option>{templates.map(template => <option value={template} key={template}>{template}</option>)}</select></Field>
             <Field label="لغة القالب"><input value="العربية" disabled/></Field>
             <h4 className="automation-subtitle">قيم المتغيرات</h4>
-            <VariableEditor variables={draft.template_variables || []} onChange={template_variables => patch({ template_variables })}/>
+            <VariableEditor variables={draft.template_variables || []} minimum={draft.template_name === 'masrah' ? 2 : 1} maximum={draft.template_name === 'masrah' ? 2 : Number.POSITIVE_INFINITY} onChange={template_variables => patch({ template_variables })}/>
             <div className="automation-template-preview"><small>معاينة الربط</small><strong dir="ltr">{draft.template_name || 'template_name'}</strong>{(draft.template_variables || []).map(variable => <p key={variable.position}><code>{`{{${variable.position}}}`}</code><span>{variable.value || 'لم تُكتب القيمة'}</span></p>)}</div>
           </section> : null}
           {current === 'safety' ? <section>
             <h3>التوقيت والحماية</h3><p>التشغيل بعد نجاح المصدر؛ تعطل هاتف لا يلغي مزامنة لمحة أو Zoho.</p>
             <label className="automation-switch"><input type="checkbox" checked={!!draft.schedule_config?.afterSuccessfulSync} onChange={event => patch({ schedule_config: { ...draft.schedule_config, afterSuccessfulSync: event.target.checked } })}/><span><b>بعد نجاح المزامنة</b><small>لا يعمل على لقطة جزئية أو فاشلة.</small></span></label>
-            <div className="automation-form-grid"><Field label="الانتظار بعد المزامنة (دقيقة)"><input type="number" min="0" max="180" value={draft.schedule_config?.delayMinutes ?? 10} onChange={event => patch({ schedule_config: { ...draft.schedule_config, delayMinutes: Number(event.target.value) } })}/></Field><Field label="منع تكرار القالب (ساعة)" hint="المقترح: 720 للترحيب، 168 للتحصيل، 336 للاحتفاظ."><input type="number" min="1" max="8760" value={draft.safeguards?.dedupeHours ?? 336} onChange={event => patch({ safeguards: { ...draft.safeguards, dedupeHours: Number(event.target.value) } })}/></Field><Field label="بداية نافذة الإرسال"><input type="time" value={draft.schedule_config?.sendWindowStart || '09:00'} onChange={event => patch({ schedule_config: { ...draft.schedule_config, sendWindowStart: event.target.value } })}/></Field><Field label="نهاية نافذة الإرسال"><input type="time" value={draft.schedule_config?.sendWindowEnd || '20:00'} onChange={event => patch({ schedule_config: { ...draft.schedule_config, sendWindowEnd: event.target.value } })}/></Field><Field label="حد المستلمين في التشغيل"><input type="number" min="1" max="2000" value={draft.safeguards?.maxRecipientsPerRun ?? 500} onChange={event => patch({ safeguards: { ...draft.safeguards, maxRecipientsPerRun: Number(event.target.value) } })}/></Field><Field label="رسائل الجوال في اليوم"><input type="number" min="1" max="5" value={draft.safeguards?.maxMessagesPerPhonePerDay ?? 1} onChange={event => patch({ safeguards: { ...draft.safeguards, maxMessagesPerPhonePerDay: Number(event.target.value) } })}/></Field></div>
+            <Field label="نطاق منع التكرار"><select value={draft.safeguards?.dedupeMode || 'within_hours'} onChange={event => patch({ safeguards: { ...draft.safeguards, dedupeMode: event.target.value } })}>{Object.entries(DEDUPE_MODE).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
+            {draft.safeguards?.dedupeMode === 'once_per_snapshot_phone' ? <div className="automation-info"><ShieldCheck size={18}/><span><b>قاعدة الترحيب الحالية</b> نفس الجوال داخل الفحص = رسالة واحدة. متجر جديد في فحص لاحق = رسالة جديدة.</span></div> : null}
+            <div className="automation-form-grid"><Field label="الانتظار بعد المزامنة (دقيقة)"><input type="number" min="0" max="180" value={draft.schedule_config?.delayMinutes ?? 10} onChange={event => patch({ schedule_config: { ...draft.schedule_config, delayMinutes: Number(event.target.value) } })}/></Field>{draft.safeguards?.dedupeMode !== 'once_per_snapshot_phone' ? <Field label="منع تكرار القالب (ساعة)" hint="المقترح: 168 للتحصيل و336 للاحتفاظ."><input type="number" min="1" max="8760" value={draft.safeguards?.dedupeHours ?? 336} onChange={event => patch({ safeguards: { ...draft.safeguards, dedupeHours: Number(event.target.value) } })}/></Field> : null}<Field label="بداية نافذة الإرسال"><input type="time" value={draft.schedule_config?.sendWindowStart || '09:00'} onChange={event => patch({ schedule_config: { ...draft.schedule_config, sendWindowStart: event.target.value } })}/></Field><Field label="نهاية نافذة الإرسال"><input type="time" value={draft.schedule_config?.sendWindowEnd || '20:00'} onChange={event => patch({ schedule_config: { ...draft.schedule_config, sendWindowEnd: event.target.value } })}/></Field><Field label="حد المستلمين في التشغيل" hint={draft.rule_key === 'welcome_new_customer' ? 'الحد التشغيلي الفعلي لدفعة الترحيب: 200.' : undefined}><input type="number" min="1" max={draft.rule_key === 'welcome_new_customer' ? 200 : 2000} value={draft.safeguards?.maxRecipientsPerRun ?? 500} onChange={event => patch({ safeguards: { ...draft.safeguards, maxRecipientsPerRun: Number(event.target.value) } })}/></Field><Field label="رسائل الجوال في اليوم"><input type="number" min="1" max="5" value={draft.safeguards?.maxMessagesPerPhonePerDay ?? 1} onChange={event => patch({ safeguards: { ...draft.safeguards, maxMessagesPerPhonePerDay: Number(event.target.value) } })}/></Field></div>
             <div className="automation-safety-list"><span><ShieldCheck size={16}/> منع التنفيذ المزدوج</span><span><ShieldCheck size={16}/> إعادة الفشل المؤكد فقط</span><span><ShieldCheck size={16}/> حظر إعادة الحالة المجهولة</span><span><ShieldCheck size={16}/> اشتراط حداثة المصادر</span></div>
           </section> : null}
           {current === 'review' ? <section>
             <h3>المعاينة والاعتماد</h3><p>هذه آخر شاشة قرار. لا تنفذ المعاينة إرسالًا ولا تغييرًا خارجيًا.</p>
             <AudiencePreview preview={preview} loading={previewing}/>
-            <div className="automation-review-summary"><p><span>القاعدة</span><b>{draft.name || 'غير مسماة'}</b></p><p><span>المحفز</span><b>{EVENT[draft.event_type]}</b></p><p><span>القالب</span><b dir="ltr">{draft.template_name || 'غير محدد'}</b></p><p><span>طريقة التنفيذ</span><b>{MODE[draft.execution_mode]}</b></p><p><span>منع التكرار</span><b>{number(draft.safeguards?.dedupeHours)} ساعة</b></p></div>
+            <div className="automation-review-summary"><p><span>القاعدة</span><b>{draft.name || 'غير مسماة'}</b></p><p><span>الحالة</span><b>{STATUS[draft.status]?.[0] || draft.status}</b></p><p><span>المحفز</span><b>{EVENT[draft.event_type]}</b></p><p><span>القالب</span><b dir="ltr">{draft.template_name || 'غير محدد'}</b></p><p><span>طريقة التنفيذ</span><b>{MODE[draft.execution_mode]}</b></p><p><span>منع التكرار</span><b>{draft.safeguards?.dedupeMode === 'once_per_snapshot_phone' ? DEDUPE_MODE.once_per_snapshot_phone : `${number(draft.safeguards?.dedupeHours)} ساعة`}</b></p></div>
             {draft.execution_mode === 'automatic' ? <div className="automation-warning"><AlertTriangle size={17}/><span>اختيار «تلقائي» يحفظ سياسة التشغيل، لكنه لا يرسل أثناء هذه الجلسة. يجب أن تكون القاعدة بحالة نشطة ضمن محرك التشغيل المعتمد.</span></div> : null}
           </section> : null}
           {notice ? <div className={`automation-notice ${notice.includes('تعذر') || notice.includes('invalid') ? 'error' : ''}`}>{notice}</div> : null}
@@ -218,7 +224,7 @@ function RuleDrawer({ rule, templates, canManage, onClose, onSaved }) {
       </div>
       <footer>
         <Btn variant="ghost" onClick={onClose}>إغلاق</Btn>
-        <div><Btn variant="ghost" disabled={step === 0} onClick={() => setStep(value => Math.max(0, value - 1))} icon={<ChevronRight size={16}/>}>السابق</Btn>{step < STEPS.length - 1 ? <Btn variant="primary" onClick={() => setStep(value => Math.min(STEPS.length - 1, value + 1))} icon={<ChevronLeft size={16}/>}>التالي</Btn> : <><Btn variant="ghost" disabled={previewing || saving || !draft.name || !canManage} onClick={runPreview} icon={<Eye size={16}/>}>معاينة بدون إرسال</Btn><Btn variant="primary" disabled={saving || !draft.name || !canManage} onClick={() => save(draft.execution_mode === 'preview' ? 'preview' : 'review')} icon={<Check size={16}/>}>حفظ السياسة</Btn></>}</div>
+        <div><Btn variant="ghost" disabled={step === 0} onClick={() => setStep(value => Math.max(0, value - 1))} icon={<ChevronRight size={16}/>}>السابق</Btn>{step < STEPS.length - 1 ? <Btn variant="primary" onClick={() => setStep(value => Math.min(STEPS.length - 1, value + 1))} icon={<ChevronLeft size={16}/>}>التالي</Btn> : <><Btn variant="ghost" disabled={previewing || saving || !draft.name || !canManage} onClick={runPreview} icon={<Eye size={16}/>}>معاينة بدون إرسال</Btn><Btn variant="primary" disabled={saving || !draft.name || !canManage} onClick={() => save()} icon={<Check size={16}/>}>{draft.status === 'active' && draft.execution_mode === 'automatic' ? 'حفظ وتفعيل' : 'حفظ السياسة'}</Btn></>}</div>
       </footer>
     </aside>
   </div>;

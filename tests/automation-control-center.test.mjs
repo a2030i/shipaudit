@@ -24,8 +24,12 @@ test('rule builder exposes the complete decision path without a send button', as
     'التوقيت والحماية', 'المعاينة والتفعيل', 'معاينة بدون إرسال',
   ]) assert.match(center, new RegExp(label));
   assert.doesNotMatch(center, />إرسال الآن</);
-  assert.match(center, /رسالة واحدة لكل جوال/);
+  assert.match(center, /رسالة واحدة للجوال/);
   assert.match(center, /لا تنفذ المعاينة إرسالًا/);
+  assert.match(center, /حالة القاعدة/);
+  assert.match(center, /نطاق منع التكرار/);
+  assert.match(center, /once_per_snapshot_phone/);
+  assert.match(center, /متجر جديد في فحص لاحق/);
 });
 
 test('template variables are manager-entered fixed values', async () => {
