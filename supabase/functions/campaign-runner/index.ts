@@ -89,6 +89,51 @@ async function logSend(db: ReturnType<typeof svc>, r: Record<string, unknown>) {
   return false;
 }
 
+async function finishAutomationDispatch(
+  db: ReturnType<typeof svc>,
+  recipient: Record<string, unknown>,
+  status: 'sent' | 'failed' | 'skipped' | 'unknown',
+  result: { reason?: string | null; messageId?: string | null } = {},
+) {
+  const dispatchId = String(recipient.automation_dispatch_id || '').trim();
+  if (!dispatchId) return;
+  const { error } = await db.from('automation_dispatches').update({
+    status,
+    reason: result.reason ? String(result.reason).slice(0, 500) : null,
+    provider_message_id: result.messageId || null,
+    finished_at: new Date().toISOString(),
+  }).eq('id', dispatchId).eq('status', 'queued');
+  if (error) console.error('automation dispatch finalization failed:', error.message, dispatchId);
+}
+
+async function refreshAutomationRun(db: ReturnType<typeof svc>, runId: string) {
+  if (!runId) return;
+  const { data: dispatches, error } = await db.from('automation_dispatches')
+    .select('status').eq('run_id', runId);
+  if (error || !dispatches?.length) {
+    if (error) console.error('automation run refresh failed:', error.message, runId);
+    return;
+  }
+  const counts = dispatches.reduce((acc: Record<string, number>, row: { status: string }) => {
+    acc[row.status] = (acc[row.status] || 0) + 1;
+    return acc;
+  }, {});
+  const pending = (counts.prepared || 0) + (counts.queued || 0);
+  const sent = counts.sent || 0;
+  const failed = (counts.failed || 0) + (counts.unknown || 0);
+  const status = pending > 0 ? 'queued' : failed > 0 ? (sent > 0 ? 'partial' : 'failed') : 'succeeded';
+  const { data: run } = await db.from('automation_runs').select('details').eq('id', runId).maybeSingle();
+  const { error: updateError } = await db.from('automation_runs').update({
+    status,
+    action_count: sent,
+    failed_count: failed,
+    summary: `الإرسال: ${sent} ناجح، ${failed} فاشل أو غير مؤكد، ${counts.skipped || 0} متجاوز`,
+    details: { ...(run?.details || {}), deliveryCounts: counts },
+    finished_at: pending > 0 ? null : new Date().toISOString(),
+  }).eq('id', runId);
+  if (updateError) console.error('automation run update failed:', updateError.message, runId);
+}
+
 Deno.serve(async (req) => {
   const started = Date.now();
   // مهلة الدالة 150ث — لا نلتقط دفعة إلا إذا كان وقتها المقدَّر يسع قبل 130ث.
@@ -145,12 +190,23 @@ Deno.serve(async (req) => {
       (out.jobs as number)++;
       await ensureHatif();
       const recipients: any[] = Array.isArray(job.recipients) ? job.recipients : [];
+      const automationRunIds = new Set<string>();
       let sent = 0, failed = 0, skipped = 0;
       const campaignName = (job.bucket_label || '').trim() || 'مجدولة';
       for (const [recipientIndex, it] of recipients.slice(0, 200).entries()) {
+        const automationRunId = String(it.automation_run_id || '').trim();
+        if (automationRunId) automationRunIds.add(automationRunId);
         const to = norm(it.to);
-        if (!to || to.length < 11) { failed++; continue; }
-        if (blockSet.has(to)) { skipped++; continue; }   // محظور — لا نراسله
+        if (!to || to.length < 11) {
+          failed++;
+          await finishAutomationDispatch(db, it, 'skipped', { reason: 'invalid_phone' });
+          continue;
+        }
+        if (blockSet.has(to)) {
+          skipped++;
+          await finishAutomationDispatch(db, it, 'skipped', { reason: 'blocked_phone' });
+          continue;
+        }   // محظور — لا نراسله
         const base: Record<string, unknown> = { phone: to, name: it.name || null, template_name: job.template_name,
           channel_id: channelId, campaign_name: campaignName, campaign_bucket: job.bucket_label || null,
           amount: it.amount ?? null, sent_at: new Date().toISOString(), sent_by: job.created_by || 'scheduler' };
@@ -158,7 +214,13 @@ Deno.serve(async (req) => {
           source: 'scheduled', phone: to, templateName: job.template_name,
           campaignName, sourceReference: it.idempotency_ref || `${job.id}:${recipientIndex}`,
         });
-        if (!claim.claimed) { skipped++; continue; }
+        if (!claim.claimed) {
+          skipped++;
+          const previous = String(claim.status || 'duplicate');
+          const dispatchStatus = previous === 'sent' ? 'sent' : previous === 'unknown' || previous === 'sending' ? 'unknown' : 'skipped';
+          await finishAutomationDispatch(db, it, dispatchStatus, { reason: `idempotency_${previous}` });
+          continue;
+        }
         try {
           const res = await sendTemplate(token, { channelId, templateName: job.template_name, to, vars: it.vars || [] });
           try {
@@ -171,10 +233,12 @@ Deno.serve(async (req) => {
             sent++;
             // تسجيل فوري (نفس إصلاح hatif-send v11) — الانقطاع لا يضيع السجل
             await logSend(db, { ...base, contact_id: res.contactId, conversation_id: res.conversationId, message_id: res.id, status: res.status || 'accepted' });
+            await finishAutomationDispatch(db, it, 'sent', { messageId: res.id });
           } else {
             // البند 4: نسجّل الفشل بسببه — كان يُبتلع فلا يظهر في «فشل الحملات»
             failed++;
             await logSend(db, { ...base, status: 'failed', error_reason: String(res.error || 'send failed').slice(0, 300) });
+            await finishAutomationDispatch(db, it, 'failed', { reason: String(res.error || 'send_failed') });
           }
         } catch (e) {
           const message = String((e as Error).message || e).slice(0, 300);
@@ -182,6 +246,7 @@ Deno.serve(async (req) => {
           catch (markError) { console.error('campaign-runner unknown marker failed:', String((markError as Error).message || markError)); }
           failed++;
           await logSend(db, { ...base, status: 'unknown', error_reason: message });
+          await finishAutomationDispatch(db, it, 'unknown', { reason: message });
         }
         await sleep(300);   // مع الإرسال والتسجيل ≈ ثانية/رسالة — تحت حصة Voxa
       }
@@ -191,6 +256,7 @@ Deno.serve(async (req) => {
       }).eq('id', job.id);
       (out.queue_sent as number) += sent; (out.queue_failed as number) += failed;
       out.queue_skipped = (Number(out.queue_skipped) || 0) + skipped;
+      for (const runId of automationRunIds) await refreshAutomationRun(db, runId);
     }
   } catch (e) { out.queue_error = String((e as Error).message || e); }
 

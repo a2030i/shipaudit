@@ -935,7 +935,32 @@ Deno.serve(async req => {
     if (action === 'sync-directory') {
       const directory = await syncDirectory(token, auth.userId, auth.kind === 'cron' ? 'cron' : 'user');
       const statement = await syncStatementExport(token, auth.userId);
-      return response(req, { ok: true, action, data: { directory, statement } });
+      let welcomeAutomation: Record<string, unknown> = { ok: true, status: 'disabled', queued: 0 };
+      try {
+        const snapshotId = String((directory.result as Record<string, unknown> | undefined)?.snapshot_id || '');
+        if (!snapshotId) throw new Error('lamha_welcome_snapshot_missing');
+        const { data: queued, error: queueError } = await db.rpc('queue_lamha_welcome_automation', {
+          p_snapshot_id: snapshotId,
+        });
+        if (queueError) throw queueError;
+        welcomeAutomation = (queued || welcomeAutomation) as Record<string, unknown>;
+      } catch (error) {
+        // Hatif automation is intentionally failure-isolated: a welcome error
+        // must not turn a valid Lamha directory/statement sync into a failure.
+        welcomeAutomation = {
+          ok: false,
+          status: 'queue_failed',
+          error: String((error as Error).message || error).slice(0, 300),
+        };
+        await db.from('user_activity_log').insert({
+          user_id: auth.userId,
+          kind: 'sync',
+          action: 'تعذر تجهيز ترحيب العملاء الجدد بعد مزامنة لمحة',
+          detail: { automation_key: 'welcome_new_customer', ...welcomeAutomation },
+          path: '/work-agents?tab=runs',
+        });
+      }
+      return response(req, { ok: true, action, data: { directory, statement, welcomeAutomation } });
     }
     if (action === 'sync-profile-details') {
       return response(req, { ok: true, action, data: await syncProfileDetails(token, auth.userId) });
