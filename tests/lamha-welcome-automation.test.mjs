@@ -22,7 +22,11 @@ const arityMigration = fs.readFileSync(
   new URL('../supabase/migrations/20260904030414_enforce_masrah_template_arity.sql', import.meta.url),
   'utf8',
 );
-const migration = `${foundationMigration}\n${configurationMigration}\n${activationMigration}\n${hardeningMigration}\n${arityMigration}`;
+const fridayMigration = fs.readFileSync(
+  new URL('../supabase/migrations/20260904032846_defer_friday_welcome_to_evening.sql', import.meta.url),
+  'utf8',
+);
+const migration = `${foundationMigration}\n${configurationMigration}\n${activationMigration}\n${hardeningMigration}\n${arityMigration}\n${fridayMigration}`;
 const lamha = fs.readFileSync(
   new URL('../supabase/functions/lamha-financial-guard/index.ts', import.meta.url),
   'utf8',
@@ -103,4 +107,25 @@ test('welcome queue failure never corrupts a valid Lamha sync', () => {
   assert.match(lamha, /Hatif automation is intentionally failure-isolated/);
   assert.match(lamha, /data: \{ directory, statement, welcomeAutomation \}/);
   assert.doesNotMatch(lamha, /welcomeAutomation[\s\S]{0,200}throw error/);
+});
+
+test('Friday morning audience is retained and deferred by an editable Saudi-time policy', () => {
+  assert.match(fridayMigration, /private\.automation_delivery_at/);
+  assert.match(fridayMigration, /time zone 'Asia\/Riyadh'/);
+  assert.match(fridayMigration, /extract\(isodow from v_local_now\) = 5/);
+  assert.match(fridayMigration, /deferFridayMorning/);
+  assert.match(fridayMigration, /fridayMorningCutoff/);
+  assert.match(fridayMigration, /fridayDeferredUntil/);
+  assert.match(fridayMigration, /v_local_target := v_local_now::date \+ v_friday_deferred/);
+  assert.match(fridayMigration, /v_scheduled_at := private\.automation_delivery_at\(v_rule\.schedule_config, now\(\)\)/);
+  assert.match(fridayMigration, /friday_morning_deferred/);
+});
+
+test('active Friday deferral rejects invalid windows instead of silently sending', () => {
+  assert.match(fridayMigration, /validate_automation_schedule_policy/);
+  assert.match(fridayMigration, /welcome_automation_invalid_send_window/);
+  assert.match(fridayMigration, /welcome_automation_invalid_friday_deferral/);
+  assert.match(fridayMigration, /v_deferred <= v_cutoff/);
+  assert.match(fridayMigration, /v_deferred < v_start/);
+  assert.match(fridayMigration, /v_deferred > v_end/);
 });

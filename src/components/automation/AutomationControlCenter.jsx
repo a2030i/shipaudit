@@ -52,13 +52,35 @@ const EMPTY_RULE = {
   conditions: [], exclusions: ['invalid_phone', 'blocked_phone', 'duplicate_phone'],
   template_name: '', template_language: 'ar',
   template_variables: [{ position: 1, mode: 'fixed', value: '' }, { position: 2, mode: 'fixed', value: '' }],
-  schedule_config: { afterSuccessfulSync: true, delayMinutes: 10, sendWindowStart: '09:00', sendWindowEnd: '20:00' },
+  schedule_config: {
+    afterSuccessfulSync: true,
+    delayMinutes: 10,
+    sendWindowStart: '09:00',
+    sendWindowEnd: '20:00',
+    deferFridayMorning: false,
+    fridayMorningCutoff: '12:00',
+    fridayDeferredUntil: '18:00',
+  },
   safeguards: { audienceIdentity: 'normalized_phone', dedupeMode: 'within_hours', dedupeHours: 336, maxMessagesPerPhonePerDay: 1, maxRecipientsPerRun: 500, requireFreshSources: true, retryConfirmedFailures: 1, blockUnknownDeliveryRetry: true },
 };
 
 const dateTime = value => value ? new Date(value).toLocaleString('ar-SA', { dateStyle: 'short', timeStyle: 'short' }) : 'لم يعمل بعد';
 const number = value => Number(value || 0).toLocaleString('en-US');
 const clone = value => JSON.parse(JSON.stringify(value));
+const timeMinutes = value => {
+  const [hour, minute] = String(value || '').split(':').map(Number);
+  return Number.isInteger(hour) && Number.isInteger(minute) ? (hour * 60) + minute : Number.NaN;
+};
+const validateSchedule = rule => {
+  if (rule.rule_key !== 'welcome_new_customer' || !rule.schedule_config?.deferFridayMorning) return '';
+  const start = timeMinutes(rule.schedule_config.sendWindowStart);
+  const end = timeMinutes(rule.schedule_config.sendWindowEnd);
+  const cutoff = timeMinutes(rule.schedule_config.fridayMorningCutoff);
+  const deferred = timeMinutes(rule.schedule_config.fridayDeferredUntil);
+  if (![start, end, cutoff, deferred].every(Number.isFinite) || start >= end) return 'تحقق من بداية ونهاية نافذة الإرسال.';
+  if (deferred <= cutoff || deferred < start || deferred > end) return 'وقت الإرسال المؤجل يجب أن يكون بعد فترة الصباح وداخل نافذة الإرسال.';
+  return '';
+};
 
 function Status({ value }) {
   const [label, tone] = STATUS[value] || STATUS.draft;
@@ -144,6 +166,8 @@ function RuleDrawer({ rule, templates, canManage, onClose, onSaved }) {
   const patch = value => setDraft(current => ({ ...current, ...value }));
   const current = STEPS[step][0];
   const save = async (statusOverride) => {
+    const scheduleError = validateSchedule(draft);
+    if (scheduleError) { setNotice(scheduleError); setStep(STEPS.findIndex(([key]) => key === 'safety')); return null; }
     setSaving(true); setNotice('');
     try {
       const saved = await saveAutomationRule({ ...draft, status: statusOverride || draft.status }, rule ? 'تحديث من مركز الأتمتة' : 'إنشاء من مركز الأتمتة');
@@ -210,16 +234,21 @@ function RuleDrawer({ rule, templates, canManage, onClose, onSaved }) {
             <label className="automation-switch"><input type="checkbox" checked={!!draft.schedule_config?.afterSuccessfulSync} onChange={event => patch({ schedule_config: { ...draft.schedule_config, afterSuccessfulSync: event.target.checked } })}/><span><b>بعد نجاح المزامنة</b><small>لا يعمل على لقطة جزئية أو فاشلة.</small></span></label>
             <Field label="نطاق منع التكرار"><select value={draft.safeguards?.dedupeMode || 'within_hours'} onChange={event => patch({ safeguards: { ...draft.safeguards, dedupeMode: event.target.value } })}>{Object.entries(DEDUPE_MODE).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
             {draft.safeguards?.dedupeMode === 'once_per_snapshot_phone' ? <div className="automation-info"><ShieldCheck size={18}/><span><b>قاعدة الترحيب الحالية</b> نفس الجوال داخل الفحص = رسالة واحدة. متجر جديد في فحص لاحق = رسالة جديدة.</span></div> : null}
+            {draft.rule_key === 'welcome_new_customer' ? <>
+              <label className="automation-switch"><input type="checkbox" checked={!!draft.schedule_config?.deferFridayMorning} onChange={event => patch({ schedule_config: { ...draft.schedule_config, deferFridayMorning: event.target.checked } })}/><span><b>منع الإرسال صباح الجمعة</b><small>يحفظ جمهور فحص الصباح كما هو ويؤجل رسائله إلى دفعة المساء؛ لا يعيد بناء الجمهور ولا يفقد العملاء الجدد.</small></span></label>
+              {draft.schedule_config?.deferFridayMorning ? <div className="automation-form-grid automation-friday-policy"><Field label="نهاية فترة صباح الجمعة" hint="أي فحص يوم الجمعة قبل هذا الوقت يُؤجل."><input type="time" value={draft.schedule_config?.fridayMorningCutoff || '12:00'} onChange={event => patch({ schedule_config: { ...draft.schedule_config, fridayMorningCutoff: event.target.value } })}/></Field><Field label="وقت الإرسال المؤجل"><input type="time" value={draft.schedule_config?.fridayDeferredUntil || '18:00'} onChange={event => patch({ schedule_config: { ...draft.schedule_config, fridayDeferredUntil: event.target.value } })}/></Field></div> : null}
+              {draft.schedule_config?.deferFridayMorning ? <div className="automation-info"><History size={18}/><span><b>سياسة الجمعة الحالية</b> لا إرسال في دفعة الصباح. الجمهور المحفوظ ينتظر حتى {draft.schedule_config?.fridayDeferredUntil || '18:00'} بتوقيت السعودية، ثم يدخل مسار الإرسال المعتاد.</span></div> : null}
+            </> : null}
             <div className="automation-form-grid"><Field label="الانتظار بعد المزامنة (دقيقة)"><input type="number" min="0" max="180" value={draft.schedule_config?.delayMinutes ?? 10} onChange={event => patch({ schedule_config: { ...draft.schedule_config, delayMinutes: Number(event.target.value) } })}/></Field>{draft.safeguards?.dedupeMode !== 'once_per_snapshot_phone' ? <Field label="منع تكرار القالب (ساعة)" hint="المقترح: 168 للتحصيل و336 للاحتفاظ."><input type="number" min="1" max="8760" value={draft.safeguards?.dedupeHours ?? 336} onChange={event => patch({ safeguards: { ...draft.safeguards, dedupeHours: Number(event.target.value) } })}/></Field> : null}<Field label="بداية نافذة الإرسال"><input type="time" value={draft.schedule_config?.sendWindowStart || '09:00'} onChange={event => patch({ schedule_config: { ...draft.schedule_config, sendWindowStart: event.target.value } })}/></Field><Field label="نهاية نافذة الإرسال"><input type="time" value={draft.schedule_config?.sendWindowEnd || '20:00'} onChange={event => patch({ schedule_config: { ...draft.schedule_config, sendWindowEnd: event.target.value } })}/></Field><Field label="حد المستلمين في التشغيل" hint={draft.rule_key === 'welcome_new_customer' ? 'الحد التشغيلي الفعلي لدفعة الترحيب: 200.' : undefined}><input type="number" min="1" max={draft.rule_key === 'welcome_new_customer' ? 200 : 2000} value={draft.safeguards?.maxRecipientsPerRun ?? 500} onChange={event => patch({ safeguards: { ...draft.safeguards, maxRecipientsPerRun: Number(event.target.value) } })}/></Field><Field label="رسائل الجوال في اليوم"><input type="number" min="1" max="5" value={draft.safeguards?.maxMessagesPerPhonePerDay ?? 1} onChange={event => patch({ safeguards: { ...draft.safeguards, maxMessagesPerPhonePerDay: Number(event.target.value) } })}/></Field></div>
             <div className="automation-safety-list"><span><ShieldCheck size={16}/> منع التنفيذ المزدوج</span><span><ShieldCheck size={16}/> إعادة الفشل المؤكد فقط</span><span><ShieldCheck size={16}/> حظر إعادة الحالة المجهولة</span><span><ShieldCheck size={16}/> اشتراط حداثة المصادر</span></div>
           </section> : null}
           {current === 'review' ? <section>
             <h3>المعاينة والاعتماد</h3><p>هذه آخر شاشة قرار. لا تنفذ المعاينة إرسالًا ولا تغييرًا خارجيًا.</p>
             <AudiencePreview preview={preview} loading={previewing}/>
-            <div className="automation-review-summary"><p><span>القاعدة</span><b>{draft.name || 'غير مسماة'}</b></p><p><span>الحالة</span><b>{STATUS[draft.status]?.[0] || draft.status}</b></p><p><span>المحفز</span><b>{EVENT[draft.event_type]}</b></p><p><span>القالب</span><b dir="ltr">{draft.template_name || 'غير محدد'}</b></p><p><span>طريقة التنفيذ</span><b>{MODE[draft.execution_mode]}</b></p><p><span>منع التكرار</span><b>{draft.safeguards?.dedupeMode === 'once_per_snapshot_phone' ? DEDUPE_MODE.once_per_snapshot_phone : `${number(draft.safeguards?.dedupeHours)} ساعة`}</b></p></div>
+            <div className="automation-review-summary"><p><span>القاعدة</span><b>{draft.name || 'غير مسماة'}</b></p><p><span>الحالة</span><b>{STATUS[draft.status]?.[0] || draft.status}</b></p><p><span>المحفز</span><b>{EVENT[draft.event_type]}</b></p><p><span>القالب</span><b dir="ltr">{draft.template_name || 'غير محدد'}</b></p><p><span>طريقة التنفيذ</span><b>{MODE[draft.execution_mode]}</b></p><p><span>منع التكرار</span><b>{draft.safeguards?.dedupeMode === 'once_per_snapshot_phone' ? DEDUPE_MODE.once_per_snapshot_phone : `${number(draft.safeguards?.dedupeHours)} ساعة`}</b></p>{draft.rule_key === 'welcome_new_customer' ? <p><span>سياسة الجمعة</span><b>{draft.schedule_config?.deferFridayMorning ? `الصباح مؤجل إلى ${draft.schedule_config?.fridayDeferredUntil || '18:00'}` : 'الإرسال ضمن النافذة المعتادة'}</b></p> : null}</div>
             {draft.execution_mode === 'automatic' ? <div className="automation-warning"><AlertTriangle size={17}/><span>اختيار «تلقائي» يحفظ سياسة التشغيل، لكنه لا يرسل أثناء هذه الجلسة. يجب أن تكون القاعدة بحالة نشطة ضمن محرك التشغيل المعتمد.</span></div> : null}
           </section> : null}
-          {notice ? <div className={`automation-notice ${notice.includes('تعذر') || notice.includes('invalid') ? 'error' : ''}`}>{notice}</div> : null}
+          {notice ? <div className={`automation-notice ${notice.includes('تعذر') || notice.includes('invalid') || notice.includes('يجب') ? 'error' : ''}`}>{notice}</div> : null}
         </main>
       </div>
       <footer>

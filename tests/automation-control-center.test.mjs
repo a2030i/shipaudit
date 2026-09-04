@@ -30,6 +30,14 @@ test('rule builder exposes the complete decision path without a send button', as
   assert.match(center, /نطاق منع التكرار/);
   assert.match(center, /once_per_snapshot_phone/);
   assert.match(center, /متجر جديد في فحص لاحق/);
+  assert.match(center, /منع الإرسال صباح الجمعة/);
+  assert.match(center, /نهاية فترة صباح الجمعة/);
+  assert.match(center, /وقت الإرسال المؤجل/);
+  assert.match(center, /يحفظ جمهور فحص الصباح كما هو/);
+  assert.match(center, /سياسة الجمعة/);
+  assert.match(center, /fridayMorningCutoff/);
+  assert.match(center, /fridayDeferredUntil/);
+  assert.match(center, /وقت الإرسال المؤجل يجب أن يكون بعد فترة الصباح وداخل نافذة الإرسال/);
 });
 
 test('template variables are manager-entered fixed values', async () => {
