@@ -7,6 +7,7 @@ import { Megaphone, Users } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 import { Alert, Button, LoadingState, Page, PageHeader, Tabs } from '../design-system/EnterpriseUI.jsx';
 import SalesWorkspaceNav, { VIEW_TO_AREA } from '../components/enterprise/SalesWorkspaceNav.jsx';
+import { reportReturnPath } from '../lib/workspaceJourneyNavigation.js';
 import '../components/enterprise/batch4-workspaces.css';
 
 const PlatformSalesCrm = lazy(() => import('./PlatformSalesCrm.jsx'));
@@ -45,6 +46,8 @@ export default function SalesHub({ isActive = true }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { can } = useAuth();
+  const routeParams = new URLSearchParams(location.search);
+  const reportReturnTo = reportReturnPath(routeParams.get('source'), routeParams.get('returnTo'));
   const visibleViews = useMemo(() => VIEWS.filter(item => !item.perm || can(item.perm)), [can]);
   const requestedView = () => {
     const params = new URLSearchParams(location.search);
@@ -82,6 +85,7 @@ export default function SalesHub({ isActive = true }) {
   return (
     <Page className="sales-workspace">
       <PageHeader eyebrow="مركز عمل" title={title} description={description} actions={<>
+        {reportReturnTo ? <Button size="sm" variant="ghost" onClick={() => navigate(reportReturnTo)}>العودة إلى التقرير</Button> : null}
         <Button icon={<Users size={15}/>} onClick={() => navigate('/workspace/customers')}>دليل العملاء</Button>
         <Button variant="primary" icon={<Megaphone size={15}/>} onClick={() => navigate('/workspace/campaigns?view=audiences')}>إنشاء حملة</Button>
       </>}/>
