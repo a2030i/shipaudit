@@ -14,4 +14,3 @@ export default function ReportsWorkspaceNav({ active = 'index', items = REPORT_W
     </nav>
   );
 }
-

@@ -1,8 +1,8 @@
 # ShipAudit Enterprise Redesign — Release Candidate
 
-التاريخ: 2026-09-04  
-الحالة: **PRODUCTION READY WITH DOCUMENTED EXCEPTION**  
-الفرع المحلي: `release/enterprise-redesign-rc-2026-09-04`  
+التاريخ: 2026-09-04
+الحالة: **PRODUCTION READY WITH DOCUMENTED EXCEPTION**
+الفرع المحلي: `release/enterprise-redesign-rc-2026-09-04`
 الوسم المحلي: `enterprise-redesign-rc-2026-09-04`
 
 هذه الوثيقة تثبت نطاق Release Candidate النهائي لمشروع إعادة التصميم. لا يعني إنشاء الـcommit أو الوسم أن النسخة نُشرت إلى Production، ولا يصرح بتغيير Environment أو Database.
@@ -64,4 +64,3 @@
 - لا Environment أو Database أو configuration changes.
 - لا Cleanup أو Refactor أو Phase 8 ضمن هذا الإصدار.
 - أي تحسين لاحق يبدأ من ticket وbaseline مستقلين بعد الإطلاق.
-

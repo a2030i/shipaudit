@@ -70,4 +70,3 @@ export const REPORT_METRIC_CONTRACTS = [
 ];
 
 export const reportMetricContractById = id => REPORT_METRIC_CONTRACTS.find(contract => contract.id === id) || null;
-

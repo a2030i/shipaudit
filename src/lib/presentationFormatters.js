@@ -6,4 +6,3 @@ export function normalizePhoneForDisplay(value) {
   const text = String(value ?? '').trim();
   return SPREADSHEET_PHONE_ARTIFACT.test(text) ? text.replace(/^[\u0027\u2019]\s*/, '') : text;
 }
-

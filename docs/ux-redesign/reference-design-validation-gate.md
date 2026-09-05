@@ -1,7 +1,7 @@
 # Reference Design Validation Gate
 
-التاريخ: 2026-09-04  
-النطاق: `EnterpriseCommandCenter`، `EnterpriseCustomerDirectory`، `Store360Page`، `EnterpriseFinanceOverview` فقط.  
+التاريخ: 2026-09-04
+النطاق: `EnterpriseCommandCenter`، `EnterpriseCustomerDirectory`، `Store360Page`، `EnterpriseFinanceOverview` فقط.
 القرار: **PASS — Design System جاهز ليكون مرجع Phase 6. لم يبدأ أي ترحيل لبقية الصفحات.**
 
 ## نتيجة الشاشات

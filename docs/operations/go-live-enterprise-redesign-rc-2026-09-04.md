@@ -1,6 +1,6 @@
 # Go-Live Checklist — Enterprise Redesign RC
 
-Release Candidate: `enterprise-redesign-rc-2026-09-04`  
+Release Candidate: `enterprise-redesign-rc-2026-09-04`
 الحالة الحالية: **PRODUCTION READY WITH DOCUMENTED EXCEPTION**
 
 ## 1. تثبيت هوية الإصدار
@@ -59,4 +59,3 @@ Release Candidate: `enterprise-redesign-rc-2026-09-04`
 3. لا تعدّل Supabase migrations أو migration history؛ هذا الإصدار لا يتضمن Database changes.
 4. تحقق من SHA الفعلي بعد rollback، ثم أعد Admin login وroute smoke والرحلة المتأثرة وConsole/Network checks.
 5. سجّل سبب rollback والـSHA قبل/بعد وأي Release Blocker جديد في incident/release log.
-

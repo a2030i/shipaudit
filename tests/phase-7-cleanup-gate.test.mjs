@@ -49,4 +49,3 @@ test('finance compatibility wrapper is removed without removing deep-link routes
     assert.ok(app.includes(`'${path}'`), `${path} compatibility route missing`);
   }
 });
-
