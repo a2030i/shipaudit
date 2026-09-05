@@ -36,13 +36,37 @@ jobs:
       - name: Verify changed lines
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            git diff --check "${{ github.event.pull_request.base.sha }}" "$GITHUB_SHA"
-          elif [[ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]]; then
-            git diff --check "${{ github.event.before }}" "$GITHUB_SHA"
-          else
-            git diff-tree --check "$GITHUB_SHA^" "$GITHUB_SHA"
+          case "${{ github.event_name }}" in
+            pull_request)
+              BASE_SHA="${{ github.event.pull_request.base.sha }}"
+              ;;
+            push)
+              BASE_SHA="${{ github.event.before }}"
+              if [[ -z "$BASE_SHA" || "$BASE_SHA" == "0000000000000000000000000000000000000000" ]]; then
+                BASE_SHA="$GITHUB_SHA^"
+              fi
+              ;;
+            workflow_dispatch)
+              DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+              if [[ "$GITHUB_REF_NAME" == "$DEFAULT_BRANCH" ]]; then
+                BASE_SHA="$GITHUB_SHA^"
+              else
+                git fetch --no-tags origin "$DEFAULT_BRANCH"
+                BASE_SHA="$(git merge-base "$GITHUB_SHA" "origin/$DEFAULT_BRANCH")"
+              fi
+              ;;
+            *)
+              echo "::error::Unsupported event for changed-lines verification: ${{ github.event_name }}"
+              exit 1
+              ;;
+          esac
+
+          if [[ -z "$BASE_SHA" ]] || ! git rev-parse --verify "${BASE_SHA}^{commit}" >/dev/null 2>&1; then
+            echo "::error::Unable to determine a trusted base SHA for changed-lines verification."
+            exit 1
           fi
+
+          git diff --check "$BASE_SHA" "$GITHUB_SHA"
 
       - name: Run full test suite
         run: node --test tests/*.test.mjs
