@@ -4,28 +4,34 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
-const sha256 = async path => createHash('sha256').update(await read(path)).digest('hex');
+const fingerprint = text => createHash('sha256').update(text.replace(/\r\n?/g, '\n')).digest('hex');
+const sha256 = async path => fingerprint(await read(path));
 
 const businessLocks = new Map([
-  ['src/lib/retargetingService.js', '16064423009a66c71863dda9931928fbbb0661edb430a6855eeb244517e2a26b'],
-  ['src/lib/nextActionsService.js', '968375aec5bf05e8df027fb3907ccafe6698d6dabd470fedefeda6c94ef7040b'],
+  ['src/lib/retargetingService.js', '20d4d4391349c9f25facb13fcea0380ee66226769fe222585c2bb3ed2fb6de3a'],
+  ['src/lib/nextActionsService.js', '50a5167ab8607d3e48c49b95426daf66d4e9e4ff3d69b6dd6e18207872acc4ec'],
   ['src/lib/crmService.js', 'bb9208efa5f70f122674869160cb4fa60cb54641adac34d221a887c452597167'],
-  ['src/lib/crmLeadsService.js', '7002abf56cca8f19328ac9e8c1da27c3e7ec5ba6504cfa46dfbb76c5e07860f9'],
-  ['src/lib/smartCampaignService.js', '264f1947a377261159a80834a0ab54762f5ebc09d5902f6dd44440d3426013a7'],
+  ['src/lib/crmLeadsService.js', '88aa891500f9499974b534a4b2fc823ff72cc7bf2a155b8d376cc5430b79aac5'],
+  ['src/lib/smartCampaignService.js', 'bb8e745145a8c7579bdba754bb81d395dde1a2806b42f406349116acc08971b8'],
   ['src/lib/whatsappAudience.js', '828a9524181d18c1f413e150bb013ad6615cfee9330d8f562931be72b0b494ff'],
-  ['src/lib/whatsappService.js', '0c8d4da27be15c0dfc58939d797a3c3d9946a16483bdcf01d036eaf1a42d8aaf'],
+  ['src/lib/whatsappService.js', 'd42b82f664834790a3393c50b0a236cfa138cf477f5fe577ec1547a642e669eb'],
   ['src/lib/ivrService.js', '004639598cc7883406f0b76317f549cc40a8c485a08e8c89e9335b405fb255b2'],
-  ['src/lib/agingOperations.js', '291a81eab42e2fb8e9ec0d8237dc9665a21504c252295726c795ea0830b75916'],
-  ['src/lib/customerCampaignBuckets.js', 'd80010975959af861ca173d5a5dac458b6fe4d312c2ac8211b5f5627462c9cfa'],
+  ['src/lib/agingOperations.js', '8d389bc89365699c80f236365585d361410d13baaa12cfa0229e4532d4e8f262'],
+  ['src/lib/customerCampaignBuckets.js', 'f5c5ba48670bbad2891c357df79c36bd1ed2ddb35684b900edcf297e2268990e'],
   ['src/lib/customerGrowthTaxonomy.js', '482df91caf4cd8ee0dccd892ade4889fe279e498326cb997a0c5f3cdc17be322'],
-  ['src/lib/customer360Service.js', '013a0af9053c48b6104a8cd58b257b8aa9f7b32ba8ccfe84376c58254bf44ac3'],
-  ['src/lib/merchantsService.js', '4e6366bd222903786bf8dfdad6c60c618086a566de5edba3a24545b9e697be6a'],
+  ['src/lib/customer360Service.js', '256b68057020145d822393629e51a56386ace223bc61b2f31aff3b20976b804b'],
+  ['src/lib/merchantsService.js', 'e1bcdf3ef8b2601c4021441d2d629659760e6f96720ff67f2d9007b4a8c7bc40'],
   ['src/lib/segmentsService.js', '0a650d4833a1e9843d2702cb772e423274cd665add8e6fb26c370246ef37bee1'],
   ['src/lib/hatifLeadsService.js', 'f63b0161e6e66632dedbb45e32ec4821f23f14ccea64059fdafae4ecd26f0fac'],
   ['src/lib/hatifCommitmentsService.js', 'e0eeb051b19a102dc14c14bd9e5cdb795d4ee4d69dc282accd9d6da11d2e46bf'],
-  ['src/components/WhatsAppSendModal.jsx', '2e0b74a94017aa5afeb5da993e1874f3eb3b780506b9a2a3a4b983ed6e7fc40b'],
-  ['src/components/IvrCampaignModal.jsx', 'ee9fd568b8215ca74358714a4abd598b52f98b5bff675c56ea87504321823b82'],
+  ['src/components/WhatsAppSendModal.jsx', '6fe1a1416e8a7576569c7ed3be88c3e3d9c285c82756219b555ebd25e4673c19'],
+  ['src/components/IvrCampaignModal.jsx', '1ddba7850d068369daf4af5236a2ac3c23796264ef19952d13847a93f399c923'],
 ]);
+
+test('Phase 6 fingerprints canonicalize LF, CRLF and lone CR equally', () => {
+  assert.equal(fingerprint('one\ntwo\n'), fingerprint('one\r\ntwo\r\n'));
+  assert.equal(fingerprint('one\ntwo\n'), fingerprint('one\rtwo\r'));
+});
 
 test('Batch 4 keeps sales, audience, assignment and channel behavior byte-identical', async () => {
   for (const [path, expected] of businessLocks) assert.equal(await sha256(path), expected, `${path} business lock changed`);

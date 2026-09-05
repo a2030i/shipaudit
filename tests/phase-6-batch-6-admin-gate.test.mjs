@@ -4,23 +4,24 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
-const sha256 = async path => createHash('sha256').update(await read(path)).digest('hex');
+const fingerprint = text => createHash('sha256').update(text.replace(/\r\n?/g, '\n')).digest('hex');
+const sha256 = async path => fingerprint(await read(path));
 
 const FROZEN_ADMIN_SOURCES = {
   'src/lib/auth.jsx': 'b2476147205a4ac0da054d76bd4588dc32d4ff50390c39d6a01747d986a3f0f9',
-  'src/lib/permissions.js': '7497c458f3ec8c76764157973e61db188825aebb14c5159ad2ff65b33a74ae66',
-  'src/lib/employeeService.js': 'e7b62fbad97442bf57fc3c119b923ba5a85e743d2fa91f337cc353d5a10620b0',
+  'src/lib/permissions.js': '72894608dcdb4f04176cfa8c1193ef6f19dc4ffa8238710b340d775534b960bf',
+  'src/lib/employeeService.js': 'c63d1a9b80f3d1f8323879932ea05cb41726e8124c8fe92932706920229a143c',
   'src/lib/workAgentService.js': 'ec1b212e7fb3dd1aece64621f15bb35a4b461480836cb1d28eb3c00eb92ed544',
-  'src/lib/whatsappService.js': '0c8d4da27be15c0dfc58939d797a3c3d9946a16483bdcf01d036eaf1a42d8aaf',
-  'src/lib/webhookService.js': '387ba862c1e918ae87c99a7d9754f1291b0ef339e47e98f92697caa30744c353',
-  'src/lib/uploadsHubService.js': '2e89bf25e08be49e518f29d56f159b2bf9a9fbbaad8b7e8ae9c518b992fe3a8b',
+  'src/lib/whatsappService.js': 'd42b82f664834790a3393c50b0a236cfa138cf477f5fe577ec1547a642e669eb',
+  'src/lib/webhookService.js': 'b90a6be488511ea6e4943b42b666d87b17c9c03510541014eb3ba88b027cc6ca',
+  'src/lib/uploadsHubService.js': 'bc90d2df005d02ade13750af3f4f3c490094b4d18dae6ca73b137fc1e4c11d48',
   'src/lib/integrityService.js': '351c08e3b14eb96e1c77ac9beb054e63dbfe2470a77a96ad5261610957357a7e',
   'src/lib/tahseelService.js': '8d71cbd1a7097c9793ab8c91bcf02436eebd4d9cc3d3c34b931f875464d1ce2a',
-  'src/lib/contractHistoryService.js': '69bbac5c53f3e9f685987ae69ce347c16d45f5426f8a42e4cc9bf95222869573',
-  'src/lib/coreService.js': '5b9d522a6ada37c518704de1c233e3b03a8078aabd887a164dd24a24d635eee9',
-  'src/data/carriers.js': '55cb836399be5f24de24d3b96b277df87e403d57e811feb2b33be3520a243675',
+  'src/lib/contractHistoryService.js': 'ef6d16ef4330eb52f3933fa21aaac027eb559712a56ddf188778f0a853df39ce',
+  'src/lib/coreService.js': '7bf9d90f04e932ca127a0eb4a02336e2f8ec38a07b7eb4f3f680ba02e4565573',
+  'src/data/carriers.js': 'c2b61cf75a48cde0163aa5c2698ec6368385869e82be45576f1f4540e1610eae',
   'src/engine/pricing.js': '3d2c48258d28d43c715534da14f93adda3aa6ddd06b29c0225fc2214bf2735e1',
-  'src/engine/openrouter.js': 'd888b12c2e8b938add84bb21c147497ad38f913136698e89d477d5d833bb9a31',
+  'src/engine/openrouter.js': '3c37cab1667ec7d37ff8674f61e75f1dcfbfb6d153f0a95f3a9970dcfe802ff5',
 };
 
 test('Batch 6 freezes authentication, authorization and every admin integration service', async () => {

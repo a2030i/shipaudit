@@ -4,26 +4,27 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
-const sha256 = async path => createHash('sha256').update(await read(path)).digest('hex');
+const fingerprint = text => createHash('sha256').update(text.replace(/\r\n?/g, '\n')).digest('hex');
+const sha256 = async path => fingerprint(await read(path));
 
 const FROZEN_REPORT_SOURCES = {
   'src/lib/monthlyReportService.js': '2191551b82a1ed9d0370a659a7eb760e9f60bc05df28610126aa6f07c9489ac7',
   'src/lib/zohoReportsService.js': '7fbe6db2ed723b73a9382de7d878dd2e1ce07146935258b49d40c0dfd2e1a35b',
-  'src/lib/internalExportsService.js': '3563ad1c58d8e83afd4e6d2da1a7f0318de1d6ba204a42223e697cfb7e769bbb',
+  'src/lib/internalExportsService.js': 'b642375018d017556a5f5c34544709a245ef37cc7e2218d254a989f9a5ba757e',
   'src/lib/bankReconReport.js': 'f17432535c85c37665506f651c7cd2b9e9a99c32bc05bcf27c1feb4513249a04',
-  'src/lib/carrierSoaExport.js': 'd1193ddc1f1608e32946885be2786e00eb6665bbbe422c7afd6cae8aa2ec8eb7',
+  'src/lib/carrierSoaExport.js': '559e08190c72d22c756ecab6bf3a97bc0ffd8df120df6c2568a194c451903396',
   'src/lib/soaExport.js': 'c57b3df4f4c31933a2a39dfbd9518a46728bbbeedf4103f33490e522f46cde4f',
   'src/lib/cashAgingService.js': '862da446718c29ab12b7f3feb85bbb650e02d495d28806e009a691a611c94d2c',
   'src/lib/forecastService.js': '81f82cd238bdbe02d694bec7c0993d68057af358653fe6c8d45f7d3244479f6f',
   'src/lib/carrierStatementsService.js': '1cc8f08b97a3ee13f68e10623aa79a764b28886f205dc203f78cdd4c542062c6',
   'src/lib/carrierScore.js': '489ee42dffc6b2d026e7dcb2dd9e2795f0b5a30d2c893a40671d099f9a6376c2',
   'src/lib/platformCarriersService.js': '6730489f191672f54d7bd46d93e177e725e4457f8e788a9b90556a53d2cc9837',
-  'src/lib/retargetingService.js': '16064423009a66c71863dda9931928fbbb0661edb430a6855eeb244517e2a26b',
+  'src/lib/retargetingService.js': '20d4d4391349c9f25facb13fcea0380ee66226769fe222585c2bb3ed2fb6de3a',
   'src/lib/customerGrowthTaxonomy.js': '482df91caf4cd8ee0dccd892ade4889fe279e498326cb997a0c5f3cdc17be322',
-  'src/lib/smartCampaignService.js': '264f1947a377261159a80834a0ab54762f5ebc09d5902f6dd44440d3426013a7',
+  'src/lib/smartCampaignService.js': 'bb8e745145a8c7579bdba754bb81d395dde1a2806b42f406349116acc08971b8',
   'src/lib/whatsappAudience.js': '828a9524181d18c1f413e150bb013ad6615cfee9330d8f562931be72b0b494ff',
-  'src/lib/pnlService.js': '2e0801c314ff93534feb939bb387acb1a630445558eacd5d2184b80765743001',
-  'src/lib/weightBillingService.js': 'f110cfea1ac45f60813e7c1d61d14951e1c57b1afa5436f80bdfe72a42aef11d',
+  'src/lib/pnlService.js': '107aef5c823a55951bc836dd629a96ebaf7e73fa17ebf267deb5a7887cdeb37e',
+  'src/lib/weightBillingService.js': '54485a8fab8b480583407292a990361d1d5a9fbf81347b3bf17f4120abb4ddb8',
   'src/lib/xlsxRtl.js': '609078fe950f4d4ce6fd70dd1ba0bbd0907e81504984a588aa0ab7d1fce17839',
 };
 
